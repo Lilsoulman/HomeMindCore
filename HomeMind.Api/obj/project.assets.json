@@ -2,6 +2,19 @@
   "version": 3,
   "targets": {
     "net8.0": {
+      "Dapper/2.0.123": {
+        "type": "package",
+        "compile": {
+          "lib/net5.0/Dapper.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net5.0/Dapper.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "Microsoft.Extensions.ApiDescription.Server/3.0.0": {
         "type": "package",
         "build": {
@@ -23,6 +36,19 @@
         "runtime": {
           "lib/netstandard2.0/Microsoft.OpenApi.dll": {
             "related": ".pdb;.xml"
+          }
+        }
+      },
+      "MySqlConnector/2.2.5": {
+        "type": "package",
+        "compile": {
+          "lib/net7.0/MySqlConnector.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net7.0/MySqlConnector.dll": {
+            "related": ".xml"
           }
         }
       },
@@ -199,6 +225,24 @@
     }
   },
   "libraries": {
+    "Dapper/2.0.123": {
+      "sha512": "RDFF4rBLLmbpi6pwkY7q/M6UXHRJEOerplDGE5jwEkP/JGJnBauAClYavNKJPW1yOTWRPIyfj4is3EaJxQXILQ==",
+      "type": "package",
+      "path": "dapper/2.0.123",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Dapper.png",
+        "dapper.2.0.123.nupkg.sha512",
+        "dapper.nuspec",
+        "lib/net461/Dapper.dll",
+        "lib/net461/Dapper.xml",
+        "lib/net5.0/Dapper.dll",
+        "lib/net5.0/Dapper.xml",
+        "lib/netstandard2.0/Dapper.dll",
+        "lib/netstandard2.0/Dapper.xml"
+      ]
+    },
     "Microsoft.Extensions.ApiDescription.Server/3.0.0": {
       "sha512": "LH4OE/76F6sOCslif7+Xh3fS/wUUrE5ryeXAMcoCnuwOQGT5Smw0p57IgDh/pHgHaGz/e+AmEQb7pRgb++wt0w==",
       "type": "package",
@@ -241,6 +285,33 @@
         "lib/netstandard2.0/Microsoft.OpenApi.xml",
         "microsoft.openapi.1.2.3.nupkg.sha512",
         "microsoft.openapi.nuspec"
+      ]
+    },
+    "MySqlConnector/2.2.5": {
+      "sha512": "6sinY78RvryhHwpup3awdjYO7d5hhWahb5p/1VDODJhSxJggV/sBbYuKK5IQF9TuzXABiddqUbmRfM884tqA3Q==",
+      "type": "package",
+      "path": "mysqlconnector/2.2.5",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "lib/net461/MySqlConnector.dll",
+        "lib/net461/MySqlConnector.xml",
+        "lib/net471/MySqlConnector.dll",
+        "lib/net471/MySqlConnector.xml",
+        "lib/net6.0/MySqlConnector.dll",
+        "lib/net6.0/MySqlConnector.xml",
+        "lib/net7.0/MySqlConnector.dll",
+        "lib/net7.0/MySqlConnector.xml",
+        "lib/netcoreapp3.1/MySqlConnector.dll",
+        "lib/netcoreapp3.1/MySqlConnector.xml",
+        "lib/netstandard2.0/MySqlConnector.dll",
+        "lib/netstandard2.0/MySqlConnector.xml",
+        "lib/netstandard2.1/MySqlConnector.dll",
+        "lib/netstandard2.1/MySqlConnector.xml",
+        "logo.png",
+        "mysqlconnector.2.2.5.nupkg.sha512",
+        "mysqlconnector.nuspec"
       ]
     },
     "Swashbuckle.AspNetCore/6.3.0": {
@@ -367,9 +438,11 @@
   },
   "projectFileDependencyGroups": {
     "net8.0": [
+      "Dapper >= 2.0.123",
       "HomeMind.Business.IServices >= 1.0.0",
       "HomeMind.Business.Services >= 1.0.0",
       "HomeMind.Common.Model >= 1.0.0",
+      "MySqlConnector >= 2.2.5",
       "Swashbuckle.AspNetCore >= 6.3.0"
     ]
   },
@@ -432,6 +505,14 @@
       "net8.0": {
         "targetAlias": "net8.0",
         "dependencies": {
+          "Dapper": {
+            "target": "Package",
+            "version": "[2.0.123, )"
+          },
+          "MySqlConnector": {
+            "target": "Package",
+            "version": "[2.2.5, )"
+          },
           "Swashbuckle.AspNetCore": {
             "target": "Package",
             "version": "[6.3.0, )"

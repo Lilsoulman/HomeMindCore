@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("HomeMind.Business.Services")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7b7d1c2c8a4ed28303edec394072ca68a89c15e9")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f94d09c10f14082f0a3d14dd60d15d8dbfe7eb42")]
 [assembly: System.Reflection.AssemblyProductAttribute("HomeMind.Business.Services")]
 [assembly: System.Reflection.AssemblyTitleAttribute("HomeMind.Business.Services")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

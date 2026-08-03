@@ -34,3 +34,16 @@ D:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\net8.0\HomeMind.Common.Rep
 D:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\net8.0\refint\HomeMind.Common.Repository.dll
 D:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\net8.0\HomeMind.Common.Repository.pdb
 D:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\net8.0\ref\HomeMind.Common.Repository.dll
+D:\HomeMind\core\HomeMind.Common.Repository\.build\Debug\net8.0\HomeMind.Common.Repository.deps.json
+D:\HomeMind\core\HomeMind.Common.Repository\.build\Debug\net8.0\HomeMind.Common.Repository.dll
+D:\HomeMind\core\HomeMind.Common.Repository\.build\Debug\net8.0\HomeMind.Common.Repository.pdb
+D:\HomeMind\core\HomeMind.Common.Repository\.build\Debug\net8.0\HomeMind.Common.IRepository.dll
+D:\HomeMind\core\HomeMind.Common.Repository\.build\Debug\net8.0\HomeMind.Common.Model.dll
+D:\HomeMind\core\HomeMind.Common.Repository\.build\Debug\net8.0\HomeMind.Common.Model.pdb
+D:\HomeMind\core\HomeMind.Common.Repository\.build\Debug\net8.0\HomeMind.Common.IRepository.pdb
+C:\Users\15953\AppData\Local\Temp\homemind-swagger-buildDebug\net8.0\HomeMind.Common.Repository.deps.json
+C:\Users\15953\AppData\Local\Temp\homemind-swagger-buildDebug\net8.0\HomeMind.Common.Repository.dll
+C:\Users\15953\AppData\Local\Temp\homemind-swagger-buildDebug\net8.0\HomeMind.Common.Repository.pdb
+C:\Users\15953\AppData\Local\Temp\homemind-authorization-build\Debug\net8.0\HomeMind.Common.Repository.deps.json
+C:\Users\15953\AppData\Local\Temp\homemind-authorization-build\Debug\net8.0\HomeMind.Common.Repository.dll
+C:\Users\15953\AppData\Local\Temp\homemind-authorization-build\Debug\net8.0\HomeMind.Common.Repository.pdb

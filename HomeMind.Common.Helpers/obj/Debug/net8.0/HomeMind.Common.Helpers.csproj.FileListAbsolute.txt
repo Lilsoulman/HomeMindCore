@@ -22,3 +22,12 @@ D:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\net8.0\HomeMind.Common.Helper
 D:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\net8.0\refint\HomeMind.Common.Helpers.dll
 D:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\net8.0\HomeMind.Common.Helpers.pdb
 D:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\net8.0\ref\HomeMind.Common.Helpers.dll
+D:\HomeMind\core\HomeMind.Common.Helpers\.build\Debug\net8.0\HomeMind.Common.Helpers.deps.json
+D:\HomeMind\core\HomeMind.Common.Helpers\.build\Debug\net8.0\HomeMind.Common.Helpers.dll
+D:\HomeMind\core\HomeMind.Common.Helpers\.build\Debug\net8.0\HomeMind.Common.Helpers.pdb
+C:\Users\15953\AppData\Local\Temp\homemind-swagger-buildDebug\net8.0\HomeMind.Common.Helpers.deps.json
+C:\Users\15953\AppData\Local\Temp\homemind-swagger-buildDebug\net8.0\HomeMind.Common.Helpers.dll
+C:\Users\15953\AppData\Local\Temp\homemind-swagger-buildDebug\net8.0\HomeMind.Common.Helpers.pdb
+C:\Users\15953\AppData\Local\Temp\homemind-authorization-build\Debug\net8.0\HomeMind.Common.Helpers.deps.json
+C:\Users\15953\AppData\Local\Temp\homemind-authorization-build\Debug\net8.0\HomeMind.Common.Helpers.dll
+C:\Users\15953\AppData\Local\Temp\homemind-authorization-build\Debug\net8.0\HomeMind.Common.Helpers.pdb

@@ -30,3 +30,14 @@ D:\HomeMind\core\HomeMind.Common.IServices\obj\Debug\net8.0\HomeMind.Common.ISer
 D:\HomeMind\core\HomeMind.Common.IServices\obj\Debug\net8.0\refint\HomeMind.Common.IServices.dll
 D:\HomeMind\core\HomeMind.Common.IServices\obj\Debug\net8.0\HomeMind.Common.IServices.pdb
 D:\HomeMind\core\HomeMind.Common.IServices\obj\Debug\net8.0\ref\HomeMind.Common.IServices.dll
+D:\HomeMind\core\HomeMind.Common.IServices\.build\Debug\net8.0\HomeMind.Common.IServices.deps.json
+D:\HomeMind\core\HomeMind.Common.IServices\.build\Debug\net8.0\HomeMind.Common.IServices.dll
+D:\HomeMind\core\HomeMind.Common.IServices\.build\Debug\net8.0\HomeMind.Common.IServices.pdb
+D:\HomeMind\core\HomeMind.Common.IServices\.build\Debug\net8.0\HomeMind.Common.Model.dll
+D:\HomeMind\core\HomeMind.Common.IServices\.build\Debug\net8.0\HomeMind.Common.Model.pdb
+C:\Users\15953\AppData\Local\Temp\homemind-swagger-buildDebug\net8.0\HomeMind.Common.IServices.deps.json
+C:\Users\15953\AppData\Local\Temp\homemind-swagger-buildDebug\net8.0\HomeMind.Common.IServices.dll
+C:\Users\15953\AppData\Local\Temp\homemind-swagger-buildDebug\net8.0\HomeMind.Common.IServices.pdb
+C:\Users\15953\AppData\Local\Temp\homemind-authorization-build\Debug\net8.0\HomeMind.Common.IServices.deps.json
+C:\Users\15953\AppData\Local\Temp\homemind-authorization-build\Debug\net8.0\HomeMind.Common.IServices.dll
+C:\Users\15953\AppData\Local\Temp\homemind-authorization-build\Debug\net8.0\HomeMind.Common.IServices.pdb
