@@ -1,0 +1,12 @@
+/var/www/HomeMindCore/HomeMind.Common.Helpers/bin/Debug/net8.0/HomeMind.Common.Helpers.deps.json
+/var/www/HomeMindCore/HomeMind.Common.Helpers/bin/Debug/net8.0/HomeMind.Common.Helpers.dll
+/var/www/HomeMindCore/HomeMind.Common.Helpers/bin/Debug/net8.0/HomeMind.Common.Helpers.pdb
+/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/Debug/net8.0/HomeMind.Common.Helpers.GeneratedMSBuildEditorConfig.editorconfig
+/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/Debug/net8.0/HomeMind.Common.Helpers.AssemblyInfoInputs.cache
+/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/Debug/net8.0/HomeMind.Common.Helpers.AssemblyInfo.cs
+/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/Debug/net8.0/HomeMind.Common.Helpers.csproj.CoreCompileInputs.cache
+/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/Debug/net8.0/HomeMind.Common.Helpers.sourcelink.json
+/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/Debug/net8.0/HomeMind.Common.Helpers.dll
+/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/Debug/net8.0/refint/HomeMind.Common.Helpers.dll
+/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/Debug/net8.0/HomeMind.Common.Helpers.pdb
+/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/Debug/net8.0/ref/HomeMind.Common.Helpers.dll

@@ -1,0 +1,16 @@
+/var/www/HomeMindCore/HomeMind.Common.IServices/bin/Debug/net8.0/HomeMind.Common.IServices.deps.json
+/var/www/HomeMindCore/HomeMind.Common.IServices/bin/Debug/net8.0/HomeMind.Common.IServices.dll
+/var/www/HomeMindCore/HomeMind.Common.IServices/bin/Debug/net8.0/HomeMind.Common.IServices.pdb
+/var/www/HomeMindCore/HomeMind.Common.IServices/bin/Debug/net8.0/HomeMind.Common.Model.dll
+/var/www/HomeMindCore/HomeMind.Common.IServices/bin/Debug/net8.0/HomeMind.Common.Model.pdb
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/HomeMind.Common.IServices.csproj.AssemblyReference.cache
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/HomeMind.Common.IServices.GeneratedMSBuildEditorConfig.editorconfig
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/HomeMind.Common.IServices.AssemblyInfoInputs.cache
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/HomeMind.Common.IServices.AssemblyInfo.cs
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/HomeMind.Common.IServices.csproj.CoreCompileInputs.cache
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/HomeMind.Common.IServices.sourcelink.json
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/HomeMind.568DBB3B.Up2Date
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/HomeMind.Common.IServices.dll
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/refint/HomeMind.Common.IServices.dll
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/HomeMind.Common.IServices.pdb
+/var/www/HomeMindCore/HomeMind.Common.IServices/obj/Debug/net8.0/ref/HomeMind.Common.IServices.dll

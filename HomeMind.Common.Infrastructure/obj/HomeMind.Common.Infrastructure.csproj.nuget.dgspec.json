@@ -1,35 +1,30 @@
 {
   "format": 1,
   "restore": {
-    "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj": {}
+    "/var/www/HomeMindCore/HomeMind.Common.Infrastructure/HomeMind.Common.Infrastructure.csproj": {}
   },
   "projects": {
-    "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj": {
+    "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj",
+        "projectUniqueName": "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj",
         "projectName": "HomeMind.Common.Helpers",
-        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj",
-        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
-        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\obj\\",
+        "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj",
+        "packagesPath": "/home/ubuntu/.nuget/packages/",
+        "outputPath": "/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "D:\\Visual Studio\\Shared\\NuGetPackages"
-        ],
         "configFilePaths": [
-          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "/home/ubuntu/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
-          "netcoreapp3.1"
+          "net8.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "http://192.168.0.188:5000/v3/index.json": {}
+          "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "netcoreapp3.1": {
+          "net8.0": {
+            "targetAlias": "net8.0",
             "projectReferences": {}
           }
         },
@@ -37,17 +32,24 @@
           "warnAsError": [
             "NU1605"
           ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
         }
       },
       "frameworks": {
-        "netcoreapp3.1": {
+        "net8.0": {
+          "targetAlias": "net8.0",
           "imports": [
             "net461",
             "net462",
             "net47",
             "net471",
             "net472",
-            "net48"
+            "net48",
+            "net481"
           ],
           "assetTargetFallback": true,
           "warn": true,
@@ -56,108 +58,34 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\3.1.425\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.423/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj": {
+    "/var/www/HomeMindCore/HomeMind.Common.IRepository/HomeMind.Common.IRepository.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj",
-        "projectName": "HomeMind.Common.Infrastructure",
-        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj",
-        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
-        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\obj\\",
-        "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "D:\\Visual Studio\\Shared\\NuGetPackages"
-        ],
-        "configFilePaths": [
-          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
-        ],
-        "originalTargetFrameworks": [
-          "netcoreapp3.1"
-        ],
-        "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "http://192.168.0.188:5000/v3/index.json": {}
-        },
-        "frameworks": {
-          "netcoreapp3.1": {
-            "projectReferences": {
-              "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj": {
-                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj"
-              },
-              "D:\\HomeMind\\core\\HomeMind.Common.IRepository\\HomeMind.Common.IRepository.csproj": {
-                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.IRepository\\HomeMind.Common.IRepository.csproj"
-              },
-              "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj": {
-                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj"
-              },
-              "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
-                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
-              }
-            }
-          }
-        },
-        "warningProperties": {
-          "warnAsError": [
-            "NU1605"
-          ]
-        }
-      },
-      "frameworks": {
-        "netcoreapp3.1": {
-          "imports": [
-            "net461",
-            "net462",
-            "net47",
-            "net471",
-            "net472",
-            "net48"
-          ],
-          "assetTargetFallback": true,
-          "warn": true,
-          "frameworkReferences": {
-            "Microsoft.NETCore.App": {
-              "privateAssets": "all"
-            }
-          },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\3.1.425\\RuntimeIdentifierGraph.json"
-        }
-      }
-    },
-    "D:\\HomeMind\\core\\HomeMind.Common.IRepository\\HomeMind.Common.IRepository.csproj": {
-      "version": "1.0.0",
-      "restore": {
-        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.IRepository\\HomeMind.Common.IRepository.csproj",
+        "projectUniqueName": "/var/www/HomeMindCore/HomeMind.Common.IRepository/HomeMind.Common.IRepository.csproj",
         "projectName": "HomeMind.Common.IRepository",
-        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.IRepository\\HomeMind.Common.IRepository.csproj",
-        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
-        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.IRepository\\obj\\",
+        "projectPath": "/var/www/HomeMindCore/HomeMind.Common.IRepository/HomeMind.Common.IRepository.csproj",
+        "packagesPath": "/home/ubuntu/.nuget/packages/",
+        "outputPath": "/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "D:\\Visual Studio\\Shared\\NuGetPackages"
-        ],
         "configFilePaths": [
-          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "/home/ubuntu/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
-          "netcoreapp3.1"
+          "net8.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "http://192.168.0.188:5000/v3/index.json": {}
+          "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "netcoreapp3.1": {
+          "net8.0": {
+            "targetAlias": "net8.0",
             "projectReferences": {
-              "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
-                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
+              "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj": {
+                "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj"
               }
             }
           }
@@ -166,17 +94,24 @@
           "warnAsError": [
             "NU1605"
           ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
         }
       },
       "frameworks": {
-        "netcoreapp3.1": {
+        "net8.0": {
+          "targetAlias": "net8.0",
           "imports": [
             "net461",
             "net462",
             "net47",
             "net471",
             "net472",
-            "net48"
+            "net48",
+            "net481"
           ],
           "assetTargetFallback": true,
           "warn": true,
@@ -185,39 +120,34 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\3.1.425\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.423/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj": {
+    "/var/www/HomeMindCore/HomeMind.Common.IServices/HomeMind.Common.IServices.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj",
+        "projectUniqueName": "/var/www/HomeMindCore/HomeMind.Common.IServices/HomeMind.Common.IServices.csproj",
         "projectName": "HomeMind.Common.IServices",
-        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj",
-        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
-        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\obj\\",
+        "projectPath": "/var/www/HomeMindCore/HomeMind.Common.IServices/HomeMind.Common.IServices.csproj",
+        "packagesPath": "/home/ubuntu/.nuget/packages/",
+        "outputPath": "/var/www/HomeMindCore/HomeMind.Common.IServices/obj/",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "D:\\Visual Studio\\Shared\\NuGetPackages"
-        ],
         "configFilePaths": [
-          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "/home/ubuntu/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
-          "netcoreapp3.1"
+          "net8.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "http://192.168.0.188:5000/v3/index.json": {}
+          "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "netcoreapp3.1": {
+          "net8.0": {
+            "targetAlias": "net8.0",
             "projectReferences": {
-              "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
-                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
+              "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj": {
+                "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj"
               }
             }
           }
@@ -226,17 +156,24 @@
           "warnAsError": [
             "NU1605"
           ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
         }
       },
       "frameworks": {
-        "netcoreapp3.1": {
+        "net8.0": {
+          "targetAlias": "net8.0",
           "imports": [
             "net461",
             "net462",
             "net47",
             "net471",
             "net472",
-            "net48"
+            "net48",
+            "net481"
           ],
           "assetTargetFallback": true,
           "warn": true,
@@ -245,36 +182,102 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\3.1.425\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.423/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
+    "/var/www/HomeMindCore/HomeMind.Common.Infrastructure/HomeMind.Common.Infrastructure.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj",
-        "projectName": "HomeMind.Common.Model",
-        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj",
-        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
-        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\obj\\",
+        "projectUniqueName": "/var/www/HomeMindCore/HomeMind.Common.Infrastructure/HomeMind.Common.Infrastructure.csproj",
+        "projectName": "HomeMind.Common.Infrastructure",
+        "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Infrastructure/HomeMind.Common.Infrastructure.csproj",
+        "packagesPath": "/home/ubuntu/.nuget/packages/",
+        "outputPath": "/var/www/HomeMindCore/HomeMind.Common.Infrastructure/obj/",
         "projectStyle": "PackageReference",
-        "fallbackFolders": [
-          "D:\\Visual Studio\\Shared\\NuGetPackages"
-        ],
         "configFilePaths": [
-          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
-          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+          "/home/ubuntu/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
-          "netcoreapp3.1"
+          "net8.0"
         ],
         "sources": {
-          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "http://192.168.0.188:5000/v3/index.json": {}
+          "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "netcoreapp3.1": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj": {
+                "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj"
+              },
+              "/var/www/HomeMindCore/HomeMind.Common.IRepository/HomeMind.Common.IRepository.csproj": {
+                "projectPath": "/var/www/HomeMindCore/HomeMind.Common.IRepository/HomeMind.Common.IRepository.csproj"
+              },
+              "/var/www/HomeMindCore/HomeMind.Common.IServices/HomeMind.Common.IServices.csproj": {
+                "projectPath": "/var/www/HomeMindCore/HomeMind.Common.IServices/HomeMind.Common.IServices.csproj"
+              },
+              "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj": {
+                "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.423/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj",
+        "projectName": "HomeMind.Common.Model",
+        "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj",
+        "packagesPath": "/home/ubuntu/.nuget/packages/",
+        "outputPath": "/var/www/HomeMindCore/HomeMind.Common.Model/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/ubuntu/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
             "projectReferences": {}
           }
         },
@@ -282,17 +285,24 @@
           "warnAsError": [
             "NU1605"
           ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
         }
       },
       "frameworks": {
-        "netcoreapp3.1": {
+        "net8.0": {
+          "targetAlias": "net8.0",
           "imports": [
             "net461",
             "net462",
             "net47",
             "net471",
             "net472",
-            "net48"
+            "net48",
+            "net481"
           ],
           "assetTargetFallback": true,
           "warn": true,
@@ -301,7 +311,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\3.1.425\\RuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.423/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

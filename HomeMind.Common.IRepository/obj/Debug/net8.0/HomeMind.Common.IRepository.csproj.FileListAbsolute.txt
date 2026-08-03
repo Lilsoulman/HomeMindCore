@@ -1,0 +1,16 @@
+/var/www/HomeMindCore/HomeMind.Common.IRepository/bin/Debug/net8.0/HomeMind.Common.IRepository.deps.json
+/var/www/HomeMindCore/HomeMind.Common.IRepository/bin/Debug/net8.0/HomeMind.Common.IRepository.dll
+/var/www/HomeMindCore/HomeMind.Common.IRepository/bin/Debug/net8.0/HomeMind.Common.IRepository.pdb
+/var/www/HomeMindCore/HomeMind.Common.IRepository/bin/Debug/net8.0/HomeMind.Common.Model.dll
+/var/www/HomeMindCore/HomeMind.Common.IRepository/bin/Debug/net8.0/HomeMind.Common.Model.pdb
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/HomeMind.Common.IRepository.csproj.AssemblyReference.cache
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/HomeMind.Common.IRepository.GeneratedMSBuildEditorConfig.editorconfig
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/HomeMind.Common.IRepository.AssemblyInfoInputs.cache
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/HomeMind.Common.IRepository.AssemblyInfo.cs
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/HomeMind.Common.IRepository.csproj.CoreCompileInputs.cache
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/HomeMind.Common.IRepository.sourcelink.json
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/HomeMind.571F5360.Up2Date
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/HomeMind.Common.IRepository.dll
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/refint/HomeMind.Common.IRepository.dll
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/HomeMind.Common.IRepository.pdb
+/var/www/HomeMindCore/HomeMind.Common.IRepository/obj/Debug/net8.0/ref/HomeMind.Common.IRepository.dll
