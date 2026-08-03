@@ -1,33 +1,39 @@
 {
   "format": 1,
   "restore": {
-    "/var/www/HomeMindCore/HomeMind.Common.IServices/HomeMind.Common.IServices.csproj": {}
+    "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj": {}
   },
   "projects": {
-    "/var/www/HomeMindCore/HomeMind.Common.IServices/HomeMind.Common.IServices.csproj": {
+    "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/var/www/HomeMindCore/HomeMind.Common.IServices/HomeMind.Common.IServices.csproj",
+        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj",
         "projectName": "HomeMind.Common.IServices",
-        "projectPath": "/var/www/HomeMindCore/HomeMind.Common.IServices/HomeMind.Common.IServices.csproj",
-        "packagesPath": "/home/ubuntu/.nuget/packages/",
-        "outputPath": "/var/www/HomeMindCore/HomeMind.Common.IServices/obj/",
+        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj",
+        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
+        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\obj\\",
         "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "D:\\Visual Studio\\Shared\\NuGetPackages"
+        ],
         "configFilePaths": [
-          "/home/ubuntu/.nuget/NuGet/NuGet.Config"
+          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
         ],
         "sources": {
-          "https://api.nuget.org/v3/index.json": {}
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "http://192.168.0.188:5000/v3/index.json": {}
         },
         "frameworks": {
           "net8.0": {
             "targetAlias": "net8.0",
             "projectReferences": {
-              "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj": {
-                "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj"
+              "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
+                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
               }
             }
           }
@@ -62,27 +68,33 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.423/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.202/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj": {
+    "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj",
+        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj",
         "projectName": "HomeMind.Common.Model",
-        "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj",
-        "packagesPath": "/home/ubuntu/.nuget/packages/",
-        "outputPath": "/var/www/HomeMindCore/HomeMind.Common.Model/obj/",
+        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj",
+        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
+        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\obj\\",
         "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "D:\\Visual Studio\\Shared\\NuGetPackages"
+        ],
         "configFilePaths": [
-          "/home/ubuntu/.nuget/NuGet/NuGet.Config"
+          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
         ],
         "sources": {
-          "https://api.nuget.org/v3/index.json": {}
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "http://192.168.0.188:5000/v3/index.json": {}
         },
         "frameworks": {
           "net8.0": {
@@ -120,7 +132,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.423/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.202/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

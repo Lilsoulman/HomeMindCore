@@ -1,3 +1,3 @@
 ﻿<Project>
-  <Import Project="../buildMultiTargeting/HomeMind.Api.props" />
+  <Import Project="..\buildMultiTargeting\HomeMind.Api.props" />
 </Project>

@@ -1,26 +1,32 @@
 {
   "format": 1,
   "restore": {
-    "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj": {}
+    "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj": {}
   },
   "projects": {
-    "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj": {
+    "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj",
+        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj",
         "projectName": "HomeMind.Common.Helpers",
-        "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj",
-        "packagesPath": "/home/ubuntu/.nuget/packages/",
-        "outputPath": "/var/www/HomeMindCore/HomeMind.Common.Helpers/obj/",
+        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj",
+        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
+        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\obj\\",
         "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "D:\\Visual Studio\\Shared\\NuGetPackages"
+        ],
         "configFilePaths": [
-          "/home/ubuntu/.nuget/NuGet/NuGet.Config"
+          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
           "net8.0"
         ],
         "sources": {
-          "https://api.nuget.org/v3/index.json": {}
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "http://192.168.0.188:5000/v3/index.json": {}
         },
         "frameworks": {
           "net8.0": {
@@ -58,7 +64,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.423/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.202/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

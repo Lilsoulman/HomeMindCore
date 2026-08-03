@@ -141,44 +141,51 @@
     ]
   },
   "packageFolders": {
-    "/home/ubuntu/.nuget/packages/": {}
+    "C:\\Users\\15953\\.nuget\\packages\\": {},
+    "D:\\Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/var/www/HomeMindCore/HomeMind.Business.Services/HomeMind.Business.Services.csproj",
+      "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Business.Services\\HomeMind.Business.Services.csproj",
       "projectName": "HomeMind.Business.Services",
-      "projectPath": "/var/www/HomeMindCore/HomeMind.Business.Services/HomeMind.Business.Services.csproj",
-      "packagesPath": "/home/ubuntu/.nuget/packages/",
-      "outputPath": "/var/www/HomeMindCore/HomeMind.Business.Services/obj/",
+      "projectPath": "D:\\HomeMind\\core\\HomeMind.Business.Services\\HomeMind.Business.Services.csproj",
+      "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
+      "outputPath": "D:\\HomeMind\\core\\HomeMind.Business.Services\\obj\\",
       "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "D:\\Visual Studio\\Shared\\NuGetPackages"
+      ],
       "configFilePaths": [
-        "/home/ubuntu/.nuget/NuGet/NuGet.Config"
+        "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],
       "originalTargetFrameworks": [
         "net8.0"
       ],
       "sources": {
-        "https://api.nuget.org/v3/index.json": {}
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "http://192.168.0.188:5000/v3/index.json": {}
       },
       "frameworks": {
         "net8.0": {
           "targetAlias": "net8.0",
           "projectReferences": {
-            "/var/www/HomeMindCore/HomeMind.Business.IServices/HomeMind.Business.IServices.csproj": {
-              "projectPath": "/var/www/HomeMindCore/HomeMind.Business.IServices/HomeMind.Business.IServices.csproj"
+            "D:\\HomeMind\\core\\HomeMind.Business.IServices\\HomeMind.Business.IServices.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Business.IServices\\HomeMind.Business.IServices.csproj"
             },
-            "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj": {
-              "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj"
+            "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj"
             },
-            "/var/www/HomeMindCore/HomeMind.Common.Infrastructure/HomeMind.Common.Infrastructure.csproj": {
-              "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Infrastructure/HomeMind.Common.Infrastructure.csproj"
+            "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj"
             },
-            "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj": {
-              "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Model/HomeMind.Common.Model.csproj"
+            "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
             },
-            "/var/www/HomeMindCore/HomeMind.Common.Repository/HomeMind.Common.Repository.csproj": {
-              "projectPath": "/var/www/HomeMindCore/HomeMind.Common.Repository/HomeMind.Common.Repository.csproj"
+            "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj"
             }
           }
         }
@@ -213,8 +220,16 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/8.0.423/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.202/PortableRuntimeIdentifierGraph.json"
       }
     }
-  }
+  },
+  "logs": [
+    {
+      "code": "NU1803",
+      "level": "Warning",
+      "warningLevel": 1,
+      "message": "You are running the 'restore' operation with an 'HTTP' source, 'http://192.168.0.188:5000/v3/index.json'. Non-HTTPS access will be removed in a future version. Consider migrating to an 'HTTPS' source."
+    }
+  ]
 }

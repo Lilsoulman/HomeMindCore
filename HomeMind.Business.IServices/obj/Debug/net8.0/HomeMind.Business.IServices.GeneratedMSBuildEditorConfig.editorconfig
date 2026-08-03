@@ -8,6 +8,6 @@ build_property.PlatformNeutralAssembly =
 build_property.EnforceExtendedAnalyzerRules = 
 build_property._SupportedPlatformList = Linux,macOS,Windows
 build_property.RootNamespace = HomeMind.Business.IServices
-build_property.ProjectDir = /var/www/HomeMindCore/HomeMind.Business.IServices/
+build_property.ProjectDir = D:\HomeMind\core\HomeMind.Business.IServices\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 

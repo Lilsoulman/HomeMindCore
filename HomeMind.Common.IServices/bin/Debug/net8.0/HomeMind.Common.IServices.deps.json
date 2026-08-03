@@ -16,10 +16,7 @@
       },
       "HomeMind.Common.Model/1.0.0": {
         "runtime": {
-          "HomeMind.Common.Model.dll": {
-            "assemblyVersion": "1.0.0",
-            "fileVersion": "1.0.0.0"
-          }
+          "HomeMind.Common.Model.dll": {}
         }
       }
     }
