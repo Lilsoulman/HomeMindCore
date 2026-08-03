@@ -1,0 +1,124 @@
+{
+  "format": 1,
+  "restore": {
+    "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj": {}
+  },
+  "projects": {
+    "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj",
+        "projectName": "HomeMind.Common.IServices",
+        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\HomeMind.Common.IServices.csproj",
+        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
+        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.IServices\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "D:\\Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "netcoreapp3.1"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "http://192.168.0.188:5000/v3/index.json": {}
+        },
+        "frameworks": {
+          "netcoreapp3.1": {
+            "projectReferences": {
+              "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
+                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        }
+      },
+      "frameworks": {
+        "netcoreapp3.1": {
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\3.1.425\\RuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj",
+        "projectName": "HomeMind.Common.Model",
+        "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj",
+        "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
+        "outputPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "D:\\Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "netcoreapp3.1"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "http://192.168.0.188:5000/v3/index.json": {}
+        },
+        "frameworks": {
+          "netcoreapp3.1": {
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        }
+      },
+      "frameworks": {
+        "netcoreapp3.1": {
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\3.1.425\\RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "version": 3,
+  "targets": {
+    ".NETCoreApp,Version=v3.1": {
+      "HomeMind.Business.IServices/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v3.1",
+        "dependencies": {
+          "HomeMind.Common.IServices": "1.0.0",
+          "HomeMind.Common.Model": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/HomeMind.Business.IServices.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/HomeMind.Business.IServices.dll": {}
+        }
+      },
+      "HomeMind.Common.Helpers/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v3.1",
+        "compile": {
+          "bin/placeholder/HomeMind.Common.Helpers.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/HomeMind.Common.Helpers.dll": {}
+        }
+      },
+      "HomeMind.Common.Infrastructure/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v3.1",
+        "dependencies": {
+          "HomeMind.Common.Helpers": "1.0.0",
+          "HomeMind.Common.IRepository": "1.0.0",
+          "HomeMind.Common.IServices": "1.0.0",
+          "HomeMind.Common.Model": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/HomeMind.Common.Infrastructure.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/HomeMind.Common.Infrastructure.dll": {}
+        }
+      },
+      "HomeMind.Common.IRepository/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v3.1",
+        "dependencies": {
+          "HomeMind.Common.Model": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/HomeMind.Common.IRepository.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/HomeMind.Common.IRepository.dll": {}
+        }
+      },
+      "HomeMind.Common.IServices/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v3.1",
+        "dependencies": {
+          "HomeMind.Common.Model": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/HomeMind.Common.IServices.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/HomeMind.Common.IServices.dll": {}
+        }
+      },
+      "HomeMind.Common.Model/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v3.1",
+        "compile": {
+          "bin/placeholder/HomeMind.Common.Model.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/HomeMind.Common.Model.dll": {}
+        }
+      },
+      "HomeMind.Common.Repository/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v3.1",
+        "dependencies": {
+          "HomeMind.Common.IRepository": "1.0.0",
+          "HomeMind.Common.Model": "1.0.0"
+        },
+        "compile": {
+          "bin/placeholder/HomeMind.Common.Repository.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/HomeMind.Common.Repository.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "HomeMind.Business.IServices/1.0.0": {
+      "type": "project",
+      "path": "../HomeMind.Business.IServices/HomeMind.Business.IServices.csproj",
+      "msbuildProject": "../HomeMind.Business.IServices/HomeMind.Business.IServices.csproj"
+    },
+    "HomeMind.Common.Helpers/1.0.0": {
+      "type": "project",
+      "path": "../HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj",
+      "msbuildProject": "../HomeMind.Common.Helpers/HomeMind.Common.Helpers.csproj"
+    },
+    "HomeMind.Common.Infrastructure/1.0.0": {
+      "type": "project",
+      "path": "../HomeMind.Common.Infrastructure/HomeMind.Common.Infrastructure.csproj",
+      "msbuildProject": "../HomeMind.Common.Infrastructure/HomeMind.Common.Infrastructure.csproj"
+    },
+    "HomeMind.Common.IRepository/1.0.0": {
+      "type": "project",
+      "path": "../HomeMind.Common.IRepository/HomeMind.Common.IRepository.csproj",
+      "msbuildProject": "../HomeMind.Common.IRepository/HomeMind.Common.IRepository.csproj"
+    },
+    "HomeMind.Common.IServices/1.0.0": {
+      "type": "project",
+      "path": "../HomeMind.Common.IServices/HomeMind.Common.IServices.csproj",
+      "msbuildProject": "../HomeMind.Common.IServices/HomeMind.Common.IServices.csproj"
+    },
+    "HomeMind.Common.Model/1.0.0": {
+      "type": "project",
+      "path": "../HomeMind.Common.Model/HomeMind.Common.Model.csproj",
+      "msbuildProject": "../HomeMind.Common.Model/HomeMind.Common.Model.csproj"
+    },
+    "HomeMind.Common.Repository/1.0.0": {
+      "type": "project",
+      "path": "../HomeMind.Common.Repository/HomeMind.Common.Repository.csproj",
+      "msbuildProject": "../HomeMind.Common.Repository/HomeMind.Common.Repository.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    ".NETCoreApp,Version=v3.1": [
+      "HomeMind.Business.IServices >= 1.0.0",
+      "HomeMind.Common.Helpers >= 1.0.0",
+      "HomeMind.Common.Infrastructure >= 1.0.0",
+      "HomeMind.Common.Model >= 1.0.0",
+      "HomeMind.Common.Repository >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\15953\\.nuget\\packages\\": {},
+    "D:\\Visual Studio\\Shared\\NuGetPackages": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "D:\\HomeMind\\core\\HomeMind.Business.Services\\HomeMind.Business.Services.csproj",
+      "projectName": "HomeMind.Business.Services",
+      "projectPath": "D:\\HomeMind\\core\\HomeMind.Business.Services\\HomeMind.Business.Services.csproj",
+      "packagesPath": "C:\\Users\\15953\\.nuget\\packages\\",
+      "outputPath": "D:\\HomeMind\\core\\HomeMind.Business.Services\\obj\\",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "D:\\Visual Studio\\Shared\\NuGetPackages"
+      ],
+      "configFilePaths": [
+        "C:\\Users\\15953\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "netcoreapp3.1"
+      ],
+      "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "http://192.168.0.188:5000/v3/index.json": {}
+      },
+      "frameworks": {
+        "netcoreapp3.1": {
+          "projectReferences": {
+            "D:\\HomeMind\\core\\HomeMind.Business.IServices\\HomeMind.Business.IServices.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Business.IServices\\HomeMind.Business.IServices.csproj"
+            },
+            "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Helpers\\HomeMind.Common.Helpers.csproj"
+            },
+            "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj"
+            },
+            "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
+            },
+            "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj": {
+              "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      }
+    },
+    "frameworks": {
+      "netcoreapp3.1": {
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\3.1.425\\RuntimeIdentifierGraph.json"
+      }
+    }
+  },
+  "logs": [
+    {
+      "code": "NU1803",
+      "level": "Warning",
+      "warningLevel": 1,
+      "message": "You are running the 'restore' operation with an 'HTTP' source, 'http://192.168.0.188:5000/v3/index.json'. Non-HTTPS access will be removed in a future version. Consider migrating to an 'HTTPS' source."
+    }
+  ]
+}

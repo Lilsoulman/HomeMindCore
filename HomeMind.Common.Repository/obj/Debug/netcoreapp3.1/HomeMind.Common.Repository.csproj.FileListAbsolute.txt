@@ -1,0 +1,17 @@
+d:\HomeMind\core\HomeMind.Common.Repository\bin\Debug\netcoreapp3.1\HomeMind.Common.Repository.deps.json
+d:\HomeMind\core\HomeMind.Common.Repository\bin\Debug\netcoreapp3.1\HomeMind.Common.Repository.dll
+d:\HomeMind\core\HomeMind.Common.Repository\bin\Debug\netcoreapp3.1\HomeMind.Common.Repository.pdb
+d:\HomeMind\core\HomeMind.Common.Repository\bin\Debug\netcoreapp3.1\HomeMind.Common.IRepository.dll
+d:\HomeMind\core\HomeMind.Common.Repository\bin\Debug\netcoreapp3.1\HomeMind.Common.Model.dll
+d:\HomeMind\core\HomeMind.Common.Repository\bin\Debug\netcoreapp3.1\HomeMind.Common.Model.pdb
+d:\HomeMind\core\HomeMind.Common.Repository\bin\Debug\netcoreapp3.1\HomeMind.Common.IRepository.pdb
+d:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\netcoreapp3.1\HomeMind.Common.Repository.csprojAssemblyReference.cache
+d:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\netcoreapp3.1\HomeMind.Common.Repository.AssemblyInfoInputs.cache
+d:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\netcoreapp3.1\HomeMind.Common.Repository.AssemblyInfo.cs
+d:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\netcoreapp3.1\HomeMind.Common.Repository.csproj.CoreCompileInputs.cache
+d:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\netcoreapp3.1\HomeMind.Common.Repository.csproj.CopyComplete
+d:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\netcoreapp3.1\HomeMind.Common.Repository.dll
+d:\HomeMind\core\HomeMind.Common.Repository\obj\Debug\netcoreapp3.1\HomeMind.Common.Repository.pdb
+D:\HomeMind\core\.build-swagger\Debug\netcoreapp3.1\HomeMind.Common.Repository.deps.json
+D:\HomeMind\core\.build-swagger\Debug\netcoreapp3.1\HomeMind.Common.Repository.dll
+D:\HomeMind\core\.build-swagger\Debug\netcoreapp3.1\HomeMind.Common.Repository.pdb

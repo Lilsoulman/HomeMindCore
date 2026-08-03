@@ -1,0 +1,12 @@
+d:\HomeMind\core\HomeMind.Common.Helpers\bin\Debug\netcoreapp3.1\HomeMind.Common.Helpers.deps.json
+d:\HomeMind\core\HomeMind.Common.Helpers\bin\Debug\netcoreapp3.1\HomeMind.Common.Helpers.dll
+d:\HomeMind\core\HomeMind.Common.Helpers\bin\Debug\netcoreapp3.1\HomeMind.Common.Helpers.pdb
+d:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\netcoreapp3.1\HomeMind.Common.Helpers.AssemblyInfoInputs.cache
+d:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\netcoreapp3.1\HomeMind.Common.Helpers.AssemblyInfo.cs
+d:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\netcoreapp3.1\HomeMind.Common.Helpers.csproj.CoreCompileInputs.cache
+d:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\netcoreapp3.1\HomeMind.Common.Helpers.dll
+d:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\netcoreapp3.1\HomeMind.Common.Helpers.pdb
+D:\HomeMind\core\HomeMind.Common.Helpers\obj\Debug\netcoreapp3.1\HomeMind.Common.Helpers.csprojAssemblyReference.cache
+D:\HomeMind\core\.build-swagger\Debug\netcoreapp3.1\HomeMind.Common.Helpers.deps.json
+D:\HomeMind\core\.build-swagger\Debug\netcoreapp3.1\HomeMind.Common.Helpers.dll
+D:\HomeMind\core\.build-swagger\Debug\netcoreapp3.1\HomeMind.Common.Helpers.pdb

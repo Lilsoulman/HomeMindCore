@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HomeMind.Common.Model\HomeMind.Common.Model.csproj" />
+    <ProjectReference Include="..\HomeMind.Common.IServices\HomeMind.Common.IServices.csproj" />
+  </ItemGroup>
+
+</Project>

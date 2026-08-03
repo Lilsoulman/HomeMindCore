@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HomeMind.Business.Services\HomeMind.Business.Services.csproj" />
+    <ProjectReference Include="..\HomeMind.Business.IServices\HomeMind.Business.IServices.csproj" />
+    <ProjectReference Include="..\HomeMind.Common.Model\HomeMind.Common.Model.csproj" />
+  </ItemGroup>
+
+</Project>

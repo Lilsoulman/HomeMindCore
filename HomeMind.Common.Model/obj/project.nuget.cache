@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "dgSpecHash": "gDsKXF7FG+I=",
+  "success": true,
+  "projectFilePath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj",
+  "expectedPackageFiles": [],
+  "logs": [
+    {
+      "code": "NU1803",
+      "level": "Warning",
+      "message": "You are running the 'restore' operation with an 'HTTP' source, 'http://192.168.0.188:5000/v3/index.json'. Non-HTTPS access will be removed in a future version. Consider migrating to an 'HTTPS' source.",
+      "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj",
+      "warningLevel": 1,
+      "filePath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj",
+      "targetGraphs": []
+    }
+  ]
+}

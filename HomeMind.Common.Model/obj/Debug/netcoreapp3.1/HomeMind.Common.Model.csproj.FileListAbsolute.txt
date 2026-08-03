@@ -1,0 +1,12 @@
+d:\HomeMind\core\HomeMind.Common.Model\bin\Debug\netcoreapp3.1\HomeMind.Common.Model.deps.json
+d:\HomeMind\core\HomeMind.Common.Model\bin\Debug\netcoreapp3.1\HomeMind.Common.Model.dll
+d:\HomeMind\core\HomeMind.Common.Model\bin\Debug\netcoreapp3.1\HomeMind.Common.Model.pdb
+d:\HomeMind\core\HomeMind.Common.Model\obj\Debug\netcoreapp3.1\HomeMind.Common.Model.csprojAssemblyReference.cache
+d:\HomeMind\core\HomeMind.Common.Model\obj\Debug\netcoreapp3.1\HomeMind.Common.Model.AssemblyInfoInputs.cache
+d:\HomeMind\core\HomeMind.Common.Model\obj\Debug\netcoreapp3.1\HomeMind.Common.Model.AssemblyInfo.cs
+d:\HomeMind\core\HomeMind.Common.Model\obj\Debug\netcoreapp3.1\HomeMind.Common.Model.csproj.CoreCompileInputs.cache
+d:\HomeMind\core\HomeMind.Common.Model\obj\Debug\netcoreapp3.1\HomeMind.Common.Model.dll
+d:\HomeMind\core\HomeMind.Common.Model\obj\Debug\netcoreapp3.1\HomeMind.Common.Model.pdb
+D:\HomeMind\core\.build-swagger\Debug\netcoreapp3.1\HomeMind.Common.Model.deps.json
+D:\HomeMind\core\.build-swagger\Debug\netcoreapp3.1\HomeMind.Common.Model.dll
+D:\HomeMind\core\.build-swagger\Debug\netcoreapp3.1\HomeMind.Common.Model.pdb
