@@ -10,15 +10,31 @@ public sealed record AccessTokenPayload(long UserId, long TenantId, long DeviceI
 /// <summary>创建和验证 HomeMind 签名访问令牌。</summary>
 public sealed class TokenService
 {
+    private const string LocalDevelopmentSigningKey = "HomeMind-local-development-signing-key-change-before-production";
     private readonly byte[] _key;
     private readonly int _accessMinutes;
     public int RefreshTokenDays { get; }
 
     public TokenService(IConfiguration configuration)
     {
-        _key = Encoding.UTF8.GetBytes(configuration["Auth:SigningKey"] ?? throw new InvalidOperationException("缺少认证签名密钥配置。"));
-        _accessMinutes = int.TryParse(configuration["Auth:AccessTokenMinutes"], out var value) ? value : 15;
-        RefreshTokenDays = int.TryParse(configuration["Auth:RefreshTokenDays"], out var refreshDays) ? refreshDays : 30;
+        ValidateConfiguration(configuration);
+        _key = Encoding.UTF8.GetBytes(configuration["Auth:SigningKey"]!);
+        _accessMinutes = ReadPositiveInt(configuration, "Auth:AccessTokenMinutes", 15, 1, 24 * 60);
+        RefreshTokenDays = ReadPositiveInt(configuration, "Auth:RefreshTokenDays", 30, 1, 365);
+    }
+
+    public static void ValidateConfiguration(IConfiguration configuration, bool production = false)
+    {
+        var signingKey = configuration["Auth:SigningKey"];
+        if (string.IsNullOrWhiteSpace(signingKey))
+            throw new InvalidOperationException("Missing required configuration: Auth:SigningKey.");
+        if (Encoding.UTF8.GetByteCount(signingKey) < 32)
+            throw new InvalidOperationException("Auth:SigningKey must be at least 32 bytes.");
+        if (production && string.Equals(signingKey, LocalDevelopmentSigningKey, StringComparison.Ordinal))
+            throw new InvalidOperationException("Auth:SigningKey must be set to a production secret, not the local development key.");
+
+        _ = ReadPositiveInt(configuration, "Auth:AccessTokenMinutes", 15, 1, 24 * 60);
+        _ = ReadPositiveInt(configuration, "Auth:RefreshTokenDays", 30, 1, 365);
     }
 
     public string CreateAccessToken(long userId, long tenantId, long deviceId)
@@ -62,4 +78,12 @@ public sealed class TokenService
     private static bool FixedEquals(string left, string right) => CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(left), Encoding.UTF8.GetBytes(right));
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     private static byte[] FromBase64Url(string value) => Convert.FromBase64String(value.Replace('-', '+').Replace('_', '/') + new string('=', (4 - value.Length % 4) % 4));
+
+    private static int ReadPositiveInt(IConfiguration configuration, string key, int fallback, int minimum, int maximum)
+    {
+        var configuredValue = configuration[key];
+        if (string.IsNullOrWhiteSpace(configuredValue)) return fallback;
+        if (int.TryParse(configuredValue, out var value) && value >= minimum && value <= maximum) return value;
+        throw new InvalidOperationException($"{key} must be an integer between {minimum} and {maximum}.");
+    }
 }

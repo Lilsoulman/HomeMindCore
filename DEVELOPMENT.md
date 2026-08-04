@@ -101,8 +101,9 @@ The convention is enforced centrally in `HomeMind.Api/Startup.cs`:
   Add new policies via `PermissionNames.All` and the corresponding handler
   rules; mirror them in `Startup.AddAuthorization`.
 - Token TTLs: access = 15 min, refresh = 30 days. Both are configurable under
-  `Auth:AccessTokenMinutes` and `Auth:RefreshTokenDays` in `appsettings.json`.
-  Move `Auth:SigningKey` to a secret store before any shared deployment.
+  `Auth:AccessTokenMinutes` and `Auth:RefreshTokenDays`. Production requires a
+  non-development `Auth:SigningKey` of at least 32 bytes at startup. See
+  `docs/linux-production-deployment.md` for the Linux systemd setup.
 
 ### 4. Error contract
 

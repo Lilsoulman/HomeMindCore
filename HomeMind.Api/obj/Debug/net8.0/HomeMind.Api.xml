@@ -63,6 +63,18 @@
         <member name="T:HomeMind.Api.Controllers.SmartHome.SmartHomeController">
             <summary>Home+ 所需的标准化空间、设备与场景只读接口。</summary>
         </member>
+        <member name="T:HomeMind.Api.Migrations.InitialCreate">
+            <inheritdoc />
+        </member>
+        <member name="M:HomeMind.Api.Migrations.InitialCreate.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:HomeMind.Api.Migrations.InitialCreate.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:HomeMind.Api.Migrations.InitialCreate.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
         <member name="T:HomeMind.Api.Services.AutomationWorker">
             <summary>In-process execution host for durable sync work and time-based automation checks.</summary>
         </member>

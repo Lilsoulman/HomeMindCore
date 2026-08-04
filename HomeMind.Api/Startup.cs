@@ -21,14 +21,18 @@ namespace HomeMind.Api
     public class Startup
     {
         private readonly IConfiguration _configuration;
+        private readonly IWebHostEnvironment _environment;
 
-        public Startup(IConfiguration configuration)
+        public Startup(IConfiguration configuration, IWebHostEnvironment environment)
         {
             _configuration = configuration;
+            _environment = environment;
         }
 
         public void ConfigureServices(IServiceCollection services)
         {
+            TokenService.ValidateConfiguration(_configuration, !_environment.IsDevelopment());
+
             // 开发阶段允许任意前端端口访问，便于本地联调。
             services.AddCors(options => options.AddPolicy("Frontend", policy => policy
                 .AllowAnyOrigin()

@@ -3,6 +3,7 @@ using HomeMind.Common.Repository;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Pomelo.EntityFrameworkCore.MySql;
 
 namespace HomeMind.Common.Infrastructure;
 
@@ -14,7 +15,9 @@ public static class ServiceCollectionExtensions
         var connectionString = configuration.GetConnectionString("HomeMind")
             ?? throw new InvalidOperationException("缺少 HomeMind 数据库连接配置。");
 
-        services.AddDbContext<HomeMindDbContext>(options => options.UseMySQL(connectionString));
+        services.AddDbContext<HomeMindDbContext>(options => 
+            options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString), 
+                b => b.MigrationsAssembly("HomeMind.Api")));
         services.AddScoped(typeof(IRepository<>), typeof(EfRepository<>));
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         return services;
