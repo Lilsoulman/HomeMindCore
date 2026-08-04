@@ -3,7 +3,7 @@
 The API connects to local MySQL through `HomeMind.Api/appsettings.json`:
 
 ```text
-Server=localhost;Database=nexus_mind;User=root;Password=123456;SslMode=None;
+Server=localhost;Database=nexus_mind;User=root;Password=123456;SslMode=None;AllowPublicKeyRetrieval=True;
 ```
 
 This is a local development setting only. Move the connection string and

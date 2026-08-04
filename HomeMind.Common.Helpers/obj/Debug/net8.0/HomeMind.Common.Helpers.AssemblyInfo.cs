@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("HomeMind.Common.Helpers")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+530b5d1eaa6f22b3395ae2f92119389b4296d1f5")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+95d2417084b03e087f862024851adeea09aa7228")]
 [assembly: System.Reflection.AssemblyProductAttribute("HomeMind.Common.Helpers")]
 [assembly: System.Reflection.AssemblyTitleAttribute("HomeMind.Common.Helpers")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
