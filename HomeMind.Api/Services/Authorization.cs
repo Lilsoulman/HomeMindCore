@@ -3,9 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
-using Dapper;
+using HomeMind.Common.Model.Entities;
+using HomeMind.Common.Repository;
+using HomeMind.Common.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
@@ -31,6 +35,16 @@ public static class PermissionNames
     public const string CalendarWrite = "calendar.write";
     public const string TodoRead = "todo.read";
     public const string TodoWrite = "todo.write";
+    public const string SmartHomeRead = "smart_home.read";
+    public const string ConnectorRead = "connector.read";
+    public const string ConnectorWrite = "connector.write";
+    public const string AutomationRead = "automation.read";
+    public const string AutomationWrite = "automation.write";
+    public const string ExpertFileRead = "expert_file.read";
+    public const string ExpertFileWrite = "expert_file.write";
+    public const string TeamRunRead = "team_run.read";
+    public const string TeamRunWrite = "team_run.write";
+    public const string TeamManage = "team.manage";
 
     public static IReadOnlyCollection<string> All { get; } = new[]
     {
@@ -42,7 +56,17 @@ public static class PermissionNames
         CalendarRead,
         CalendarWrite,
         TodoRead,
-        TodoWrite
+        TodoWrite,
+        SmartHomeRead,
+        ConnectorRead,
+        ConnectorWrite
+        ,AutomationRead
+        ,AutomationWrite
+        ,ExpertFileRead
+        ,ExpertFileWrite
+        ,TeamRunRead
+        ,TeamRunWrite
+        ,TeamManage
     };
 }
 
@@ -64,7 +88,12 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         PermissionNames.CalendarRead,
         PermissionNames.CalendarWrite,
         PermissionNames.TodoRead,
-        PermissionNames.TodoWrite
+        PermissionNames.TodoWrite,
+        PermissionNames.SmartHomeRead,
+        PermissionNames.ConnectorRead
+        ,PermissionNames.AutomationRead
+        ,PermissionNames.ExpertFileRead
+        ,PermissionNames.TeamRunRead
     };
 
     private static readonly HashSet<string> ViewerPermissions = new(StringComparer.Ordinal)
@@ -73,7 +102,10 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         PermissionNames.AiRead,
         PermissionNames.AiSkillsRead,
         PermissionNames.CalendarRead,
-        PermissionNames.TodoRead
+        PermissionNames.TodoRead,
+        PermissionNames.SmartHomeRead
+        ,PermissionNames.AutomationRead
+        ,PermissionNames.ExpertFileRead
     };
 
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PermissionRequirement requirement)
@@ -90,28 +122,56 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
 
 public sealed class AccessTokenValidator
 {
-    private readonly MySqlConnectionFactory _connections;
+    private readonly HomeMindDbContext _db;
 
-    public AccessTokenValidator(MySqlConnectionFactory connections) => _connections = connections;
+    public AccessTokenValidator(HomeMindDbContext db) => _db = db;
 
     public async Task<UserContext?> ValidateAsync(AccessTokenPayload payload)
     {
-        await using var db = _connections.Open();
-        var role = await db.QuerySingleOrDefaultAsync<string>("SELECT m.role FROM tenant_members m JOIN users u ON u.id=m.user_id JOIN tenants t ON t.id=m.tenant_id WHERE m.user_id=@UserId AND m.tenant_id=@TenantId AND m.status='active' AND u.status='active' AND u.deleted_at IS NULL AND t.status='active'", new { payload.UserId, payload.TenantId });
+        var role = await (from member in _db.TenantMembers
+                          join account in _db.Users on member.UserId equals account.Id
+                          join tenant in _db.Tenants on member.TenantId equals tenant.Id
+                          where member.UserId == payload.UserId && member.TenantId == payload.TenantId
+                                && member.Status == "active" && account.Status == "active"
+                                && account.DeletedAt == null && tenant.Status == "active"
+                          select member.Role).SingleOrDefaultAsync();
         if (role is null) return null;
 
-        var isRevoked = await db.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM auth_access_token_revocations WHERE token_id=@TokenId AND expires_at>UTC_TIMESTAMP(3)", new { payload.TokenId });
-        return isRevoked == 0 ? new UserContext(payload.UserId, payload.TenantId, payload.DeviceId, role, payload.ExpiresAtUnixTime, payload.TokenId) : null;
+        var isRevoked = await _db.AccessTokenRevocations.AnyAsync(x => x.TokenId == payload.TokenId && x.ExpiresAt > DateTime.UtcNow);
+        return !isRevoked ? new UserContext(payload.UserId, payload.TenantId, payload.DeviceId, role, payload.ExpiresAtUnixTime, payload.TokenId) : null;
     }
 
     public async Task RevokeAsync(UserContext user)
     {
-        await using var db = _connections.Open();
-        await db.OpenAsync();
-        await using var transaction = await db.BeginTransactionAsync();
-        await db.ExecuteAsync("INSERT INTO auth_access_token_revocations(token_id,user_id,tenant_id,expires_at,revoke_reason) VALUES (@TokenId,@UserId,@TenantId,FROM_UNIXTIME(@ExpiresAtUnixTime),'logout') ON DUPLICATE KEY UPDATE revoked_at=UTC_TIMESTAMP(3),revoke_reason='logout'", user, transaction);
-        await db.ExecuteAsync("UPDATE auth_refresh_tokens SET revoked_at=UTC_TIMESTAMP(3),revoke_reason='logout' WHERE user_id=@UserId AND device_id=@DeviceId AND revoked_at IS NULL", user, transaction);
-        await transaction.CommitAsync();
+        var now = DateTime.UtcNow;
+        var revocation = await _db.AccessTokenRevocations.FindAsync(user.TokenId);
+        if (revocation is null)
+        {
+            _db.AccessTokenRevocations.Add(new AccessTokenRevocation
+            {
+                TokenId = user.TokenId,
+                UserId = user.UserId,
+                TenantId = user.TenantId,
+                ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(user.ExpiresAtUnixTime).UtcDateTime,
+                RevokedAt = now,
+                RevokeReason = "logout"
+            });
+        }
+        else
+        {
+            revocation.RevokedAt = now;
+            revocation.RevokeReason = "logout";
+        }
+
+        var refreshTokens = await _db.AuthRefreshTokens
+            .Where(x => x.UserId == user.UserId && x.DeviceId == user.DeviceId && x.RevokedAt == null)
+            .ToListAsync();
+        foreach (var refreshToken in refreshTokens)
+        {
+            refreshToken.RevokedAt = now;
+            refreshToken.RevokeReason = "logout";
+        }
+        await _db.SaveChangesAsync();
     }
 }
 
@@ -131,11 +191,11 @@ public sealed class BearerAuthenticationHandler : AuthenticationHandler<Authenti
     {
         var authorization = Request.Headers.Authorization.ToString();
         if (string.IsNullOrWhiteSpace(authorization)) return AuthenticateResult.NoResult();
-        if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return AuthenticateResult.Fail("Authorization header must use the Bearer scheme.");
-        if (!_tokens.TryRead(authorization[7..].Trim(), out var payload)) return AuthenticateResult.Fail("Access token is invalid or expired.");
+        if (!authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return AuthenticateResult.Fail("认证请求头格式错误，请使用访问令牌认证。");
+        if (!_tokens.TryRead(authorization[7..].Trim(), out var payload)) return AuthenticateResult.Fail("访问令牌无效或已过期。");
 
         var user = await _validator.ValidateAsync(payload);
-        if (user is null) return AuthenticateResult.Fail("Access token is revoked or the tenant membership is inactive.");
+        if (user is null) return AuthenticateResult.Fail("访问令牌已失效，或当前租户成员资格未启用。");
 
         Context.Items["HomeMind.User"] = user;
         var claims = new[]
@@ -148,6 +208,19 @@ public sealed class BearerAuthenticationHandler : AuthenticationHandler<Authenti
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name));
     }
+
+    protected override Task HandleChallengeAsync(AuthenticationProperties properties) =>
+        WriteErrorAsync(401, "未提供访问令牌，或访问令牌无效、过期或已失效。");
+
+    protected override Task HandleForbiddenAsync(AuthenticationProperties properties) =>
+        WriteErrorAsync(403, "当前账号没有执行此操作的权限。");
+
+    private Task WriteErrorAsync(int statusCode, string message)
+    {
+        Response.StatusCode = statusCode;
+        Response.ContentType = "application/json; charset=utf-8";
+        return JsonSerializer.SerializeAsync(Response.Body, ApiResponse<object>.Fail(statusCode, message), new JsonSerializerOptions { PropertyNamingPolicy = null });
+    }
 }
 
 public sealed class AuthorizeOperationFilter : IOperationFilter
@@ -159,8 +232,8 @@ public sealed class AuthorizeOperationFilter : IOperationFilter
         if (actionAttributes.OfType<IAllowAnonymous>().Any() || controllerAttributes.OfType<IAllowAnonymous>().Any()) return;
         if (!actionAttributes.OfType<IAuthorizeData>().Any() && !controllerAttributes.OfType<IAuthorizeData>().Any()) return;
 
-        operation.Responses.TryAdd("401", new OpenApiResponse { Description = "Access token is missing, invalid, expired, or revoked." });
-        operation.Responses.TryAdd("403", new OpenApiResponse { Description = "The current role does not have the required permission." });
+        operation.Responses.TryAdd("401", new OpenApiResponse { Description = "未提供访问令牌，或访问令牌无效、过期或已失效。" });
+        operation.Responses.TryAdd("403", new OpenApiResponse { Description = "当前角色没有执行此操作所需的权限。" });
         operation.Security ??= new List<OpenApiSecurityRequirement>();
         operation.Security.Add(new OpenApiSecurityRequirement
         {

@@ -2,9 +2,12 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="MySql.EntityFrameworkCore" Version="3.1.22" />
     <ProjectReference Include="..\HomeMind.Common.Model\HomeMind.Common.Model.csproj" />
     <ProjectReference Include="..\HomeMind.Common.IRepository\HomeMind.Common.IRepository.csproj" />
   </ItemGroup>

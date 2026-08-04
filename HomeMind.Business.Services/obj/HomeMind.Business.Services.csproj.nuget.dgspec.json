@@ -258,6 +258,9 @@
               },
               "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
                 "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
+              },
+              "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj": {
+                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj"
               }
             }
           }
@@ -547,6 +550,12 @@
       "frameworks": {
         "net8.0": {
           "targetAlias": "net8.0",
+          "dependencies": {
+            "MySql.EntityFrameworkCore": {
+              "target": "Package",
+              "version": "[3.1.22, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",

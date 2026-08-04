@@ -1,24 +1,58 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.OpenApi.Models;
 using HomeMind.Api.Services;
+using HomeMind.Business.Services;
+using HomeMind.Common.Infrastructure;
 using System;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 
 namespace HomeMind.Api
 {
     public class Startup
     {
+        private readonly IConfiguration _configuration;
+
+        public Startup(IConfiguration configuration)
+        {
+            _configuration = configuration;
+        }
+
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddSingleton<MySqlConnectionFactory>();
+            // 开发阶段允许任意前端端口访问，便于本地联调。
+            services.AddCors(options => options.AddPolicy("Frontend", policy => policy
+                .AllowAnyOrigin()
+                .AllowAnyHeader()
+                .AllowAnyMethod()));
+
+            // 生产环境改回以下白名单策略，并在 appsettings 中维护允许的前端域名。
+            // var allowedOrigins = _configuration.GetSection("Cors:AllowedOrigins")
+            //     .GetChildren()
+            //     .Select(section => section.Value)
+            //     .Where(origin => !string.IsNullOrWhiteSpace(origin))
+            //     .Select(origin => origin!)
+            //     .ToArray();
+            // services.AddCors(options => options.AddPolicy("Frontend", policy => policy
+            //     .WithOrigins(allowedOrigins)
+            //     .AllowAnyHeader()
+            //     .AllowAnyMethod()));
+
+            services.AddHomeMindData(_configuration);
+            services.AddHomeMindBusinessServices();
+            services.AddHostedService<AutomationWorker>();
             services.AddSingleton<TokenService>();
-            services.AddSingleton<SecretProtector>();
-            services.AddSingleton<AccessTokenValidator>();
+            services.AddSingleton<HomeMind.Common.Infrastructure.SecretProtector>();
+            services.AddScoped<AccessTokenValidator>();
             services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
             services.AddHttpClient();
             services.AddAuthentication(HomeMindAuthenticationDefaults.Scheme)
@@ -38,24 +72,37 @@ namespace HomeMind.Api
                         .AddRequirements(new PermissionRequirement(permission)));
                 }
             });
-            services.AddControllers();
+            services.AddControllers()
+                .AddJsonOptions(o =>
+                {
+                    // 入参：JSON body 走小驼峰。
+                    o.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                })
+                .AddMvcOptions(o =>
+                {
+                    // 出参：ApiResponse<T> 的 Data 字段强制使用 C# PascalCase（大驼峰）输出。
+                    o.OutputFormatters.Insert(0, new PascalCaseApiResponseOutputFormatter());
+                });
+            services.Configure<ApiBehaviorOptions>(options =>
+                options.InvalidModelStateResponseFactory = _ =>
+                    new BadRequestObjectResult(ApiResponse<object>.Fail(422, "请求参数格式错误。")));
             services.AddSwaggerGen(options =>
             {
                 options.SwaggerDoc("v1", new OpenApiInfo
                 {
-                    Title = "HomeMind API",
+                    Title = "HomeMind 接口",
                     Version = "v1",
-                    Description = "HomeMind 客户端接口文档，按基础设置、AI 能力和效率工具分类。"
+                    Description = "HomeMind 客户端接口文档，按基础设置、智能能力和效率工具分类。"
                 });
                 options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, "HomeMind.Api.xml"));
                 options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
                 {
-                    Description = "Enter the access token returned by login or refresh. Do not include the Bearer prefix.",
+                    Description = "请输入登录或刷新令牌接口返回的访问令牌。",
                     Name = "Authorization",
                     In = ParameterLocation.Header,
                     Type = SecuritySchemeType.Http,
                     Scheme = "bearer",
-                    BearerFormat = "HomeMind access token"
+                    BearerFormat = "HomeMind访问令牌"
                 });
                 options.OperationFilter<AuthorizeOperationFilter>();
                 options.TagActionsBy(api => new[]
@@ -63,8 +110,13 @@ namespace HomeMind.Api
                     api.ActionDescriptor.RouteValues["controller"] switch
                     {
                         "Auth" => "基础设置 / 身份认证",
-                        "Experts" => "AI / 专家与运行",
-                        "Skills" => "AI / 技能",
+                        "Experts" => "智能能力 / 专家与运行",
+                        "ExpertFiles" => "智能能力 / 专家与运行",
+                        "TeamRuns" => "智能能力 / 专家与运行",
+                        "HousekeeperRuns" => "智能能力 / 专家与运行",
+                        "Skills" => "智能能力 / 技能",
+                        "SmartHome" => "智能家居 / 家庭空间",
+                        "Connectors" => "智能家居 / 连接器管理",
                         "Calendar" => "效率工具 / 日历",
                         "Todos" => "效率工具 / 待办",
                         _ => "未分类"
@@ -83,11 +135,43 @@ namespace HomeMind.Api
             app.UseSwagger();
             app.UseSwaggerUI(options =>
             {
-                options.SwaggerEndpoint("/swagger/v1/swagger.json", "HomeMind API v1");
+                options.SwaggerEndpoint("/swagger/v1/swagger.json", "HomeMind 接口 v1");
                 options.EnablePersistAuthorization();
             });
 
             app.UseRouting();
+            app.UseCors("Frontend");
+            app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
+            {
+                var error = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+                var isDatabaseError = error is MySqlConnector.MySqlException;
+                context.Response.StatusCode = isDatabaseError ? 503 : 500;
+                context.Response.ContentType = "application/json; charset=utf-8";
+                await JsonSerializer.SerializeAsync(
+                    context.Response.Body,
+                    ApiResponse<object>.Fail(
+                        isDatabaseError ? 503 : 500,
+                        isDatabaseError ? "数据库服务暂时不可用。" : "服务器发生未预期错误。"),
+                    new JsonSerializerOptions { PropertyNamingPolicy = null });
+            }));
+            app.UseStatusCodePages(async statusCodeContext =>
+            {
+                var response = statusCodeContext.HttpContext.Response;
+                var message = response.StatusCode switch
+                {
+                    400 => "请求参数错误。",
+                    401 => "未提供访问令牌，或访问令牌无效、过期或已失效。",
+                    403 => "当前账号没有执行此操作的权限。",
+                    404 => "请求的资源不存在。",
+                    405 => "请求方法不被允许。",
+                    _ => "请求处理失败。"
+                };
+                response.ContentType = "application/json; charset=utf-8";
+                await JsonSerializer.SerializeAsync(
+                    response.Body,
+                    ApiResponse<object>.Fail(response.StatusCode, message),
+                    new JsonSerializerOptions { PropertyNamingPolicy = null });
+            });
             app.UseAuthentication();
             app.UseAuthorization();
 

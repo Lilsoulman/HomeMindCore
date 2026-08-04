@@ -2,6 +2,8 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
@@ -9,6 +11,7 @@
     <ProjectReference Include="..\HomeMind.Common.IRepository\HomeMind.Common.IRepository.csproj" />
     <ProjectReference Include="..\HomeMind.Common.IServices\HomeMind.Common.IServices.csproj" />
     <ProjectReference Include="..\HomeMind.Common.Helpers\HomeMind.Common.Helpers.csproj" />
+    <ProjectReference Include="..\HomeMind.Common.Repository\HomeMind.Common.Repository.csproj" />
   </ItemGroup>
 
 </Project>

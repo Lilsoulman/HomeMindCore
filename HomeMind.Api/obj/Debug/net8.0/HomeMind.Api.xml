@@ -4,75 +4,20 @@
         <name>HomeMind.Api</name>
     </assembly>
     <members>
+        <member name="T:HomeMind.Api.Controllers.AI.ExpertFilesController">
+            <summary>Expert File 上传、对象提交、列表、附件与读取令牌。Controller 仅处理 HTTP 和鉴权；不持有对象存储凭据。</summary>
+        </member>
         <member name="T:HomeMind.Api.Controllers.AI.ExpertsController">
-            <summary>
-            AI 专家模块，提供专家目录、专家团详情和 AI 任务运行管理能力。
-            </summary>
+            <summary>专家目录和 AgentRun 兼容入口。Controller 不直接访问数据库或执行 Skill。</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.AI.ExpertsController.ListExperts(System.String,System.String,System.String)">
-            <summary>
-            按名称或分类查询当前租户可用的 AI 专家和专家团目录。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.ExpertsController.GetExpert(System.Int64,System.String)">
-            <summary>
-            获取指定 AI 专家或专家团的已发布版本及调用配置。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.ExpertsController.CreateRun(HomeMind.Api.Controllers.AI.ExpertsController.CreateRunRequest)">
-            <summary>
-            创建 AI 专家或专家团运行任务，并返回排队中的运行记录。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.ExpertsController.GetRunById(System.Int64)">
-            <summary>
-            查询指定 AI 任务的状态、输入、结果和消耗信息。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.ExpertsController.Events(System.Int64)">
-            <summary>
-            获取指定 AI 任务按执行顺序记录的运行事件。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.ExpertsController.Cancel(System.Int64)">
-            <summary>
-            请求取消尚未结束的 AI 任务；可立即取消的任务会同步更新状态。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.ExpertsController.Retry(System.Int64)">
-            <summary>
-            将失败、已取消或等待输入的 AI 任务重新加入执行队列。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.ExpertsController.CreateAction(System.Int64,HomeMind.Api.Controllers.AI.ExpertsController.RunActionRequest)">
-            <summary>
-            为 AI 任务创建待办、日历或计划等后续执行动作。
-            </summary>
+        <member name="T:HomeMind.Api.Controllers.AI.HousekeeperRunsController">
+            <summary>家庭管家运行入口，仅生成可确认的设备行动草案。</summary>
         </member>
         <member name="T:HomeMind.Api.Controllers.AI.SkillsController">
-            <summary>
-            AI 技能模块，管理当前用户可在 AI 任务中使用的提示词技能。
-            </summary>
+            <summary>AI 技能模块，控制器不直接访问数据库。</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.AI.SkillsController.List">
-            <summary>
-            获取当前用户的内置与自定义 AI 技能列表。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.SkillsController.Create(HomeMind.Api.Controllers.AI.SkillsController.SkillRequest)">
-            <summary>
-            创建一个可指定适用范围和启用状态的自定义 AI 技能。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.SkillsController.Update(System.Int64,HomeMind.Api.Controllers.AI.SkillsController.SkillRequest)">
-            <summary>
-            更新指定自定义 AI 技能的名称、提示词、范围或启用状态。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.AI.SkillsController.Delete(System.Int64)">
-            <summary>
-            软删除指定的自定义 AI 技能。
-            </summary>
+        <member name="T:HomeMind.Api.Controllers.AI.TeamRunsController">
+            <summary>版本化的多专家团队运行入口。仅支持显式 sequential / parallel / synthesis 三种模式；不得携带任意 Prompt 或工具调用。</summary>
         </member>
         <member name="T:HomeMind.Api.Controllers.Base.ApiControllerBase">
             <summary>
@@ -80,128 +25,51 @@
             </summary>
         </member>
         <member name="T:HomeMind.Api.Controllers.Base.AuthController">
-            <summary>
-            身份认证模块，负责账户注册、登录、令牌续期和当前用户信息查询。
-            </summary>
+            <summary>身份认证模块，负责账户注册、登录、令牌续期和当前用户信息查询。</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Register(HomeMind.Api.Controllers.Base.AuthController.RegisterRequest)">
-            <summary>
-            使用手机号和密码注册个人账户，并返回访问令牌与刷新令牌。
-            </summary>
+        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Register(HomeMind.Common.Model.ViewModel.Data.Base.RegisterRequest)">
+            <summary>使用手机号和密码注册个人账户，并返回访问令牌与刷新令牌。</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Login(HomeMind.Api.Controllers.Base.AuthController.LoginRequest)">
-            <summary>
-            使用手机号和密码登录，创建或更新当前设备会话。
-            </summary>
+        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Login(HomeMind.Common.Model.ViewModel.Data.Base.LoginRequest)">
+            <summary>使用手机号和密码登录，创建或更新当前设备会话。</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Refresh(HomeMind.Api.Controllers.Base.AuthController.RefreshRequest)">
-            <summary>
-            使用有效的刷新令牌换取新的访问令牌和刷新令牌。
-            </summary>
+        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Refresh(HomeMind.Common.Model.ViewModel.Data.Base.RefreshRequest)">
+            <summary>使用有效的刷新令牌换取新的访问令牌和刷新令牌。</summary>
         </member>
         <member name="M:HomeMind.Api.Controllers.Base.AuthController.Me">
-            <summary>
-            获取当前访问令牌对应用户的基础资料。
-            </summary>
+            <summary>获取当前访问令牌对应用户的基础资料。</summary>
         </member>
         <member name="M:HomeMind.Api.Controllers.Base.AuthController.Logout">
-            <summary>
-            注销当前设备会话，并立即撤销当前访问令牌和该设备的刷新令牌。
-            </summary>
+            <summary>注销当前设备会话，并立即撤销当前访问令牌和该设备的刷新令牌。</summary>
         </member>
         <member name="M:HomeMind.Api.Controllers.Base.AuthController.WeChatExchange">
-            <summary>
-            交换微信授权码；在微信应用配置完成前该接口返回未实现状态。
-            </summary>
+            <summary>交换微信授权码；在微信应用配置完成前该接口返回未实现状态。</summary>
+        </member>
+        <member name="T:HomeMind.Api.Controllers.Dashboard.DashboardController">
+            <summary>Dashboard aggregation with independently degradable modules.</summary>
         </member>
         <member name="T:HomeMind.Api.Controllers.Productivity.CalendarController">
-            <summary>
-            日历模块，管理用户日程及外部 iCalendar 订阅。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.CalendarController.ListEvents(System.Nullable{System.DateTime},System.Nullable{System.DateTime})">
-            <summary>
-            按可选的开始和结束时间查询当前用户的日程。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.CalendarController.CreateEvent(HomeMind.Api.Controllers.Productivity.CalendarController.CalendarEventRequest)">
-            <summary>
-            创建一条新的用户日程，标题和开始时间为必填项。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.CalendarController.UpdateEvent(System.Int64,HomeMind.Api.Controllers.Productivity.CalendarController.CalendarEventRequest)">
-            <summary>
-            更新指定日程的可编辑字段，未提供的字段保持原值。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.CalendarController.DeleteEvent(System.Int64)">
-            <summary>
-            软删除指定日程。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.CalendarController.ListSubscriptions">
-            <summary>
-            获取当前用户的外部日历订阅及其同步状态。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.CalendarController.CreateSubscription(HomeMind.Api.Controllers.Productivity.CalendarController.SubscriptionRequest)">
-            <summary>
-            创建外部 iCalendar 订阅，订阅地址必须是绝对 URL。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.CalendarController.UpdateSubscription(System.Int64,HomeMind.Api.Controllers.Productivity.CalendarController.SubscriptionRequest)">
-            <summary>
-            更新指定外部日历订阅的名称、启用状态或刷新频率。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.CalendarController.DeleteSubscription(System.Int64)">
-            <summary>
-            软删除指定外部日历订阅。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.CalendarController.FetchIcal">
-            <summary>
-            触发 iCalendar 拉取；在 SSRF 白名单配置完成前该接口不可用。
-            </summary>
+            <summary>日历模块，控制器不直接访问数据库。</summary>
         </member>
         <member name="T:HomeMind.Api.Controllers.Productivity.TodosController">
-            <summary>
-            待办模块，管理待办事项及其子任务。
-            </summary>
+            <summary>待办模块，只负责 HTTP 协议；待办和子任务规则由业务服务处理。</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.TodosController.List(System.String,System.String,System.Nullable{System.DateTime},System.Nullable{System.DateTime})">
-            <summary>
-            按状态、类型或到期时间范围查询当前用户的待办事项。
-            </summary>
+        <member name="T:HomeMind.Api.Controllers.SmartHome.AutomationRulesController">
+            <summary>管理经授权的长期自动化规则。设备侧效果继续使用现有的 Run、Action 和审计链路。</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.TodosController.Create(HomeMind.Api.Controllers.Productivity.TodosController.TodoWriteRequest)">
-            <summary>
-            创建一条待办事项，标题为必填项。
-            </summary>
+        <member name="T:HomeMind.Api.Controllers.SmartHome.ConnectorsController">
+            <summary>管理家庭的 Connector 目录、连接实例和成员授权范围；不会返回凭据引用或供应商认证数据。</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.TodosController.Update(System.Int64,HomeMind.Api.Controllers.Productivity.TodosController.TodoWriteRequest)">
-            <summary>
-            更新指定待办事项，状态变更会同步处理完成时间。
-            </summary>
+        <member name="T:HomeMind.Api.Controllers.SmartHome.SmartHomeController">
+            <summary>Home+ 所需的标准化空间、设备与场景只读接口。</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.TodosController.Delete(System.Int64)">
-            <summary>
-            软删除指定待办事项。
-            </summary>
+        <member name="T:HomeMind.Api.Services.AutomationWorker">
+            <summary>In-process execution host for durable sync work and time-based automation checks.</summary>
         </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.TodosController.AddSubtask(System.Int64,HomeMind.Api.Controllers.Productivity.TodosController.SubtaskWriteRequest)">
+        <member name="T:HomeMind.Api.Services.PascalCaseApiResponseOutputFormatter">
             <summary>
-            为指定待办事项添加一条子任务。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.TodosController.UpdateSubtask(System.Int64,System.Int64,HomeMind.Api.Controllers.Productivity.TodosController.SubtaskWriteRequest)">
-            <summary>
-            更新指定待办事项中的子任务内容、完成状态或排序。
-            </summary>
-        </member>
-        <member name="M:HomeMind.Api.Controllers.Productivity.TodosController.DeleteSubtask(System.Int64,System.Int64)">
-            <summary>
-            软删除指定待办事项中的子任务。
+            出参格式化器：仅对 ApiResponse&lt;T&gt; 类型的响应生效，把 Data 字段用 C# PascalCase
+            序列化（大驼峰），其余响应沿用系统默认 JSON 行为。
             </summary>
         </member>
     </members>

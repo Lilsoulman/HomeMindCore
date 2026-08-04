@@ -16,6 +16,6 @@ public abstract class ApiControllerBase : ControllerBase
         return user is not null;
     }
 
-    protected ActionResult<ApiResponse<T>> UnauthorizedResult<T>() => Unauthorized(ApiResponse<T>.Fail(401, "Bearer access token is required or expired."));
-    protected ActionResult<ApiResponse<T>> NotFoundResult<T>() => NotFound(ApiResponse<T>.Fail(404, "Resource not found."));
+    protected ActionResult<ApiResponse<T>> UnauthorizedResult<T>() => Unauthorized(ApiResponse<T>.Fail(401, "未提供访问令牌，或访问令牌已过期。"));
+    protected ActionResult<ApiResponse<T>> NotFoundResult<T>() => NotFound(ApiResponse<T>.Fail(404, "请求的资源不存在。"));
 }

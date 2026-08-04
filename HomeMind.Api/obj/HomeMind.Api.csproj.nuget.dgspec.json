@@ -38,8 +38,14 @@
               "D:\\HomeMind\\core\\HomeMind.Business.Services\\HomeMind.Business.Services.csproj": {
                 "projectPath": "D:\\HomeMind\\core\\HomeMind.Business.Services\\HomeMind.Business.Services.csproj"
               },
+              "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj": {
+                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Infrastructure\\HomeMind.Common.Infrastructure.csproj"
+              },
               "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
                 "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
+              },
+              "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj": {
+                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj"
               }
             }
           }
@@ -59,10 +65,6 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
-            "Dapper": {
-              "target": "Package",
-              "version": "[2.0.123, )"
-            },
             "MySqlConnector": {
               "target": "Package",
               "version": "[2.2.5, )"
@@ -349,6 +351,9 @@
               },
               "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj": {
                 "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Model\\HomeMind.Common.Model.csproj"
+              },
+              "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj": {
+                "projectPath": "D:\\HomeMind\\core\\HomeMind.Common.Repository\\HomeMind.Common.Repository.csproj"
               }
             }
           }
@@ -638,6 +643,12 @@
       "frameworks": {
         "net8.0": {
           "targetAlias": "net8.0",
+          "dependencies": {
+            "MySql.EntityFrameworkCore": {
+              "target": "Package",
+              "version": "[3.1.22, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",

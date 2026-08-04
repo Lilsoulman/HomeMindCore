@@ -4,7 +4,7 @@ CREATE DATABASE IF NOT EXISTS `nexus_mind` CHARACTER SET utf8mb4 COLLATE utf8mb4
 USE `nexus_mind`;
 
 CREATE TABLE `users` (
-  `id` BIGINT NOT NULL AUTO_INCREMENT, `display_name` VARCHAR(64) NOT NULL DEFAULT 'HomeMind user', `avatar_url` VARCHAR(512) NULL,
+  `id` BIGINT NOT NULL AUTO_INCREMENT, `display_name` VARCHAR(64) NOT NULL DEFAULT 'HomeMind 用户', `avatar_url` VARCHAR(512) NULL,
   `status` VARCHAR(16) NOT NULL DEFAULT 'active', `timezone` VARCHAR(64) NOT NULL DEFAULT 'Asia/Shanghai', `locale` VARCHAR(16) NOT NULL DEFAULT 'zh-CN',
   `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), `deleted_at` DATETIME(3) NULL,
   PRIMARY KEY (`id`), CONSTRAINT `ck_users_status` CHECK (`status` IN ('active','disabled','deleted'))

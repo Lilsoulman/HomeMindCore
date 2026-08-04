@@ -25,7 +25,7 @@ INSERT INTO `tenants` (`id`,`tenant_type`,`code`,`name`,`status`) VALUES (1,'sys
 -- Legacy-safe tenancy bootstrap. `user-{id}` is an internal, stable code; it
 -- must not be exposed as a user-selectable tenant identifier.
 INSERT INTO `tenants` (`tenant_type`,`code`,`name`,`status`,`owner_user_id`)
-SELECT 'personal', CONCAT('user-', `u`.`id`), CONCAT('Personal workspace ', `u`.`id`), 'active', `u`.`id`
+SELECT 'personal', CONCAT('user-', `u`.`id`), CONCAT('个人空间 ', `u`.`id`), 'active', `u`.`id`
 FROM `users` `u`
 LEFT JOIN `tenants` `t` ON `t`.`code` = CONCAT('user-', `u`.`id`)
 WHERE `t`.`id` IS NULL;

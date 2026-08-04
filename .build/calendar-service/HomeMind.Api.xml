@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>HomeMind.Api</name>
+    </assembly>
+    <members>
+        <member name="T:HomeMind.Api.Controllers.AI.ExpertsController">
+            <summary>AI 专家模块，提供专家目录、专家团详情和 AI 任务运行管理能力。</summary>
+        </member>
+        <member name="T:HomeMind.Api.Controllers.AI.SkillsController">
+            <summary>AI 技能模块，控制器不直接访问数据库。</summary>
+        </member>
+        <member name="T:HomeMind.Api.Controllers.Base.ApiControllerBase">
+            <summary>
+            基础控制器，提供已登录用户上下文和统一的常用错误响应。
+            </summary>
+        </member>
+        <member name="T:HomeMind.Api.Controllers.Base.AuthController">
+            <summary>身份认证模块，负责账户注册、登录、令牌续期和当前用户信息查询。</summary>
+        </member>
+        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Register(HomeMind.Common.Model.ViewModel.Data.Base.RegisterRequest)">
+            <summary>使用手机号和密码注册个人账户，并返回访问令牌与刷新令牌。</summary>
+        </member>
+        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Login(HomeMind.Common.Model.ViewModel.Data.Base.LoginRequest)">
+            <summary>使用手机号和密码登录，创建或更新当前设备会话。</summary>
+        </member>
+        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Refresh(HomeMind.Common.Model.ViewModel.Data.Base.RefreshRequest)">
+            <summary>使用有效的刷新令牌换取新的访问令牌和刷新令牌。</summary>
+        </member>
+        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Me">
+            <summary>获取当前访问令牌对应用户的基础资料。</summary>
+        </member>
+        <member name="M:HomeMind.Api.Controllers.Base.AuthController.Logout">
+            <summary>注销当前设备会话，并立即撤销当前访问令牌和该设备的刷新令牌。</summary>
+        </member>
+        <member name="M:HomeMind.Api.Controllers.Base.AuthController.WeChatExchange">
+            <summary>交换微信授权码；在微信应用配置完成前该接口返回未实现状态。</summary>
+        </member>
+        <member name="T:HomeMind.Api.Controllers.Productivity.CalendarController">
+            <summary>日历模块，控制器不直接访问数据库。</summary>
+        </member>
+        <member name="T:HomeMind.Api.Controllers.Productivity.TodosController">
+            <summary>待办模块，只负责 HTTP 协议；待办和子任务规则由业务服务处理。</summary>
+        </member>
+        <member name="T:HomeMind.Api.Services.PascalCaseApiResponseOutputFormatter">
+            <summary>
+            出参格式化器：仅对 ApiResponse&lt;T&gt; 类型的响应生效，把 Data 字段用 C# PascalCase
+            序列化（大驼峰），其余响应沿用系统默认 JSON 行为。
+            </summary>
+        </member>
+    </members>
+</doc>

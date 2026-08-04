@@ -3,19 +3,19 @@ USE `nexus_mind`;
 
 INSERT INTO `experts` (`tenant_id`,`code`,`name`,`category`,`expert_type`,`status`,`description`,`privacy_scope_json`)
 VALUES
-  (1,'goal-decomposition','Goal decomposition coach','planning','builtin','active','Turns goals into measurable steps.','["todos","plans"]'),
-  (1,'weekly-planner','Daily and weekly planner','planning','builtin','active','Builds realistic weekly plans.','["todos","calendar_events","plans"]'),
-  (1,'review-analyst','Personal review analyst','review','builtin','active','Summarizes progress and improvement opportunities.','["todos","calendar_events"]')
+  (1,'goal-decomposition','目标拆解教练','planning','builtin','active','将目标拆分为可衡量、可执行的步骤。','["todos","plans"]'),
+  (1,'weekly-planner','日周计划师','planning','builtin','active','制定符合实际情况的周计划与日计划。','["todos","calendar_events","plans"]'),
+  (1,'review-analyst','个人复盘分析师','review','builtin','active','总结进展并给出改进建议。','["todos","calendar_events"]')
 ON DUPLICATE KEY UPDATE `name`=VALUES(`name`),`description`=VALUES(`description`),`status`=VALUES(`status`);
 
 INSERT INTO `expert_versions` (`tenant_id`,`expert_id`,`version`,`status`,`persona`,`methodology`,`prompt_template`,`tool_policy_json`,`output_schema_json`,`estimated_credits`)
-SELECT 1, e.id, 1, 'published', e.name, 'Use concise, practical, user-approved actions.', 'Return a user-safe summary and structured action items.', '[]', '{"type":"object"}', 1.0000
+SELECT 1, e.id, 1, 'published', e.name, '使用简洁、务实且经用户确认的行动建议。', '返回对用户安全的总结和结构化行动项。', '[]', '{"type":"object"}', 1.0000
 FROM `experts` e
 WHERE e.tenant_id=1 AND e.code IN ('goal-decomposition','weekly-planner','review-analyst')
   AND NOT EXISTS (SELECT 1 FROM `expert_versions` v WHERE v.expert_id=e.id AND v.version=1);
 
 INSERT INTO `expert_groups` (`tenant_id`,`code`,`name`,`category`,`captain_expert_id`,`status`,`description`)
-SELECT 1,'weekly-planning-group','Weekly planning group','planning',e.id,'active','A captain-led weekly planning workflow.'
+SELECT 1,'weekly-planning-group','周计划专家团','planning',e.id,'active','由队长专家协调的周计划工作流。'
 FROM `experts` e WHERE e.tenant_id=1 AND e.code='weekly-planner'
   AND NOT EXISTS (SELECT 1 FROM `expert_groups` g WHERE g.tenant_id=1 AND g.code='weekly-planning-group');
 
