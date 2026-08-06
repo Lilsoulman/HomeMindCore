@@ -20,6 +20,10 @@ public sealed class CreateConnectorRequest
     [Required, StringLength(512), Description("租户拥有的凭据引用，格式为 vault://tenants/{tenantId}/...，创建后永不返回明文。")]
     public string? CredentialRef { get; init; }
 
+    /// <summary>绑定范围，household（家庭共享）或 personal（个人实例）；默认 household。personal 的所有者由服务端从 JWT 推导，客户端不得覆盖。</summary>
+    [Description("绑定范围，household 或 personal；默认 household。")]
+    public string? BindingScope { get; init; }
+
     /// <summary>暂未被识别的扩展字段，将原样回传以避免前端误传。</summary>
     [JsonExtensionData, Description("未识别的扩展字段，原样保留以便回传给客户端。")]
     public Dictionary<string, JsonElement>? UnsupportedProperties { get; init; }

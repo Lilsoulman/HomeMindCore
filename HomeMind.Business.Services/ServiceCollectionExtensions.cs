@@ -47,6 +47,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISmartHomeSceneServices, SmartHomeSceneServices>();
         services.AddScoped<IDashboardServices, DashboardServices>();
         services.AddScoped<IConnectorServices, ConnectorServices>();
+        services.AddScoped<IConnectorAuthorizationServices, ConnectorAuthorizationServices>();
         services.AddScoped<IAutomationRuleServices, AutomationRuleServices>();
         services.AddScoped<IConnectorRuntimeServices, ConnectorRuntimeServices>();
         services.AddSingleton<IConnectorSyncQueue, ChannelConnectorSyncQueue>();

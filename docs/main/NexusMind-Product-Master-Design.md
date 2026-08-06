@@ -71,14 +71,14 @@ NexusMind App 采用不超过五项的底部导航；设备和协议细节始终
 | Tab | 用户价值 | V1 页面重点 |
 | --- | --- | --- |
 | 管家 | 家庭与个人状态入口，呈现 AI 正在处理和需要确认的事项 | 问候、天气、AI 建议、待确认事项、管家动态、快捷入口 |
-| 能力 | 选择、了解和托管可解释的 AI 能力 | 能力中心、家庭管家详情、个人生活专家详情、运行记录、托管与权限说明 |
+| 能力 | 专家对话框：与专家围绕项目遍历询问 | 历史对话框列表、新建对话框（选专家/连接器）、运行记录只读入口 |
 | 待办 | 查看待执行与已执行的行动 | AI 生成方案、确认状态、执行结果、失败重试 |
 | 家庭 | 以空间组织家庭状态与场景 | 房间卡片、关键设备状态、场景入口 |
 | 设置 | 管理账户、家庭成员与连接 | 管家偏好、成员、Connector、权限 |
 
 ### 设计定位与体验原则
 
-NexusMind 不是小米米家式设备列表、Home Assistant 式控制面板，也不是 ChatGPT 式聊天窗口。核心体验是：**AI 主动理解 → 给出建议与影响说明 → 用户确认 → 自动执行 → 可追溯结果**。
+NexusMind 不是小米米家式设备列表、Home Assistant 式控制面板，也不是自由闲聊式聊天窗口。专家交互支持**对话式任务协作**形态：每条对话消息即一次可追溯的 Expert Run，移动端以「对话框（会话）」为载体围绕项目遍历询问，PC 端承载维护与运行细节。核心体验保持：**AI 主动理解 → 给出建议与影响说明 → 用户确认 → 自动执行 → 可追溯结果**。
 
 视觉体验以 Calm、Intelligent、Human、Trust、Premium 为关键词：安静不打扰、能感知 AI 的存在、面向家庭成员、每一步透明可控，并保持高品质的家庭空间感。页面优先级遵循“上下文 → 状态 → 一个主行动”，避免同时竞争多个主操作。
 
@@ -265,11 +265,13 @@ User ── joins through ── TenantMember ── belongs to ── Workspace
 
 | 模型 | 职责 | 关键字段 / 约束 |
 | --- | --- | --- |
-| Expert | 面向用户的 AI 角色，如家庭管家、周计划专家、睡眠专家 | `code` 唯一、`name`、`category`、`description`、`avatar`、`builtin`、`status` |
+| Expert | 面向用户的 AI 角色，如家庭管家、周计划专家、睡眠专家 | `code` 唯一、`name`、`category`、`description`、`avatar`、`builtin`、`status`、`owner_user_id`（可空：空=平台基础专家，开发端维护、全家可见；非空=用户自建，PC 用户端维护、仅创建者本人可见） |
 | Expert Version | 固化 Expert 的可复现策略 | `expert_id`、`version`、`system_prompt`、`skill_policy`、`output_schema`；历史 Run 必须关联此版本 |
 | Skill | 可控、可授权、可观测的原子能力，而非供应商工具 | `code`、`category`、输入/输出 schema、`risk_level` |
 | Expert Skill Permission | 限制某 Expert 版本可调用的 Skill | `expert_version_id`、`skill_id`、`max_calls`、`require_confirm`；默认拒绝未声明能力 |
-| Expert Run | 一次专家分析或执行会话 | `user_id`、`tenant_id`、`expert_id`、`expert_version_id`、输入上下文、Token 用量、状态、开始/完成时间 |
+| Expert Run | 一次专家分析或执行会话 | `user_id`、`tenant_id`、`expert_id`、`expert_version_id`、输入上下文、Token 用量、状态、开始/完成时间、`conversation_id`（可空，关联会话） |
+| Conversation | 用户围绕某领域创建的对话项目（对话框），绑定专家与连接器 | `tenant_id`、`owner_user_id`、`title`、`expert_id`+`expert_version_id`（可空）、`workspace_connector_id`（可空，单值；多连接器后续演进关联表）、软删除、`updated_at`、`row_version` |
+| Conversation Message | 会话内的一条对话消息，一次消息对应一次可追溯的 Expert Run | `conversation_id`、`role`（`user`/`assistant`）、`content`、`run_id`（可空）、`created_at`；按 `conversation_id + id` 游标分页 |
 | Run Step | 运行中的内部可编排步骤 | 仅保存可审计的计划/执行元数据，不作为模型思考链输出 |
 | Run Event | 面向 Flutter 时间线的可理解事件 | `run_id`、`sequence`、`type`、`step_id`、`status`、`display_message`、`created_at`；同一 Run 内 sequence 唯一且不可改写 |
 | Run Action | AI 建议的可确认变更 | `run_id`、`action_type`、`payload`、`status`、`confirmed_at`、`idempotency_key`、`result` |
@@ -280,6 +282,8 @@ User ── joins through ── TenantMember ── belongs to ── Workspace
 **知识写入权限规则：** 默认所有 `active` 家庭成员可写入；`category=security`（WiFi 密码、门锁密码）仅限家庭管理员写入。家庭管理员可在“设置 → 家庭知识”中调整分类写入权限。AI 可在用户授权后从对话中提取知识并写入；此时 `source_member_id=system_ai`，`confidence_score` 默认为 `0.6`，经用户确认后提升至 `0.9`。当 `conflict_resolution_strategy=authority` 时，权威来源指向 `family_members` 中 `is_primary=true` 且 `member_status=active` 的成员；若无活跃主成员，则降级为 `latest` 策略。
 
 Expert Run 的持久化状态使用细粒度状态：`draft`、`queued`、`planning`、`running`、`synthesizing`、`needs_input`、`completed`、`failed`、`cancelled`。Flutter 只映射成适合界面的 `queued`、`running`、`completed`、`failed`，并通过 Run Event 展示可理解阶段。
+
+对话消息经会话发送时，创建的 Run 必须携带 `conversation_id`；消息历史即会话上下文，运行时按会话加载历史拼接输入上下文（复用 `input_context` 语义），移动端不做本地上下文缓存。
 
 Run Action 的标准状态为 `pending`（等待确认）、`confirmed`、`rejected`、`executing`、`executed`、`failed`、`cancelled`。任何设备或自动化写操作先创建 Action，不能由 Planner 直接下发。`payload` 保存标准化目标与参数，审计和 API 输出须脱敏。
 
@@ -332,9 +336,9 @@ Connector Provider 与 Workspace Connector 必须分离：前者描述“可接�
 
 ### 6.4 V1 数据范围与演进
 
-V1 实现 `Expert`、`ExpertVersion`、`Skill`、`ExpertSkillPermission`、`ExpertRun`、`RunEvent`、`RunAction`、`Connector Provider`、`Workspace Connector`、`Connector Tool`、`Workspace Connector Tool`、`Connector Permission Grant`、`Device`、`DeviceCapability`、`DeviceState`、`Scene` 与 `Personal Favorite`。首批可使用 Mock Connector 验证工具发现、权限、Skill 调用和 Run 记录；Home Assistant 是第二阶段的正式设备接入。`Automation Rule`、Expert DAG/协作组、MCP Server 托管和 Skill Marketplace 进入后续阶段。
+V1 实现 `Expert`、`ExpertVersion`、`Skill`、`ExpertSkillPermission`、`ExpertRun`、`RunEvent`、`RunAction`、`Conversation`、`ConversationMessage`（专家会话化）、`Connector Provider`、`Workspace Connector`、`Connector Tool`、`Workspace Connector Tool`、`Connector Permission Grant`、`Device`、`DeviceCapability`、`DeviceState`、`Scene` 与 `Personal Favorite`。首批可使用 Mock Connector 验证工具发现、权限、Skill 调用和 Run 记录；Home Assistant 是第二阶段的正式设备接入。`Automation Rule`、Expert DAG/协作组、MCP Server 托管和 Skill Marketplace 进入后续阶段。
 
-数据库命名以现有 SQL 迁移和实体为事实来源；建议采用 `experts`、`expert_versions`、`skills`、`expert_skill_permissions`、`expert_runs`、`run_events`、`run_actions`、`connector_providers`、`workspace_connectors`、`connector_tools`、`workspace_connector_tools`、`connector_permission_grants`、`smart_home_*`、`device_capabilities`、`device_states`、`scenes`、`scene_actions`、`automation_rules`、`personal_favorites`。不得仅为对齐文档修改已上线迁移；实际落地前先核对现有 `AiEntities.cs` 和迁移的重用空间。
+数据库命名以现有 SQL 迁移和实体为事实来源；建议采用 `experts`、`expert_versions`、`skills`、`expert_skill_permissions`、`expert_runs`、`run_events`、`run_actions`、`conversations`、`conversation_messages`、`connector_providers`、`workspace_connectors`、`connector_tools`、`workspace_connector_tools`、`connector_permission_grants`、`smart_home_*`、`device_capabilities`、`device_states`、`scenes`、`scene_actions`、`automation_rules`、`personal_favorites`。不得仅为对齐文档修改已上线迁移；实际落地前先核对现有 `AiEntities.cs` 和迁移的重用空间。
 
 所有可变表遵循现有数据库约定：软删除、更新时间、同步版本；目录和运行记录使用行版本控制。跨家庭数据严格以 JWT 的 `tenant_id` 隔离，禁止客户端传值覆盖。
 
@@ -481,6 +485,7 @@ Skill 是 AI 的“手脚”，定义稳定的输入、输出、权限和失败�
 
 | 日期 | 主题 | 本文变更 | 前端同步 | 后端同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-07 | 专家会话化：移动端纯对话 + PC 端维护 + 用户自建专家 | 专家交互新增「会话（对话框）」形态：移动端纯对话（历史对话框列表 + 新建对话框、选专家/连接器、多轮上下文由后端承载），附件/Action 确认/时间线/下载移 PC 端；PC 用户端新增「我的专家」（自建/维护，仅本人可见）；新增 Conversation/Message 领域模型与 `experts.owner_user_id`、`expert_runs.conversation_id`；会话/消息 API 与 `scope=basic\|mine\|all` 契约；飞书/钉钉等 Connector 仍属暂不纳入范围，连接器可用性受 Provider 发布节奏约束 | 已同步前端总设计与 Web 端文档 | 已同步后端总设计 | 已同步 |
 | 2026-08-06 | AI 配置启用开关与移动端交互 | 新增「设置：AI 配置」产品决策：单一模型 + 单一 Key、Key 仅服务端加密保存、三态交互（新增/只读/编辑）、只读态启用/禁用开关；`AiConfig` 增加 `enabled` 字段，禁用时 AI 生成能力整体不可用 | 已同步前端 AI 配置页三态改造 | 已同步后端开发计划 B18 | 已同步 |
 | 2026-08-06 | V2.3 个人生活专家前置 | 修订 V2.3 版本语义：新增产品能力“个人生活专家”（探店翻牌、行程规划）；新增 `personal_favorites` 领域模型与 `life` 专家分类；OCR 截图识别与短视频生成暂不纳入 V1 | 已同步前端总设计与前端开发计划表（life 分类、翻牌/行程/收藏页面与 P5b/P5c 交付项） | 已同步后端开发设计与后端开发计划（B15-B17 已完成） | 已同步 |
 | 2026-08-05 | V2.3 计划执行与回写规范 | 明确后续开发严格按计划执行；实施、手工调整、Bug 与测试回归均须先更新计划，再回写总设计 | 按受影响范围同步 | 已同步后端开发设计与后端开发计划 | 已同步 |
@@ -638,7 +643,8 @@ V2.2 在现有 Expert Run、Run Event、Run Action 与 Smart Home 模型之上�
 - 家庭成员、家庭知识库、管家动态和确认事项均使用家庭作用域路由；知识库支持按分类过滤，并根据冲突消解策略处理同 key；
 - 设备列表返回标准化的 Zigbee 角色、电量、LQI 和健康状态，并提供设备健康查询；
 - 确认 API 支持 `POST /api/v1/homes/{homeId}/confirmations/batch-confirm` 的 L1 批量确认：请求携带同一家庭的 `confirmationIds` 与 UUID `idempotencyKey`，服务端预校验每项均为未过期 `pending` L1 后原子确认；L2/L3、跨家庭、已终态或过期事项必须拒绝，不能部分绕过；管家动态支持游标分页、详情和可逆操作的撤销；
-- 前端以 `ConfirmationCard`、`RiskBadge`、`StewardTimelineTile` 和 `NexusSurface.warning/danger` 表达该契约；风险色为 L1 `#0B8F55`、L2 `#F59E0B`、L3 `#EF4444`。
+- 前端以 `ConfirmationCard`、`RiskBadge`、`StewardTimelineTile` 和 `NexusSurface.warning/danger` 表达该契约；风险色为 L1 `#0B8F55`、L2 `#F59E0B`、L3 `#EF4444`；
+- 专家会话契约：`GET/POST /api/v1/conversations`、`GET/PUT/DELETE /api/v1/conversations/{id}`（列表/新建/重命名/软删除+审计）；`GET /api/v1/conversations/{id}/messages`（游标分页）与 `POST /api/v1/conversations/{id}/messages`（发送 → 创建关联会话的 Expert Run → 终态追加 assistant 消息，消息携带 `run_id` 可追溯）；`GET /api/v1/experts?scope=basic|mine|all` 区分平台基础专家与本人自建专家（`scope=mine` 仅返回 `owner_user_id=本人`，不泄露他人）；连接器选择复用 `GET /api/v1/connectors` 已授权实例，可用性受 Provider 发布节奏约束；会话读写 `conversation.read/write`、自建专家 `expert.mine.read/write`，跨用户/跨租户一律 404。
 - **代码注释规范（自 B11 起强制执行）：** 所有 `public`/`internal` 实体类、ViewModel/DTO、Controller Action、Service 方法必须在声明前给出中文 `<summary>` 注释；Swagger 字段可通过 `[Description("中文")]` 或 `<remarks>` 补充描述。构建开启 `<GenerateDocumentationFile>true</GenerateDocumentationFile>` 并严格对待 `CS1591`（缺少 XML 注释的公开成员）。新增源码不得以 `#pragma warning disable CS1591` 等方式抑制。存量代码（V1/V2.1/V2.2）须在对应切片内一次性补齐。
 
 ### 10.6 V2.2 实施优先级
@@ -666,6 +672,7 @@ V2.3 个人生活专家后端切片（B15 收藏基线、B16 注册与翻牌、B
 - 定义年费续费钩子，包括权益、宽限期、到期降级、提醒和支付回调边界；
 - 确定推送聚合策略的具体窗口、摘要频率、成员偏好与 L2/L3 升级规则；
 - 确定个人生活专家的 OCR 截图识别与短视频生成能力进入后续版本的具体排期与第三方依赖。
+- 确定可画、飞书、钉钉等 Productivity/Future Connector Provider 的接入排期（影响专家对话框的可选连接器列表）。
 
 ## 12. V2.4 家庭与个人连接器、Web 治理
 

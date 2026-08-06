@@ -183,6 +183,8 @@ public sealed class AgentRun
     [Column("mode")] public string Mode { get; set; } = "single";
     /// <summary>自动确认策略，如"never""L3_only"等。</summary>
     [Column("auto_confirm_policy")] public string AutoConfirmPolicy { get; set; } = "never";
+    /// <summary>运行创建时的权限快照 JSON（scope/owner 与连接器授权摘要），Action 确认与执行前实时复验。</summary>
+    [Column("permission_snapshot_json")] public string? PermissionSnapshot { get; set; }
     /// <summary>结果负载 JSON。</summary>
     [Column("result_json")] public string? Result { get; set; }
     /// <summary>面向用户的结果摘要。</summary>

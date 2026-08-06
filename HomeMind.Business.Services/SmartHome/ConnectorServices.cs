@@ -44,6 +44,9 @@ public sealed class ConnectorServices : IConnectorServices
             connectors = connectors.Where(x => grantedConnectorIds.Contains(x.Id));
         }
 
+        // 个人实例只向所有者本人返回归属摘要，owner/admin 亦不得查看他人个人实例。
+        connectors = connectors.Where(x => x.BindingScope != "personal" || x.OwnerUserId == userId);
+
         var items = await (from connector in connectors
                            join provider in _db.ConnectorProviders on connector.ConnectorProviderId equals provider.Id
                            where provider.DeletedAt == null
@@ -58,7 +61,9 @@ public sealed class ConnectorServices : IConnectorServices
                                connector.LastSyncAt,
                                connector.LastHealthAt,
                                connector.CreatedAt,
-                               connector.UpdatedAt))
+                               connector.UpdatedAt,
+                               connector.BindingScope,
+                               connector.BindingScope == "personal" && connector.OwnerUserId == userId))
             .ToListAsync(cancellationToken);
         return new ServiceResult(200, "查询成功。", items);
     }
@@ -66,9 +71,18 @@ public sealed class ConnectorServices : IConnectorServices
     public async Task<ServiceResult> CreateConnectorAsync(long userId, long tenantId, CreateConnectorRequest request, CancellationToken cancellationToken = default)
     {
         if (request.UnsupportedProperties?.Count > 0)
-            return new ServiceResult(422, "连接器请求只允许 providerId、name 和 credentialRef 字段。");
+            return new ServiceResult(422, "连接器请求只允许 providerId、name、credentialRef 和 bindingScope 字段。");
         if (request.ProviderId is null || string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.CredentialRef))
             return new ServiceResult(422, "请填写连接器类型、名称和凭据引用。");
+
+        var bindingScope = string.IsNullOrWhiteSpace(request.BindingScope) ? "household" : request.BindingScope.Trim().ToLowerInvariant();
+        if (bindingScope is not ("household" or "personal"))
+            return new ServiceResult(422, "绑定范围仅支持 household 或 personal。");
+        if (bindingScope == "personal")
+        {
+            var isActiveMember = await _db.TenantMembers.AnyAsync(x => x.TenantId == tenantId && x.UserId == userId && x.Status == "active", cancellationToken);
+            if (!isActiveMember) return new ServiceResult(403, "个人连接器仅限当前家庭的活跃成员创建。");
+        }
 
         var secretReference = await _secretReferences.ValidateAsync(tenantId, request.CredentialRef.Trim(), cancellationToken);
         if (!secretReference.IsValid) return new ServiceResult(422, secretReference.Message);
@@ -84,9 +98,12 @@ public sealed class ConnectorServices : IConnectorServices
         {
             TenantId = tenantId,
             ConnectorProviderId = provider.Id,
+            BindingScope = bindingScope,
+            OwnerUserId = bindingScope == "personal" ? userId : null,
             Name = request.Name.Trim(),
             CredentialRef = request.CredentialRef.Trim(),
             Status = "disconnected",
+            AuthStatus = "none",
             CreatedAt = now,
             UpdatedAt = now
         };
@@ -165,7 +182,8 @@ public sealed class ConnectorServices : IConnectorServices
     }
 
     private static WorkspaceConnectorView ToView(WorkspaceConnector connector, ConnectorProvider provider) =>
-        new(connector.Id, provider.Id, provider.Code, provider.Name, connector.Name, connector.Status, connector.LastSyncAt, connector.LastHealthAt, connector.CreatedAt, connector.UpdatedAt);
+        new(connector.Id, provider.Id, provider.Code, provider.Name, connector.Name, connector.Status, connector.LastSyncAt, connector.LastHealthAt, connector.CreatedAt, connector.UpdatedAt,
+            connector.BindingScope, connector.BindingScope == "personal" && connector.OwnerUserId is not null);
 }
 
 public sealed class ConfigurationConnectorSecretReferenceValidator : IConnectorSecretReferenceValidator

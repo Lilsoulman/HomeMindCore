@@ -792,7 +792,11 @@ Connector 响应绝不包含 `credentialRef`、URL、访问令牌、刷新令牌
 权限：`connector.read`。所有者和管理员收到租户的连接器列表；
 成员只收到拥有有效个人授权的连接器。每项包含 `Id`、`ProviderId`、
 `ProviderCode`、`ProviderName`、`Name`、`Status`、`LastSyncAt`、
-`LastHealthAt`、`CreatedAt` 和 `UpdatedAt`。
+`LastHealthAt`、`CreatedAt`、`UpdatedAt`、`BindingScope`
+（`household`/`personal`）和 `IsCurrentUserOwner`（个人实例且当前
+用户为 owner 时为 `true`，绝不返回 owner 标识本身）。B18 起
+`personal` 实例仅向所有者本人返回，owner/admin 亦不可见他人
+个人实例。
 
 `POST /api/v1/connectors`
 
@@ -803,11 +807,14 @@ Connector 响应绝不包含 `credentialRef`、URL、访问令牌、刷新令牌
 {
   "providerId": 1,
   "name": "My home",
-  "credentialRef": "vault://tenants/12/secrets/home-assistant"
+  "credentialRef": "vault://tenants/12/secrets/home-assistant",
+  "bindingScope": "household"
 }
 ```
 
-`credentialRef` 必须属于调用者的租户。它会经过校验但绝不返回。
+`bindingScope` 可选，默认 `household`；`personal` 时所有者由服务端
+从 JWT 推导（当前用户且为活跃成员），客户端不得覆盖。`credentialRef`
+必须属于调用者的租户。它会经过校验但绝不返回。
 当 `SecretVault:Enabled=false`（默认值）时，创建返回 `503` 和可读的
 配置消息。创建成功后始终以 `disconnected` 状态开始。
 
@@ -873,6 +880,54 @@ API，只将 light、switch、air-conditioner、cover 和 sensor 实体映射到
 ```json
 { "scopes": ["smart_home.read", "smart_home.light.write"] }
 ```
+
+### 8.14.1 个人 OAuth 授权（B18，`/api/v1`）
+
+个人授权路由需要 `connector.authorize`（owner/admin/member）。
+所有响应与日志均不含授权 code、访问令牌、刷新令牌或凭据引用；
+会话 state 仅存哈希、10 分钟过期、单次使用。
+
+`POST /api/v1/connector-providers/{providerCode}/authorizations`
+
+请求体：
+
+```json
+{ "redirectUri": "https://app.example.com/callback" }
+```
+
+`redirectUri` 必须命中 Provider 预注册白名单（服务端配置
+`ConnectorOAuth:AllowedRedirectUris`），否则 `422`。Vault 不可用时
+`503` + `50001`。成功返回 `201`：
+
+```json
+{
+  "Code": 0,
+  "Msg": "授权会话已创建。",
+  "Data": {
+    "SessionId": 101,
+    "ProviderCode": "mock_oauth",
+    "ProviderName": "Mock OAuth（开发验证）",
+    "Status": "pending",
+    "ExpiresAt": "2026-08-07T10:10:00Z",
+    "AuthorizationUrl": "http://localhost:5280/api/v1/connector-providers/mock_oauth/authorize?state=..."
+  }
+}
+```
+
+浏览器跳转 `AuthorizationUrl`；Mock Provider 授权页（匿名）直接跳转
+服务端回调 `GET /api/v1/connector-providers/{providerCode}/callback?state=&code=`
+（匿名），回调完成后 302 到会话 `redirectUri`。
+
+`GET /api/v1/connector-authorizations/{id}`
+
+仅本人可查，返回脱敏状态（`Status`/`ExpiresAt`/`RedirectUri`）；
+非本人或跨租户统一 `404`。
+
+`DELETE /api/v1/connector-authorizations/{id}`
+
+撤销本人实例的凭据可用性（实例 `AuthStatus=revoked`、
+`Status=disconnected`）并终止会话；重复撤销幂等返回既有结果；
+写 `connector_authorize_revoked` 审计。
 
 ### 8.15 自动化规则（`/api/v1/automation-rules`）
 
@@ -1221,6 +1276,7 @@ UI 展示建议卡时呈现理由与标签，不渲染任何提示或思考链�
 | `GET /api/v1/smart-home/spaces`、`/devices`、`/scenes` | `smart_home.read` |
 | `GET /api/v1/connector-providers`、`GET /api/v1/connectors`、`GET /api/v1/connectors/{id}/authorization` | `connector.read` |
 | `POST /api/v1/connectors`、`/connectors/{id}/test`、`/connectors/{id}/discovery`、`/connectors/{id}/sync`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}` | `connector.write` |
+| `POST /api/v1/connector-providers/{providerCode}/authorizations`、`GET/DELETE /api/v1/connector-authorizations/{id}`（B18 个人授权） | `connector.authorize` |
 | `GET /api/v1/automation-rules` | `automation.read` |
 | `POST/PATCH /api/v1/automation-rules[...]` | `automation.write` |
 | `GET /api/v1/expert-files`、`POST /api/v1/expert-files/{fileId}/read-token` | `expert_file.read` |

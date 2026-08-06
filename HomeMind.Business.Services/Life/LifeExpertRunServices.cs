@@ -73,6 +73,7 @@ public sealed class LifeExpertRunServices : ILifeExpertRunServices
             Status = "planning",
             Mode = HousekeeperRunPolicies.Steward,
             AutoConfirmPolicy = HousekeeperRunPolicies.L3Only,
+            PermissionSnapshot = JsonSerializer.Serialize(new { bindingScope = "household", ownerUserId = userId, connectorGrants = Array.Empty<object>() }),
             EstimatedCredits = version.EstimatedCredits,
             StartedAt = now,
             CreatedAt = now
@@ -194,6 +195,11 @@ public sealed class LifeExpertRunServices : ILifeExpertRunServices
             x.Id == actionId && x.RunId == runId && x.TenantId == tenantId && x.UserId == userId && x.ActionType == "calendar_create_event", cancellationToken);
         if (action is null) return new ServiceResult(404, "请求的行程动作不存在。");
 
+        var run = await _db.AgentRuns.SingleOrDefaultAsync(x => x.Id == runId && x.TenantId == tenantId, cancellationToken);
+        if (run is null) return new ServiceResult(404, "请求的运行不存在。");
+        if (!await IsSnapshotAuthorizedAsync(run, userId, cancellationToken))
+            return new ServiceResult(403, "当前成员无权执行该运行的动作。");
+
         var idempotencyKey = request.IdempotencyKey;
         var previous = await _db.ActionExecutionAudits.SingleOrDefaultAsync(
             x => x.RunActionId == action.Id && x.IdempotencyKey == idempotencyKey, cancellationToken);
@@ -218,7 +224,6 @@ public sealed class LifeExpertRunServices : ILifeExpertRunServices
             UpdatedAt = now
         };
         _db.ActionExecutionAudits.Add(audit);
-        var run = await _db.AgentRuns.SingleAsync(x => x.Id == runId, cancellationToken);
         AddEvent(run, await NextSequenceAsync(runId, cancellationToken), "action_confirmed", $"已确认同步行程：{plan.Destination}。", now);
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -258,6 +263,48 @@ public sealed class LifeExpertRunServices : ILifeExpertRunServices
         return succeeded
             ? new ServiceResult(200, "行程已同步日历。", new { actionId = action.Id, status = action.Status, message = "行程已同步日历。" })
             : new ServiceResult(502, failureMessage ?? "日历服务暂时不可用。");
+    }
+
+    /// <summary>
+    /// 复验运行权限快照：快照缺失视为存量运行放行；personal 实例仅快照所有者可执行动作；
+    /// household 实例逐条复验连接器授权（个人实例需为操作者本人，其余需成员授权仍有效）。
+    /// </summary>
+    private async Task<bool> IsSnapshotAuthorizedAsync(AgentRun run, long userId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(run.PermissionSnapshot)) return true;
+        RunPermissionSnapshot? snapshot;
+        try
+        {
+            snapshot = JsonSerializer.Deserialize<RunPermissionSnapshot>(run.PermissionSnapshot, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
+        if (snapshot is null) return true;
+
+        if (snapshot.BindingScope == "personal")
+            return snapshot.OwnerUserId == userId;
+
+        var connectorIds = snapshot.ConnectorGrants?
+            .Where(x => x is not null && x.ConnectorId > 0)
+            .Select(x => x!.ConnectorId)
+            .Distinct()
+            .ToArray() ?? [];
+        if (connectorIds.Length == 0) return true;
+
+        var connectors = await _db.WorkspaceConnectors
+            .Where(x => x.TenantId == run.TenantId && connectorIds.Contains(x.Id) && x.DeletedAt == null)
+            .ToListAsync(cancellationToken);
+        if (connectors.Count != connectorIds.Length) return false;
+        foreach (var connector in connectors)
+        {
+            if (connector.BindingScope == "personal" && connector.OwnerUserId != userId) return false;
+            var granted = await _db.UserConnectorAuthorizations.AnyAsync(x =>
+                x.TenantId == run.TenantId && x.UserId == userId && x.WorkspaceConnectorId == connector.Id && x.DeletedAt == null, cancellationToken);
+            if (!granted) return false;
+        }
+        return true;
     }
 
     private static ServiceResult ReplayActionResult(ExpertRunAction action, ActionExecutionAudit audit)
@@ -514,4 +561,6 @@ public sealed class LifeExpertRunServices : ILifeExpertRunServices
     private sealed record PlanDto(string? Destination, IReadOnlyList<PlanDayDto>? Days);
     private sealed record PlanDayDto(int Day, string? Weather, IReadOnlyList<PlanActivityDto>? Activities);
     private sealed record PlanActivityDto(string? TimeSlot, string? Name, string? Note);
+    private sealed record RunPermissionSnapshot(string? BindingScope, long? OwnerUserId, IReadOnlyList<RunConnectorGrant>? ConnectorGrants);
+    private sealed record RunConnectorGrant(long ConnectorId);
 }

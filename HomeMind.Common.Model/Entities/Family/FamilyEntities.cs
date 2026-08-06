@@ -163,6 +163,12 @@ public static class FamilyAuditActions
     public const string FavoriteDelete = "favorite_delete";
     /// <summary>个人偏好收藏由对话导入；由收藏服务写入。</summary>
     public const string FavoriteImport = "favorite_import";
+    /// <summary>个人连接器授权会话发起；由连接器授权服务写入。</summary>
+    public const string ConnectorAuthorizeStarted = "connector_authorize_started";
+    /// <summary>个人连接器授权回调完成，凭据引用落库；由连接器授权服务写入。</summary>
+    public const string ConnectorAuthorizeCompleted = "connector_authorize_completed";
+    /// <summary>个人连接器授权被撤销，凭据可用性失效；由连接器授权服务写入。</summary>
+    public const string ConnectorAuthorizeRevoked = "connector_authorize_revoked";
 }
 
 /// <summary>家庭上下文审计目标类型集合，决定 <see cref="FamilyAuditLog.TargetType"/> 的合法取值。</summary>
@@ -180,6 +186,8 @@ public static class FamilyAuditTargetTypes
     public const string StewardActivity = "steward_activity";
     /// <summary>目标为 <see cref="Entities.Life.PersonalFavorite"/>。</summary>
     public const string PersonalFavorite = "personal_favorite";
+    /// <summary>目标为 <see cref="Entities.SmartHome.ConnectorAuthorizationSession"/>。</summary>
+    public const string ConnectorAuthorization = "connector_authorization";
 }
 
 /// <summary>家庭域审计记录实体；与管家动态、运行事件分离，专门承载 Family 域可审计动作。</summary>

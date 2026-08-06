@@ -41,12 +41,20 @@ public sealed class WorkspaceConnector
     [Column("tenant_id")] public long TenantId { get; set; }
     /// <summary>所用提供方主键。</summary>
     [Column("connector_provider_id")] public long ConnectorProviderId { get; set; }
+    /// <summary>绑定范围：household 为家庭共享实例，personal 为成员个人实例。</summary>
+    [Column("binding_scope")] public string BindingScope { get; set; } = "household";
+    /// <summary>个人实例所有者用户主键，家庭实例必须为空。</summary>
+    [Column("owner_user_id")] public long? OwnerUserId { get; set; }
     /// <summary>租户侧自定义的连接器名称。</summary>
     [Column("name")] public string Name { get; set; } = null!;
     /// <summary>凭据引用，格式为 vault://tenants/{tenantId}/...，API 不返回明文。</summary>
     [Column("credential_ref")] public string? CredentialRef { get; set; }
     /// <summary>连接器状态，参见 <see cref="WorkspaceConnectorStatus"/>。</summary>
     [Column("status")] public string Status { get; set; } = "disconnected";
+    /// <summary>授权生命周期状态，参见 <see cref="WorkspaceConnectorAuthStatus"/>。</summary>
+    [Column("auth_status")] public string AuthStatus { get; set; } = "none";
+    /// <summary>非敏感配置 JSON；凭据只存 <see cref="CredentialRef"/> 指向密钥服务。</summary>
+    [Column("config")] public string? Config { get; set; }
     /// <summary>最近一次同步时间（UTC）。</summary>
     [Column("last_sync_at")] public DateTime? LastSyncAt { get; set; }
     /// <summary>最近一次健康探测时间（UTC）。</summary>
@@ -83,6 +91,71 @@ public sealed class UserConnectorAuthorization
     [Column("deleted_at")] public DateTime? DeletedAt { get; set; }
     /// <summary>同步版本号。</summary>
     [Column("sync_version")] public long SyncVersion { get; set; }
+}
+
+/// <summary>连接器授权生命周期状态集合。</summary>
+public static class WorkspaceConnectorAuthStatus
+{
+    /// <summary>未发起授权。</summary>
+    public const string None = "none";
+    /// <summary>授权会话进行中。</summary>
+    public const string Authorizing = "authorizing";
+    /// <summary>授权完成，凭据可用。</summary>
+    public const string Connected = "connected";
+    /// <summary>授权已撤销，凭据不可用。</summary>
+    public const string Revoked = "revoked";
+    /// <summary>授权流程失败。</summary>
+    public const string Failed = "failed";
+}
+
+/// <summary>连接器授权会话，承载个人 OAuth 或受控家庭授权的短期服务端会话；单次使用且过期。</summary>
+/// <remarks>仅保存 <c>state</c> 的哈希与 PKCE 校验器引用，不保存授权 code、访问令牌或刷新令牌。</remarks>
+[Table("connector_authorization_sessions")]
+public sealed class ConnectorAuthorizationSession
+{
+    /// <summary>会话主键。</summary>
+    [Key, Column("id")] public long Id { get; set; }
+    /// <summary>所属租户标识。</summary>
+    [Column("tenant_id")] public long TenantId { get; set; }
+    /// <summary>所授权连接器提供方主键。</summary>
+    [Column("connector_provider_id")] public long ConnectorProviderId { get; set; }
+    /// <summary>绑定范围，当前实现固定为 personal。</summary>
+    [Column("binding_scope")] public string BindingScope { get; set; } = "personal";
+    /// <summary>发起授权的用户主键。</summary>
+    [Column("initiator_user_id")] public long InitiatorUserId { get; set; }
+    /// <summary>一次性 state 的 SHA-256 十六进制哈希，回调时校验，使用后失效。</summary>
+    [Column("state_hash")] public string StateHash { get; set; } = null!;
+    /// <summary>PKCE 校验器引用，格式为 vault://tenants/{tenantId}/...，API 不返回明文。</summary>
+    [Column("pkce_verifier_ref")] public string? PkceVerifierRef { get; set; }
+    /// <summary>回调跳转地址，必须命中 Provider 预注册白名单。</summary>
+    [Column("redirect_uri")] public string RedirectUri { get; set; } = null!;
+    /// <summary>会话状态，参见 <see cref="ConnectorAuthorizationSessionStatus"/>。</summary>
+    [Column("status")] public string Status { get; set; } = "pending";
+    /// <summary>会话过期时间（UTC），过期后回调拒绝。</summary>
+    [Column("expires_at")] public DateTime ExpiresAt { get; set; }
+    /// <summary>会话完成时间（UTC），成功回调或撤销时写入。</summary>
+    [Column("completed_at")] public DateTime? CompletedAt { get; set; }
+    /// <summary>创建时间（UTC）。</summary>
+    [Column("created_at")] public DateTime CreatedAt { get; set; }
+    /// <summary>更新时间（UTC）。</summary>
+    [Column("updated_at")] public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>连接器授权会话状态集合。</summary>
+public static class ConnectorAuthorizationSessionStatus
+{
+    /// <summary>已创建，等待 Provider 回调。</summary>
+    public const string Pending = "pending";
+    /// <summary>state 已被消费，防止重放。</summary>
+    public const string Used = "used";
+    /// <summary>会话已过期。</summary>
+    public const string Expired = "expired";
+    /// <summary>会话被撤销。</summary>
+    public const string Revoked = "revoked";
+    /// <summary>回调处理完成，凭据已落库。</summary>
+    public const string Completed = "completed";
+    /// <summary>回调处理失败。</summary>
+    public const string Failed = "failed";
 }
 
 /// <summary>智能家居空间（如客厅、卧室）的归一化视图。</summary>

@@ -5,28 +5,32 @@ using HomeMind.Api.Controllers.Base;
 using HomeMind.Api.Services;
 using HomeMind.Business.IServices.SmartHome;
 using HomeMind.Common.Model.ViewModel.Common;
+using HomeMind.Common.Model.ViewModel.Data.Connectors;
 using HomeMind.Common.Model.ViewModel.Data.SmartHome;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace HomeMind.Api.Controllers.SmartHome;
 
-/// <summary>管理家庭的 Connector 目录、连接实例和成员授权范围；不会返回凭据引用或供应商认证数据。</summary>
-/// <remarks>凭据引用必须为 <c>vault://tenants/{tenantId}/...</c>；API 永不返回明文凭据。</remarks>
+/// <summary>管理家庭的 Connector 目录、连接实例、成员授权范围与个人 OAuth 授权会话；不会返回凭据引用或供应商认证数据。</summary>
+/// <remarks>凭据引用必须为 <c>vault://tenants/{tenantId}/...</c>；API 永不返回明文凭据、授权 code 或令牌。</remarks>
 [Authorize]
 [Route("api/v1")]
 public sealed class ConnectorsController : ApiControllerBase
 {
     private readonly IConnectorServices _connectors;
     private readonly IConnectorRuntimeServices _runtime;
+    private readonly IConnectorAuthorizationServices _authorizations;
 
     /// <summary>构造连接器控制器。</summary>
     /// <param name="connectors">连接器目录与授权服务。</param>
     /// <param name="runtime">连接器运行时（连接测试、发现、同步）服务。</param>
-    public ConnectorsController(IConnectorServices connectors, IConnectorRuntimeServices runtime)
+    /// <param name="authorizations">个人连接器 OAuth 授权服务。</param>
+    public ConnectorsController(IConnectorServices connectors, IConnectorRuntimeServices runtime, IConnectorAuthorizationServices authorizations)
     {
         _connectors = connectors;
         _runtime = runtime;
+        _authorizations = authorizations;
     }
 
     /// <summary>列出平台支持的连接器提供方目录。</summary>
@@ -109,6 +113,34 @@ public sealed class ConnectorsController : ApiControllerBase
     [HttpPut("connectors/{id:long}/authorizations/{memberUserId:long}")]
     public async Task<ActionResult<ApiResponse<object>>> UpdateAuthorization(long id, long memberUserId, ConnectorAuthorizationRequest request) =>
         ToResponse(await WithUserAsync((user, token) => _connectors.UpdateAuthorizationAsync(user.TenantId, id, memberUserId, request, token)));
+
+    /// <summary>为本人发起一次个人连接器 OAuth 授权会话；返回浏览器跳转地址，不返回任何凭据。</summary>
+    /// <remarks>权限：<c>connector.authorize</c>。回调跳转地址必须命中 Provider 预注册白名单；会话单次使用并过期。</remarks>
+    /// <param name="providerCode">连接器提供方编码。</param>
+    /// <param name="request">授权请求体（回调跳转地址）。</param>
+    /// <returns>授权会话脱敏视图统一响应。</returns>
+    [Authorize(Policy = PermissionNames.ConnectorAuthorize)]
+    [HttpPost("connector-providers/{providerCode}/authorizations")]
+    public async Task<ActionResult<ApiResponse<object>>> StartAuthorization(string providerCode, StartAuthorizationRequest request) =>
+        ToResponse(await WithUserAsync((user, token) => _authorizations.StartAuthorizationAsync(user.UserId, user.TenantId, providerCode, request, token)));
+
+    /// <summary>查询本人个人连接器授权会话的脱敏状态。</summary>
+    /// <remarks>权限：<c>connector.authorize</c>。跨租户或非本人会话统一返回 404。</remarks>
+    /// <param name="id">授权会话主键。</param>
+    /// <returns>授权会话脱敏视图统一响应。</returns>
+    [Authorize(Policy = PermissionNames.ConnectorAuthorize)]
+    [HttpGet("connector-authorizations/{id:long}")]
+    public async Task<ActionResult<ApiResponse<object>>> GetAuthorizationStatus(long id) =>
+        ToResponse(await WithUserAsync((user, token) => _authorizations.GetAuthorizationStatusAsync(user.UserId, user.TenantId, id, token)));
+
+    /// <summary>撤销本人个人连接器授权：撤销实例凭据可用性并写审计；重复撤销幂等返回既有结果。</summary>
+    /// <remarks>权限：<c>connector.authorize</c>。跨租户或非本人会话统一返回 404。</remarks>
+    /// <param name="id">授权会话主键。</param>
+    /// <returns>撤销后会话脱敏视图统一响应。</returns>
+    [Authorize(Policy = PermissionNames.ConnectorAuthorize)]
+    [HttpDelete("connector-authorizations/{id:long}")]
+    public async Task<ActionResult<ApiResponse<object>>> RevokeAuthorization(long id) =>
+        ToResponse(await WithUserAsync((user, token) => _authorizations.RevokeAuthorizationAsync(user.UserId, user.TenantId, id, token)));
 
     /// <summary>在用户上下文就绪时执行给定的业务回调，否则返回 401。</summary>
     /// <param name="action">执行业务逻辑的回调。</param>

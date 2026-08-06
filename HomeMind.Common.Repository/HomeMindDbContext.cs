@@ -63,6 +63,7 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<ActionExecutionAudit> ActionExecutionAudits => Set<ActionExecutionAudit>();
     public DbSet<ConnectorProvider> ConnectorProviders => Set<ConnectorProvider>();
     public DbSet<WorkspaceConnector> WorkspaceConnectors => Set<WorkspaceConnector>();
+    public DbSet<ConnectorAuthorizationSession> ConnectorAuthorizationSessions => Set<ConnectorAuthorizationSession>();
     public DbSet<UserConnectorAuthorization> UserConnectorAuthorizations => Set<UserConnectorAuthorization>();
     public DbSet<SmartHomeSpace> SmartHomeSpaces => Set<SmartHomeSpace>();
     public DbSet<SmartHomeDevice> SmartHomeDevices => Set<SmartHomeDevice>();
@@ -113,6 +114,8 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<ExpertGroupVersion>().Property(x => x.OutputSchema).HasColumnType("json");
         modelBuilder.Entity<AgentRun>().Property(x => x.Input).HasColumnType("json");
         modelBuilder.Entity<AgentRun>().Property(x => x.Result).HasColumnType("json");
+        modelBuilder.Entity<AgentRun>().Property(x => x.PermissionSnapshot).HasColumnType("json");
+        modelBuilder.Entity<WorkspaceConnector>().Property(x => x.Config).HasColumnType("json");
         modelBuilder.Entity<RunEvent>().Property(x => x.Payload).HasColumnType("json");
         modelBuilder.Entity<ExpertRunAction>().Property(x => x.RequestJson).HasColumnType("json");
         modelBuilder.Entity<ExpertRunAction>().Property(x => x.Result).HasColumnType("json");

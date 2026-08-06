@@ -115,7 +115,9 @@ public sealed record ConnectorProviderView(long Id, string Code, string Name, st
 /// <param name="LastHealthAt">最近一次健康探测时间（UTC）。</param>
 /// <param name="CreatedAt">创建时间（UTC）。</param>
 /// <param name="UpdatedAt">更新时间（UTC）。</param>
-public sealed record WorkspaceConnectorView(long Id, long ProviderId, string ProviderCode, string ProviderName, string Name, string Status, DateTime? LastSyncAt, DateTime? LastHealthAt, DateTime CreatedAt, DateTime UpdatedAt);
+/// <param name="BindingScope">绑定范围，household 或 personal。</param>
+/// <param name="IsCurrentUserOwner">当前用户是否为个人实例所有者；家庭实例恒为 false，且不返回所有者标识。</param>
+public sealed record WorkspaceConnectorView(long Id, long ProviderId, string ProviderCode, string ProviderName, string Name, string Status, DateTime? LastSyncAt, DateTime? LastHealthAt, DateTime CreatedAt, DateTime UpdatedAt, string BindingScope = "household", bool IsCurrentUserOwner = false);
 
 /// <summary>用户对连接器的授权视图。</summary>
 /// <param name="ConnectorId">连接器主键。</param>

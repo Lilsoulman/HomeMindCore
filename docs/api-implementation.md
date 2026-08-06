@@ -34,7 +34,7 @@ JSON 输入中的这些值。
 | 家庭上下文 | `GET/POST /api/v1/homes/{homeId}/members`、`PUT /api/v1/homes/{homeId}/members/{id}`、`POST /api/v1/homes/{homeId}/members/{id}/correction`；`GET/POST /api/v1/homes/{homeId}/knowledge?category=`、`DELETE /api/v1/homes/{homeId}/knowledge/{id}`；`GET/POST /api/v1/homes/{homeId}/decisions`。所有 homeId 由 `RequireHomeOwner` 校验等于 JWT tenant_id。终态更正写 `family_audit_logs`；知识同 key 冲突按 latest/authority/majority 留痕 |
 | 管家协同 | 管家动态：`GET /api/v1/homes/{homeId}/activities?limit=&cursor=`、`GET /api/v1/homes/{homeId}/activities/{id}`、`POST /api/v1/homes/{homeId}/activities/{id}/undo`；确认中心：`GET /api/v1/homes/{homeId}/confirmations?riskLevel=&status=`、`POST /api/v1/homes/{homeId}/confirmations/{id}/confirm`、`POST /api/v1/homes/{homeId}/confirmations/{id}/deny`、`POST /api/v1/homes/{homeId}/confirmations/batch-confirm`。只读用 `smart_home.read`，写操作用 `ai.run`；确认/拒绝/批量确认/撤销写 `family_audit_logs` 并生成管家动态 |
 | 仪表板 | `GET /api/v1/dashboard` 聚合可独立降级的家、待确认事项、管家动态、场景、今日计划和最新建议模块；`homeSummary` 对应 `Home` 模块，`quickActions` 为前端静态入口 |
-| 连接器 | `GET /api/v1/connector-providers`，`GET/POST /api/v1/connectors`，`POST /api/v1/connectors/{id}/test`、`/discovery`、`/sync`，`GET /api/v1/connectors/sync-jobs/{jobId}`，`GET /api/v1/connectors/{id}/authorization`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}`；V2.4 待发布个人 OAuth 发起/状态/撤销及服务端 callback |
+| 连接器 | 家庭级：`GET /api/v1/connector-providers`，`GET/POST /api/v1/connectors`（`bindingScope` 支持 household/personal），`POST /api/v1/connectors/{id}/test`、`/discovery`、`/sync`，`GET /api/v1/connectors/sync-jobs/{jobId}`，`GET /api/v1/connectors/{id}/authorization`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}`；个人 OAuth（B18）：`POST /api/v1/connector-providers/{providerCode}/authorizations`、`GET/DELETE /api/v1/connector-authorizations/{id}`、服务端 callback `GET /api/v1/connector-providers/{providerCode}/callback`、Mock 授权页 `GET /api/v1/connector-providers/{providerCode}/authorize`（匿名） |
 | 自动化 | `GET/POST/PATCH /api/v1/automation-rules` 管理租户隔离的、已授权的长期运行规则 |
 
 ## 响应与错误码
@@ -115,7 +115,8 @@ HTTP `401` 并附带 `Code: 20001`。`POST /api/v1/auth/logout`
 | `confirmation.write` | 单项确认 / 拒绝 / L1 批量确认 / 动态撤销（B14 收敛） | owner / admin / member |
 | `life.favorite.read` / `life.favorite.write` | 个人偏好收藏读/写（B14 预注册，B15 起消费） | owner / admin / member / viewer（仅 owner/admin/member 写） |
 | `connector.read` | 连接器目录、实例与同步任务 | owner / admin / member / viewer |
-| `connector.write` | 创建连接器、连通性测试、发现、同步、授权 | owner / admin / member |
+| `connector.write` | 创建连接器、连通性测试、发现、同步、成员授权 | owner / admin / member |
+| `connector.authorize` | 个人 OAuth 授权发起 / 状态查询 / 撤销（B18） | owner / admin / member |
 | `automation.read` | 自动化规则查询 | owner / admin / member / viewer |
 | `automation.write` | 自动化规则创建与修改 | owner / admin / member |
 | `expert_file.read` / `expert_file.write` | 专家文件读/写 | owner / admin / member / viewer（仅 owner/admin/member 写） |
@@ -515,13 +516,21 @@ Skill 声明 `favorite.recommend`/`trip.plan`/`favorite.create`）：
 产生；团队编排绝不绕过该边界。跨租户或未知的 `teamRunId` 返回
 `404`。
 
-## V2.4 家庭/个人 Connector 与 Web 治理（待发布）
+## V2.4 家庭/个人 Connector 与 Web 治理（B18 已发布个人 Connector 基线）
 
-`workspace_connectors` 增加响应字段 `BindingScope`（`household`/`personal`）。`personal` 实例仅向 owner 返回 `IsCurrentUserOwner=true`，不向其他成员返回 owner 标识；`household` 实例继续用既有成员授权接口。创建或更新时服务端强制家庭实例 `owner_user_id IS NULL`，个人实例 owner 是当前 JWT 用户且为当前租户 active member；任何跨家庭/跨成员资源返回 404。
+`workspace_connectors` 响应包含 `BindingScope`（`household`/`personal`）。`personal` 实例仅向 owner 返回 `IsCurrentUserOwner=true`，不向其他成员返回 owner 标识，owner/admin 亦不可见他人个人实例；`household` 实例继续用既有成员授权接口。创建或更新时服务端强制家庭实例 `owner_user_id IS NULL`，个人实例 owner 是当前 JWT 用户且为当前租户 active member；任何跨家庭/跨成员资源返回 404。
 
-个人 OAuth 契约在 B18 完成后发布：`POST /api/v1/connector-providers/{providerCode}/authorizations` 创建短期授权会话并返回安全跳转 URL；Provider callback 仅由服务端接收；`GET /api/v1/connector-authorizations/{id}` 返回脱敏状态；`DELETE /api/v1/connector-authorizations/{id}` 撤销本人实例和 credential 可用性。会话使用一次性 state/PKCE、过期和回调白名单；请求、响应、日志均不含 code、access token、refresh token 或 credentialRef。
+个人 OAuth 契约（B18）：
+- `POST /api/v1/connector-providers/{providerCode}/authorizations`（权限 `connector.authorize`，所有成员可用）：请求体 `{ redirectUri }` 必须命中 Provider 预注册白名单（`ConnectorOAuth:AllowedRedirectUris`）；返回 `AuthorizationSessionView`（`sessionId`/`providerCode`/`providerName`/`status`/`expiresAt`/`authorizationUrl`），会话 10 分钟过期、state 仅存 SHA-256 哈希、PKCE 校验器仅存密文引用；Vault 不可用返回 503+`50001`。
+- `GET /api/v1/connector-authorizations/{id}`（`connector.authorize`）：仅本人可查，返回脱敏状态与 `redirectUri`；非本人或跨租户统一 404+`30000`。
+- `DELETE /api/v1/connector-authorizations/{id}`（`connector.authorize`）：撤销本人实例的凭据可用性（`auth_status=revoked`、`status=disconnected`）并终止会话；重复撤销幂等返回既有结果；写 `connector_authorize_revoked` 审计。
+- 服务端回调 `GET /api/v1/connector-providers/{providerCode}/callback?state=&code=`（匿名）：校验一次性 state（重放/过期拒绝 400）、完成 Token 交换并落库 `vault://tenants/{tenantId}/connector/oauth/...` 凭据引用，成功 302 到会话 `redirectUri`；不返回任何 code/token/ref。
+- Mock 授权页 `GET /api/v1/connector-providers/{providerCode}/authorize?state=`（匿名，仅开发/测试）：模拟 Provider 同意并跳转服务端回调。
+- 请求、响应、日志、数据库均不含授权 code、access token、refresh token 或明文凭据；`connector_authorization_sessions` 仅存 `state_hash`（CHAR(64)）与 `pkce_verifier_ref`（`enc:` 密文引用）。
 
-角色维持 `tenant_members.role` 的 `owner/admin/member/viewer` 固定枚举，权限仍由 `PermissionAuthorizationHandler` 映射，不新增角色 CRUD。Web 路由是前端发布配置，不提供 API 路由维护；若未来发布菜单偏好 API，只接受已知 `routeKey`、`enabled`、`sortOrder`，且 owner/admin 才能写入。
+审计动作（`family_audit_logs`）：`connector_authorize_started` / `connector_authorize_completed` / `connector_authorize_revoked`，目标类型 `connector_authorization`。
+
+角色维持 `tenant_members.role` 的 `owner/admin/member/viewer` 固定枚举，权限仍由 `PermissionAuthorizationHandler` 映射，不新增角色 CRUD。新增权限名 `connector.authorize`（owner/admin/member）。Web 路由是前端发布配置，不提供 API 路由维护；若未来发布菜单偏好 API，只接受已知 `routeKey`、`enabled`、`sortOrder`，且 owner/admin 才能写入。
 
 ## 本地运行
 

@@ -67,10 +67,12 @@ AI Runtime 的编排职责位于 `Business.Services/AI` 或独立 `Business.Serv
 | `device_capabilities` | 设备可读/写能力 | device_id、capability、value_schema、permission |
 | `device_states` | 最近设备状态快照 | device_id、state_json、updated_at |
 | `skills` | Skill 目录与权限声明 | key、input_schema、output_schema、required_permission |
-| `experts` | Expert 目录 | code、name、category、builtin、status |
+| `experts` | Expert 目录 | code、name、category、builtin、status、owner_user_id（可空：空=平台基础专家，开发端维护、全家可见；非空=用户自建，仅创建者本人可见可维护） |
 | `expert_versions` | 可复现的 Expert 策略版本 | expert_id、version、system_prompt、skill_policy、output_schema |
 | `expert_skill_permissions` | Expert Version 调用 Skill 的限制 | expert_version_id、skill_id、max_calls、require_confirm |
-| `expert_runs` | 一次专家运行 | user_id、tenant_id、expert_id、expert_version_id、status、input_context、token 用量、row_version |
+| `expert_runs` | 一次专家运行 | user_id、tenant_id、expert_id、expert_version_id、status、input_context、token 用量、row_version、conversation_id（可空，关联会话） |
+| `conversations` | 用户围绕某领域创建的对话项目（对话框），绑定专家与连接器 | tenant_id、owner_user_id、title、expert_id、expert_version_id（可空）、workspace_connector_id（可空，单值）、deleted_at、updated_at、row_version |
+| `conversation_messages` | 会话内对话消息，一次消息对应一次可追溯的 Expert Run | conversation_id、role（user/assistant）、content、run_id（可空）、created_at；按 conversation_id + id 游标分页 |
 | `run_events` | 客户端可展示的运行时间线 | run_id、sequence、type、step_id、status、display_message、created_at |
 | `run_actions` | 运行中的建议/执行项 | run_id、action_type、payload、status、confirmed_at、idempotency_key、result |
 | `scenes` / `scene_actions` | 家庭场景及其设备能力动作 | tenant_id、scene_id、device_id、capability、value |
@@ -89,6 +91,7 @@ AI Runtime 的编排职责位于 `Business.Services/AI` 或独立 `Business.Serv
 - `external_id` 在同一 Workspace Connector 内唯一；写操作使用 `idempotency_key` 防止重复下发；
 - 状态历史和执行结果可追溯，敏感输入应脱敏后写入审计。
 - Run 必须固定 `expert_version_id` 和已解析的权限快照；Run Event 只保存用户可理解事件，禁止写入 Prompt、思考链或模型日志。
+- 会话与消息按 `tenant_id` + `owner_user_id` 隔离，禁止客户端覆盖归属；自建专家（`experts.owner_user_id` 非空）仅创建者本人可见可维护，跨用户/跨租户一律 404；消息内容含用户输入，仅脱敏摘要入审计，不写 Prompt 或思考链；会话发送消息时按会话加载历史消息拼接输入上下文（复用 `input_context` 语义）。
 - `binding_scope=household` 仅 owner/admin 可创建和配置，并通过成员 Permission Grant 使用；`binding_scope=personal` 的 `owner_user_id` 必须是同租户 active `tenant_members`，只允许 owner 读取、调用、撤销。个人实例不因家庭成员关系自动共享。
 - OAuth 的 state、PKCE、回调、Token 交换、加密存储、刷新、撤销和审计都在服务端；授权会话单次使用且过期。数据库仅保存哈希/密钥引用，Controller、DTO 和日志不得出现授权 code 或 Token。
 
@@ -111,6 +114,8 @@ ExpertsController
   → IDeviceAdapter / IDeviceDiscovery / IDeviceCommandExecutor（协议无关三契约，B13 起）
   → HomeAssistantAdapter（HA REST/WebSocket 实现）
 ```
+
+会话由 `IConversationService`（会话 CRUD、消息历史、上下文拼接）承载：发送消息时校验会话归属（tenant + owner），按会话加载历史消息拼接输入上下文，复用 `IExpertRunService` 创建携带 `conversation_id` 的 Run；Run 终态后写入 `assistant` 消息并保留 `run_id` 供追溯。
 
 `IConnectorService` 是对 Skill 的统一入口：列出可用 Tool、校验 JSON Schema 与 Permission、应用确认策略、创建/关联 Run Action，并把请求委派给 Adapter。B13 起设备边界拆分为 `IDeviceAdapter`（连接测试、单设备状态读取）、`IDeviceDiscovery`（设备发现）、`IDeviceCommandExecutor`（设备命令执行）三个协议无关接口，`CommandRelayService`/`DeviceSyncService` 两个桥接服务分别承载命令转发与状态同步落库。业务服务依赖这些接口以及标准化能力模型，不依赖 MQTT Topic、Zigbee 实体名或厂商 JSON 格式。
 
@@ -140,10 +145,11 @@ MQTT 内部主题统一为 `nexusmind/home/{homeId}/device/{deviceId}/state` 和
 | 家庭空间 | `GET /smart-home/spaces` | Home+ 页面空间与摘要 |
 | 设备 | `GET /smart-home/devices`、`POST /connectors/{id}/discovery`、`POST /connectors/{id}/sync` | 查看、发现并同步标准化设备 |
 | 场景 | `GET /smart-home/scenes`、`POST /smart-home/scenes/{key}/run` | 回家/离家/睡眠入口 |
-| Expert Run | `POST /experts/{key}/runs`、`POST /housekeeper-runs`、`GET /expert-runs/{id}`、`GET /expert-runs/{id}/events`、`GET /expert-runs/{id}/actions` | 创建家庭管家分析、查看进度、事件和待确认方案 |
+| Expert Run | `POST /experts/{key}/runs`、`POST /housekeeper-runs`、`GET /expert-runs/{id}`、`GET /expert-runs/{id}/events`、`GET /expert-runs/{id}/actions` | 创建家庭管家分析、查看进度、事件和待确认方案；会话发送的消息创建的 Run 携带 `conversation_id` |
 | Run Action | `POST /expert-runs/{id}/actions/{actionId}/confirm` | 明确确认待执行动作 |
+| 会话（专家对话框） | `GET/POST /conversations`、`GET/PUT/DELETE /conversations/{id}`、`GET /conversations/{id}/messages`、`POST /conversations/{id}/messages` | 会话 CRUD（列表/新建/重命名/软删除+审计）、消息历史（游标分页）与发送；发送复用 Expert Run 链路并携带 `conversation_id` |
 | Automation | `GET/POST/PATCH /automation-rules` | 管理已确认自动化 |
-| 个人 Connector 授权（V2.4） | `POST /connector-providers/{code}/authorizations`、服务端 OAuth callback、`GET /connector-authorizations/{id}`、`DELETE /connector-authorizations/{id}` | 仅当前成员发起/查看/撤销个人绑定；字段与错误码发布后实现 |
+| 个人 Connector 授权（V2.4，B18 已发布） | `POST /connector-providers/{code}/authorizations`、服务端 OAuth callback、`GET /connector-authorizations/{id}`、`DELETE /connector-authorizations/{id}` | 仅当前成员（`connector.authorize`）发起/查看/撤销个人绑定；会话单次使用、state 哈希与 PKCE 密文引用、凭据仅 vault 引用落库 |
 
 接口新增/变更的完成条件：`docs/frontend-api-integration.md` 含请求、响应、错误示例；`docs/api-implementation.md` 更新路由状态；前端实施文档的接口依赖同步更新。
 
@@ -159,6 +165,7 @@ MQTT 内部主题统一为 `nexusmind/home/{homeId}/device/{deviceId}/state` 和
 | 用户确认行动 | 校验权限、版本与幂等键后执行 | 重复提交返回原行动结果，状态可查询 |
 | Home+ 空间页 | 返回标准化空间、设备摘要、场景 | 隐藏供应商协议字段，输出自然语言所需状态及更新时间 |
 | Connector 管理 | 返回连接健康、授权与发现结果 | 凭据脱敏；断连/授权中/失败可被 UI 直接区分 |
+| 专家对话框 | 创建关联会话的 Run、轮询、终态追加 assistant 消息 | 发送返回 Run ID 与 `queued` 状态；历史游标分页；消息内容脱敏，不返回 Prompt/思考链 |
 
 对于 Expert Run，建议使用短轮询的 `GET /expert-runs/{id}` 作为 V1 标准；API 应提供稳定的 `status`、`actions`、`updatedAt` 和可安全展示的 `error` 字段。不要要求 Flutter 页面解析日志文本或推断状态。
 
@@ -172,6 +179,7 @@ MQTT 内部主题统一为 `nexusmind/home/{homeId}/device/{deviceId}/state` 和
 - 外部调用设置超时、有限重试和幂等语义，绝不因重试产生重复设备动作。
 - Home Assistant 是设备驱动层，业务 API 不直接转发其控制接口；Zigbee2MQTT/MQTT 支持本地优先运行，厂商云 Adapter 必须处理限流、Token 刷新和云端延迟；
 - 家庭 Agent 或 Node-RED 不能绕过权限校验、Run Action 审计与 `automation_rules`；离线补报必须保留原始发生时间与执行来源。
+- 会话与消息 `conversation.read` / `conversation.write` 仅作用于 `owner_user_id=本人` 的会话；用户自建专家 `expert.mine.read` / `expert.mine.write` 仅作用于 `experts.owner_user_id=本人` 的资源，跨用户/跨租户一律 404。
 
 ## 8. 后端实施顺序与验收
 
@@ -191,6 +199,7 @@ MQTT 内部主题统一为 `nexusmind/home/{homeId}/device/{deviceId}/state` 和
 | 第三阶段 | 自动化与稳定性 | 规则触发、同步队列、重试与可观测性纳入生产基线 |
 | 第四阶段 | Expert Files 与多专家团队编排 | 上传、扫描、附件、读取令牌；版本化 `sequential`/`parallel`/`synthesis` 团队；成员权限交集；不绕过既有 Action 边界 |
 | 第五阶段 | V2.3 个人生活专家（B15-B17） | `personal_favorites` 迁移、CRUD 与审计；`personal-life-expert` 注册与翻牌/行程 Run 链路；日历同步确认与联调验收 |
+| 第六阶段 | 专家会话与自建专家（B19-B20） | `conversations`/`conversation_messages` 迁移与实体、`experts.owner_user_id` 扩展、`expert_runs.conversation_id`、`IConversationService`（会话 CRUD/消息/上下文拼接）、会话与消息 API、`GET /experts?scope=basic\|mine\|all` 过滤；验收：归属隔离、上下文拼接、消息追溯（run_id）、scope 过滤与跨用户 404 |
 
 阶段 8（Expert Files 与多专家团队编排）新增 8 张表 `expert_files`、`expert_file_objects`、`expert_file_attachments`、`team_run_templates`、`team_run_template_versions`、`team_runs`、`team_run_members`、`team_run_audits`，全部按 `tenant_id` 隔离并使用 UTC `DATETIME(3)`、乐观 `row_version`、状态/模式检查约束。文件二进制不进入数据库；对象存储由 `IExpertFileStorage` 抽象隔离，`LocalExpertFileStorage` 作为受控本地实现，`ExpertFiles:Storage:Enabled=false` 时返回可读 `503`。扫描走 `IExpertFileScanner`，默认仅做扩展名、MIME、大小、SHA-256 校验；状态固定为 `pending_upload | scanning | ready | rejected | deleted`，仅 `ready` 文件可被附加或被运行时读取。
 
@@ -388,3 +397,11 @@ HomeMind.Business.Services/Life/
 迁移新增 `workspace_connectors.binding_scope`、`owner_user_id` 与 `connector_authorization_sessions`。数据约束保证家庭实例 owner 为空、个人实例 owner 非空且属于同一 active tenant member；创建 Run 时将实例 scope/owner 纳入权限快照，Action 确认和执行前实时复验。现有 `users`、`tenants`、`tenant_members.role` 已满足账户、成员与固定 `owner/admin/member/viewer` 角色，不新增可编辑角色/权限表。
 
 Web 路由由前端版本发布，服务端权限码始终为唯一授权依据；不持久化 API 路由。若后续需要每家庭菜单个性化，新增独立 `web_navigation_preferences`，只允许已发布 `route_key` 的显隐/排序，不保存 URL、权限表达式或脚本。V2.4 API、迁移、服务与 OAuth 安全验证完成前，移动端/Web 只消费现有家庭级 Connector 契约。
+
+**B18 实施状态（2026-08-07）**：迁移 `024_v2.4_connector_scope.mysql.sql`（workspace_connectors 四列 + connector_authorization_sessions + expert_runs.permission_snapshot_json + family_audit_logs CHECK 扩展 + mock_oauth Provider）与 EF 迁移 `AddConnectorScopeAndAuthSessions` 已落地；`IConnectorAuthorizationServices`（发起/服务端回调/状态/撤销，state 哈希 + PKCE 密文引用 + 会话单次使用与 10 分钟过期 + 回调白名单）已发布；新增权限名 `connector.authorize`（owner/admin/member）；`WorkspaceConnectorView` 携带 `BindingScope`/`IsCurrentUserOwner`，personal 实例仅 owner 可见；Run 创建写入权限快照（scope/owner），Action 确认前复验（personal 仅 owner、household 实时复验 grant）；Mock OAuth Provider（`mock_oauth`）供开发/测试端到端验证；`dotnet build` 0 errors/0 CS1591，`dotnet test` 94/94；真实 MySQL 024 顺序迁移与真实 Provider OAuth 按部署环境验证。
+
+### 13.1 专家会话增量（专家对话框）
+
+会话化将专家交互从「单次运行」扩展为「会话（对话框）」：移动端纯对话、遍历询问，PC 端承载维护与运行细节。新增迁移 `conversations`、`conversation_messages`，并扩展 `experts.owner_user_id` 与 `expert_runs.conversation_id`（可空）。`experts.owner_user_id` 为空表示平台基础专家（开发端维护、全家可见），非空表示用户自建专家（PC 用户端维护、仅创建者本人可见）。会话发送消息复用既有 `IExpertRunService` 创建 Run（携带 `conversation_id`），消息历史即会话上下文（运行时拼接，复用 `input_context` 语义），终态后写入 `assistant` 消息并保留 `run_id`；跨用户/跨租户访问一律 404。
+
+API：`GET/POST /conversations`、`GET/PUT/DELETE /conversations/{id}`（软删除+审计）、`GET /conversations/{id}/messages`（游标分页）、`POST /conversations/{id}/messages`（发送）；`GET /experts?scope=basic|mine|all` 区分平台基础专家与本人自建专家。权限：`conversation.read/write`（仅本人会话）与 `expert.mine.read/write`（仅本人自建专家）。验收：迁移、归属隔离、上下文拼接、消息追溯（run_id）、scope 过滤与跨用户 404；字段级契约同步 `frontend-api-integration.md` 与 `api-implementation.md`。

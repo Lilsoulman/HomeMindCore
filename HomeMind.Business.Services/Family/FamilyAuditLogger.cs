@@ -27,7 +27,10 @@ public sealed class FamilyAuditLogger : IFamilyAuditLogger
         FamilyAuditActions.FavoriteCreate,
         FamilyAuditActions.FavoriteUpdate,
         FamilyAuditActions.FavoriteDelete,
-        FamilyAuditActions.FavoriteImport
+        FamilyAuditActions.FavoriteImport,
+        FamilyAuditActions.ConnectorAuthorizeStarted,
+        FamilyAuditActions.ConnectorAuthorizeCompleted,
+        FamilyAuditActions.ConnectorAuthorizeRevoked
     };
     private static readonly HashSet<string> AllowedTargetTypes = new(StringComparer.Ordinal)
     {
@@ -36,7 +39,8 @@ public sealed class FamilyAuditLogger : IFamilyAuditLogger
         FamilyAuditTargetTypes.DecisionHistory,
         FamilyAuditTargetTypes.ConfirmationItem,
         FamilyAuditTargetTypes.StewardActivity,
-        FamilyAuditTargetTypes.PersonalFavorite
+        FamilyAuditTargetTypes.PersonalFavorite,
+        FamilyAuditTargetTypes.ConnectorAuthorization
     };
 
     private readonly HomeMindDbContext _db;
