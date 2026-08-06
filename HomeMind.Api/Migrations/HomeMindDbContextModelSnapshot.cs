@@ -121,6 +121,11 @@ namespace HomeMind.Api.Migrations
                         .HasColumnType("decimal(65,30)")
                         .HasColumnName("actual_credits");
 
+                    b.Property<string>("AutoConfirmPolicy")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("auto_confirm_policy");
+
                     b.Property<DateTime?>("CancelRequestedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("cancel_requested_at");
@@ -150,6 +155,11 @@ namespace HomeMind.Api.Migrations
                         .IsRequired()
                         .HasColumnType("json")
                         .HasColumnName("input_json");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("mode");
 
                     b.Property<string>("RequestIdempotencyKey")
                         .IsRequired()
@@ -209,6 +219,34 @@ namespace HomeMind.Api.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint")
                         .HasColumnName("user_id");
+
+                    b.Property<byte[]>("ApiKeyEncrypted")
+                        .HasColumnType("blob")
+                        .HasColumnName("api_key_encrypted");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(3)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<string>("Endpoint")
+                        .HasColumnType("varchar(512)")
+                        .HasColumnName("endpoint");
+
+                    b.Property<string>("Model")
+                        .HasColumnType("varchar(128)")
+                        .HasColumnName("model");
+
+                    b.Property<long>("SyncVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_version");
+
+                    b.Property<double>("Temperature")
+                        .HasColumnType("decimal(3,2)")
+                        .HasColumnName("temperature");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(3)")
+                        .HasColumnName("updated_at");
 
                     b.HasKey("UserId");
 
@@ -1046,6 +1084,295 @@ namespace HomeMind.Api.Migrations
                     b.ToTable("expert_versions");
                 });
 
+            modelBuilder.Entity("HomeMind.Common.Model.Entities.Family.DecisionHistory", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Alternatives")
+                        .HasColumnType("json")
+                        .HasColumnName("alternatives_json");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime>("DecidedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("DecisionMade")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("decision_made");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<long>("HomeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("home_id");
+
+                    b.Property<long?>("MadeByMemberId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("made_by_member_id");
+
+                    b.Property<long?>("MadeByUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("made_by_user_id");
+
+                    b.Property<string>("Rationale")
+                        .HasColumnType("longtext")
+                        .HasColumnName("rationale");
+
+                    b.Property<long>("RowVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("Scenario")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("scenario");
+
+                    b.Property<long>("SyncVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_version");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("decision_history");
+                });
+
+            modelBuilder.Entity("HomeMind.Common.Model.Entities.Family.FamilyAuditLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("action");
+
+                    b.Property<long?>("ActorUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("json")
+                        .HasColumnName("after_json");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("json")
+                        .HasColumnName("before_json");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<long>("HomeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("home_id");
+
+                    b.Property<string>("Reason")
+                        .HasColumnType("longtext")
+                        .HasColumnName("reason");
+
+                    b.Property<long?>("RelatedRunId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("related_run_id");
+
+                    b.Property<long?>("TargetId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("target_type");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("family_audit_logs");
+                });
+
+            modelBuilder.Entity("HomeMind.Common.Model.Entities.Family.FamilyKnowledge", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("category");
+
+                    b.Property<decimal>("ConfidenceScore")
+                        .HasPrecision(4, 3)
+                        .HasColumnType("decimal(4,3)")
+                        .HasColumnName("confidence_score");
+
+                    b.Property<string>("ConflictResolutionStrategy")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("conflict_resolution_strategy");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedByUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<long>("HomeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("home_id");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("knowledge_key");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("longtext")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("ResolutionSummary")
+                        .HasColumnType("longtext")
+                        .HasColumnName("resolution_summary");
+
+                    b.Property<long>("RowVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("row_version");
+
+                    b.Property<long?>("SourceMemberId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_member_id");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("source_type");
+
+                    b.Property<long>("SyncVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_version");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("knowledge_value");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("family_knowledge");
+                });
+
+            modelBuilder.Entity("HomeMind.Common.Model.Entities.Family.FamilyMember", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("Birthday")
+                        .HasColumnType("date")
+                        .HasColumnName("birthday");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<long>("CreatedByUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<long>("HomeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("home_id");
+
+                    b.Property<bool>("IsChild")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_child");
+
+                    b.Property<bool>("IsElderly")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_elderly");
+
+                    b.Property<bool>("IsPrimary")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("is_primary");
+
+                    b.Property<string>("MemberStatus")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("member_status");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Preferences")
+                        .HasColumnType("json")
+                        .HasColumnName("preferences_json");
+
+                    b.Property<string>("Relation")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("relation");
+
+                    b.Property<long>("RowVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("row_version");
+
+                    b.Property<long>("SyncVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_version");
+
+                    b.Property<DateTime?>("TerminalCorrectedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("terminal_corrected_at");
+
+                    b.Property<long?>("TerminalCorrectedByUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("terminal_corrected_by_user_id");
+
+                    b.Property<string>("TerminalCorrectionReason")
+                        .HasColumnType("longtext")
+                        .HasColumnName("terminal_correction_reason");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("family_members");
+                });
+
             modelBuilder.Entity("HomeMind.Common.Model.Entities.IcalOverride", b =>
                 {
                     b.Property<long>("Id")
@@ -1592,6 +1919,10 @@ namespace HomeMind.Api.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("id");
 
+                    b.Property<byte?>("BatteryLevel")
+                        .HasColumnType("tinyint unsigned")
+                        .HasColumnName("battery_level");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("created_at");
@@ -1609,6 +1940,11 @@ namespace HomeMind.Api.Migrations
                         .HasColumnType("longtext")
                         .HasColumnName("external_id");
 
+                    b.Property<string>("HealthStatus")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("health_status");
+
                     b.Property<DateTime?>("LastSeenAt")
                         .HasColumnType("datetime(6)")
                         .HasColumnName("last_seen_at");
@@ -1622,6 +1958,10 @@ namespace HomeMind.Api.Migrations
                         .IsRequired()
                         .HasColumnType("longtext")
                         .HasColumnName("online_status");
+
+                    b.Property<int?>("SignalLqi")
+                        .HasColumnType("int")
+                        .HasColumnName("signal_lqi");
 
                     b.Property<long?>("SpaceId")
                         .HasColumnType("bigint")
@@ -1646,6 +1986,10 @@ namespace HomeMind.Api.Migrations
                     b.Property<long?>("WorkspaceConnectorId")
                         .HasColumnType("bigint")
                         .HasColumnName("workspace_connector_id");
+
+                    b.Property<string>("ZigbeeRole")
+                        .HasColumnType("longtext")
+                        .HasColumnName("zigbee_role");
 
                     b.HasKey("Id");
 
@@ -1803,6 +2147,207 @@ namespace HomeMind.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("workspace_connectors");
+                });
+
+            modelBuilder.Entity("HomeMind.Common.Model.Entities.Steward.ConfirmationBatchRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ConfirmationIdsJson")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("confirmation_ids_json");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<long>("HomeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("home_id");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasColumnType("varchar(255)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("result_json");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HomeId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("confirmation_batch_records");
+                });
+
+            modelBuilder.Entity("HomeMind.Common.Model.Entities.Steward.ConfirmationItem", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<long?>("ActivityId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("activity_id");
+
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<long?>("ConfirmedByUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("confirmed_by_user_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DenialReason")
+                        .HasColumnType("longtext")
+                        .HasColumnName("denial_reason");
+
+                    b.Property<DateTime?>("DeniedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("denied_at");
+
+                    b.Property<long?>("DeniedByUserId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("denied_by_user_id");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext")
+                        .HasColumnName("description");
+
+                    b.Property<DateTime?>("ExpiredAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("expired_at");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("expires_at");
+
+                    b.Property<long>("HomeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("home_id");
+
+                    b.Property<string>("ImpactSummary")
+                        .HasColumnType("longtext")
+                        .HasColumnName("impact_summary");
+
+                    b.Property<string>("RiskLevel")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("risk_level");
+
+                    b.Property<long>("RowVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("row_version");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("status");
+
+                    b.Property<string>("SuggestedAction")
+                        .HasColumnType("longtext")
+                        .HasColumnName("suggested_action");
+
+                    b.Property<long>("SyncVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_version");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("confirmation_items");
+                });
+
+            modelBuilder.Entity("HomeMind.Common.Model.Entities.Steward.StewardActivity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("category");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("longtext")
+                        .HasColumnName("description");
+
+                    b.Property<long>("HomeId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("home_id");
+
+                    b.Property<string>("ResultSummary")
+                        .HasColumnType("longtext")
+                        .HasColumnName("result_summary");
+
+                    b.Property<string>("RiskLevel")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("risk_level");
+
+                    b.Property<long>("RowVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("row_version");
+
+                    b.Property<long?>("RunId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("run_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("status");
+
+                    b.Property<long>("SyncVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sync_version");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("longtext")
+                        .HasColumnName("title");
+
+                    b.Property<bool>("Undoable")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("undoable");
+
+                    b.Property<DateTime?>("UndoneAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("undone_at");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("steward_activities");
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Subtask", b =>

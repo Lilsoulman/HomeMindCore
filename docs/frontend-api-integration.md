@@ -1,32 +1,31 @@
-# Frontend API Integration Guide
+# 前端 API 集成指南
 
-This document is the contract for the HomeMind backend (`HomeMind.Api`).
-Update it together with any controller change.
+本文档是 HomeMind 后端（`HomeMind.Api`）的接口契约。
+任何控制器变更必须同步更新本文档。
 
-## 1. Base information
+## 1. 基础信息
 
-| Item | Value |
+| 项目 | 值 |
 | --- | --- |
-| Base URL (local dev) | `http://localhost:5280` |
-| API prefix | `/api/v1` |
+| 基础地址（本地开发） | `http://localhost:5280` |
+| API 前缀 | `/api/v1` |
 | Content-Type | `application/json; charset=utf-8` |
-| Auth header | `Authorization: Bearer <accessToken>` |
+| 认证头 | `Authorization: Bearer <accessToken>` |
 | Swagger UI | `http://localhost:5280/swagger` |
 
-## 2. Naming convention
+## 2. 命名约定
 
-| Direction | Convention | Example |
+| 方向 | 约定 | 示例 |
 | --- | --- | --- |
-| Request body (JSON) | **小驼峰 camelCase** | `{"displayName":"Alex"}` |
-| Request query / path params | **小驼峰 camelCase** | `?from=2026-08-01&to=2026-08-31` |
-| Response envelope fields | PascalCase | `{"Code":0,"Msg":"ok","Data":{...}}` |
-| Response `Data` fields | **大驼峰 PascalCase** | `"StartAt":"2026-08-01T09:00:00Z"` |
+| 请求体（JSON） | **小驼峰 camelCase** | `{"displayName":"Alex"}` |
+| 请求 query / path 参数 | **小驼峰 camelCase** | `?from=2026-08-01&to=2026-08-31` |
+| 响应封装字段 | PascalCase | `{"Code":0,"Msg":"ok","Data":{...}}` |
+| 响应 `Data` 字段 | **大驼峰 PascalCase** | `"StartAt":"2026-08-01T09:00:00Z"` |
 
-> The envelope (`Code / Msg / Data`) is fixed. The actual business payload
-> inside `Data` is always PascalCase, matching the C# property names. Requests
-> are accepted in camelCase.
+> 响应封装（`Code / Msg / Data`）固定不变。`Data` 内的实际业务负载
+> 一律使用 PascalCase，与 C# 属性名保持一致。请求则接受 camelCase。
 
-## 3. Unified response envelope
+## 3. 统一响应封装
 
 ```json
 {
@@ -36,39 +35,39 @@ Update it together with any controller change.
 }
 ```
 
-| Field | Type | Description |
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `Code` | int | `0` = success; non-zero = business / framework error code |
-| `Msg` | string | Human readable message, `ok` on success |
-| `Data` | object \| null | Business payload; structure depends on the endpoint |
+| `Code` | int | `0` = 成功；非零 = 业务/框架错误码 |
+| `Msg` | string | 人类可读的消息，成功时为 `ok` |
+| `Data` | object \| null | 业务负载；结构取决于具体接口 |
 
-### Common error codes
+### 常见错误码
 
-| HTTP | `Code` | Meaning |
+| HTTP | `Code` | 含义 |
 | --- | --- | --- |
-| 200 | 0 | Success |
-| 400 | 400 | Validation error (missing required field, etc.) |
-| 401 | 401 | Missing or invalid bearer token |
-| 401 | 401 | Refresh token invalid / expired / revoked |
-| 404 | 404 | Resource not found, or not owned by the caller |
-| 409 | 409 | Conflict (e.g. phone already bound) |
-| 422 | 422 | Business validation failure |
-| 503 | 503 | Database service temporarily unavailable |
-| 500 | 500 | Unhandled server error |
-| 501 | 501 | Endpoint is gated until external config is supplied |
+| 200 | 0 | 成功 |
+| 400 | 400 | 参数校验错误（缺少必填字段等） |
+| 401 | 401 | 缺少或无效的 Bearer 令牌 |
+| 401 | 401 | 刷新令牌无效/过期/已撤销 |
+| 404 | 404 | 资源不存在，或不属于调用者 |
+| 409 | 409 | 冲突（例如手机号已绑定） |
+| 422 | 422 | 业务校验失败 |
+| 503 | 503 | 数据库服务暂时不可用 |
+| 500 | 500 | 未处理的服务器错误 |
+| 501 | 501 | 接口被门控，需提供外部配置后才能启用 |
 
-## 4. Auth module (`/api/v1/auth`)
+## 4. 认证模块（`/api/v1/auth`）
 
-All non-auth endpoints require a valid bearer access token. The token carries
-`user_id`, `tenant_id`, `device_id` and `role` claims. Refresh tokens are
-opaque and rotated on every `POST /api/v1/auth/refresh`.
+除认证接口外，所有接口都需要有效的 Bearer 访问令牌。令牌携带
+`user_id`、`tenant_id`、`device_id` 和 `role` 声明。刷新令牌是不透明的，
+每次调用 `POST /api/v1/auth/refresh` 都会轮换。
 
 ### 4.1 `POST /api/v1/auth/register`
 
-Register a new personal account with phone + password and return session
-tokens. The backend creates a personal tenant automatically.
+使用手机号 + 密码注册新的个人账户并返回会话令牌。
+后端会自动创建个人租户。
 
-Request:
+请求：
 
 ```json
 {
@@ -80,7 +79,7 @@ Request:
 }
 ```
 
-Response `Data`:
+响应 `Data`：
 
 ```json
 {
@@ -91,17 +90,16 @@ Response `Data`:
 }
 ```
 
-When the phone is already bound and the supplied password is correct, this
-endpoint creates a session and returns `200`, so the combined
-"register and sign in" action is idempotent. Errors: `422` (missing phone or
-password < 8 chars), `409` (phone already bound but password does not match).
+当手机号已绑定且提供的密码正确时，该接口会创建会话并返回 `200`，
+因此"注册并登录"的合并操作是幂等的。错误：`422`（缺少手机号或密码
+少于 8 个字符）、`409`（手机号已绑定但密码不匹配）。
 
 ### 4.2 `POST /api/v1/auth/login`
 
-Phone + password login. `installationId` is required to bind the current
-device session; the server upserts a row in `auth_devices`.
+手机号 + 密码登录。`installationId` 为必填，用于绑定当前设备会话；
+服务器会在 `auth_devices` 表中执行 upsert。
 
-Request:
+请求：
 
 ```json
 {
@@ -112,25 +110,24 @@ Request:
 }
 ```
 
-Response `Data`: same shape as register.
+响应 `Data`：与注册接口结构相同。
 
 ### 4.3 `POST /api/v1/auth/refresh`
 
-Exchange a refresh token for a fresh access + refresh pair. The previous
-refresh token is revoked; reusing a revoked token invalidates the entire
-family.
+用刷新令牌换取新的 access + refresh 令牌对。之前的刷新令牌会被撤销；
+重复使用已撤销的令牌会使整个令牌族失效。
 
-Request:
+请求：
 
 ```json
 { "refreshToken": "<opaque>" }
 ```
 
-Response `Data`: same shape as register.
+响应 `Data`：与注册接口结构相同。
 
 ### 4.4 `GET /api/v1/auth/me`
 
-Permission: `identity.read`. Returns the profile of the current user.
+权限：`identity.read`。返回当前用户的资料。
 
 ```json
 {
@@ -146,26 +143,25 @@ Permission: `identity.read`. Returns the profile of the current user.
 
 ### 4.5 `POST /api/v1/auth/logout`
 
-Permission: `identity.read`. Revokes the current access token and the
-device's refresh tokens.
+权限：`identity.read`。撤销当前访问令牌及该设备的刷新令牌。
 
 ```json
 { "loggedOut": true }
 ```
 
-### 4.6 `POST /api/v1/auth/wechat/exchange` (gated)
+### 4.6 `POST /api/v1/auth/wechat/exchange`（受限）
 
-Currently returns HTTP `501` with `Code=501` and the message
+当前返回 HTTP `501`，`Code=501`，消息为
 `"WeChat AppId, secret and callback configuration are required before code
-exchange can be enabled."` The client should treat this as a configuration
-blocker and stop retrying.
+exchange can be enabled."`（微信 AppId、密钥和回调配置就绪前无法启用
+code 交换）。客户端应将其视为配置阻塞，停止重试。
 
-## 5. Todos module (`/api/v1/todos`)
+## 5. 待办事项模块（`/api/v1/todos`）
 
 ### 5.1 `GET /api/v1/todos`
 
-Permission: `todo.read`. Query parameters (all optional): `status`, `type`,
-`from`, `to` (UTC `DateTime`).
+权限：`todo.read`。查询参数（均可选）：`status`、`type`、
+`from`、`to`（UTC `DateTime`）。
 
 ```json
 [
@@ -191,9 +187,9 @@ Permission: `todo.read`. Query parameters (all optional): `status`, `type`,
 
 ### 5.2 `POST /api/v1/todos`
 
-Permission: `todo.write`.
+权限：`todo.write`。
 
-Request:
+请求：
 
 ```json
 {
@@ -213,32 +209,31 @@ Request:
 }
 ```
 
-`status` defaults to `pending`; `pinned` defaults to `false`;
-`sortOrder` defaults to `0`. `title` is required.
+`status` 默认为 `pending`；`pinned` 默认为 `false`；
+`sortOrder` 默认为 `0`。`title` 为必填。
 
-Response `Data`: same shape as a single row from `GET /api/v1/todos`.
+响应 `Data`：与 `GET /api/v1/todos` 的单个行结构相同。
 
 ### 5.3 `PUT /api/v1/todos/{id}`
 
-Permission: `todo.write`. Any omitted field is left unchanged. Setting
-`status` to `completed` stamps `CompletedAt`; resetting to `pending` clears
-it.
+权限：`todo.write`。省略的字段保持不变。将 `status` 设为 `completed`
+会写入 `CompletedAt`；重置为 `pending` 会清除它。
 
-Request body: same as `POST /api/v1/todos`.
+请求体：与 `POST /api/v1/todos` 相同。
 
 ### 5.4 `DELETE /api/v1/todos/{id}`
 
-Permission: `todo.write`. Soft delete; returns `{ "id": 12 }`.
+权限：`todo.write`。软删除；返回 `{ "id": 12 }`。
 
 ### 5.5 `POST /api/v1/todos/{id}/subtasks`
 
-Permission: `todo.write`.
+权限：`todo.write`。
 
 ```json
 { "text": "Pick up at store", "seq": 1 }
 ```
 
-Response `Data`:
+响应 `Data`：
 
 ```json
 { "id": 5, "text": "Pick up at store", "done": 0, "seq": 1 }
@@ -246,7 +241,7 @@ Response `Data`:
 
 ### 5.6 `PUT /api/v1/todos/{id}/subtasks/{subId}`
 
-Permission: `todo.write`. Omitted fields keep their previous value.
+权限：`todo.write`。省略的字段保留原值。
 
 ```json
 { "text": "Pick up at store", "done": true, "seq": 1 }
@@ -254,14 +249,13 @@ Permission: `todo.write`. Omitted fields keep their previous value.
 
 ### 5.7 `DELETE /api/v1/todos/{id}/subtasks/{subId}`
 
-Permission: `todo.write`. Soft delete; returns `{ "id": 5 }`.
+权限：`todo.write`。软删除；返回 `{ "id": 5 }`。
 
-## 6. Calendar module (`/api/v1/calendar`)
+## 6. 日历模块（`/api/v1/calendar`）
 
 ### 6.1 `GET /api/v1/calendar/events`
 
-Permission: `calendar.read`. Optional `from` / `to` query params (UTC
-`DateTime`).
+权限：`calendar.read`。可选的 `from` / `to` 查询参数（UTC `DateTime`）。
 
 ```json
 [
@@ -285,7 +279,7 @@ Permission: `calendar.read`. Optional `from` / `to` query params (UTC
 
 ### 6.2 `POST /api/v1/calendar/events`
 
-Permission: `calendar.write`. `title` and `startAt` are required.
+权限：`calendar.write`。`title` 和 `startAt` 为必填。
 
 ```json
 {
@@ -304,13 +298,11 @@ Permission: `calendar.write`. `title` and `startAt` are required.
 
 ### 6.3 `PUT /api/v1/calendar/events/{id}` / `DELETE /api/v1/calendar/events/{id}`
 
-Permission: `calendar.write`. Same payload as create, soft delete returns
-`{ "id": 7 }`.
+权限：`calendar.write`。负载与创建接口相同，软删除返回 `{ "id": 7 }`。
 
 ### 6.4 `GET /api/v1/calendar/subscriptions`
 
-Permission: `calendar.read`. Returns the current user's external iCal
-subscriptions.
+权限：`calendar.read`。返回当前用户的外部 iCal 订阅。
 
 ```json
 [
@@ -328,8 +320,7 @@ subscriptions.
 
 ### 6.5 `POST /api/v1/calendar/subscriptions`
 
-Permission: `calendar.write`. `url` must be an absolute URL and is stored
-encrypted server-side.
+权限：`calendar.write`。`url` 必须是绝对 URL，并在服务端加密存储。
 
 ```json
 {
@@ -342,20 +333,20 @@ encrypted server-side.
 
 ### 6.6 `PUT /api/v1/calendar/subscriptions/{id}` / `DELETE /api/v1/calendar/subscriptions/{id}`
 
-Permission: `calendar.write`. Update `name` / `enabled` / `refreshIntervalMin`
-only. Delete is soft.
+权限：`calendar.write`。仅更新 `name` / `enabled` / `refreshIntervalMin`。
+删除为软删除。
 
-### 6.7 `POST /api/v1/calendar/ical/fetch` (gated)
+### 6.7 `POST /api/v1/calendar/ical/fetch`（受限）
 
-Returns HTTP `501` with `Code=501` and message
+返回 HTTP `501`，`Code=501`，消息为
 `"iCal network fetch is disabled until SSRF allow-list rules are
-configured."`
+configured."`（配置 SSRF 白名单规则前，iCal 网络拉取处于禁用状态）。
 
-## 7. AI Skills module (`/api/v1/skills`)
+## 7. AI 技能模块（`/api/v1/skills`）
 
 ### 7.1 `GET /api/v1/skills`
 
-Permission: `ai.skills.read`.
+权限：`ai.skills.read`。
 
 ```json
 [
@@ -374,8 +365,8 @@ Permission: `ai.skills.read`.
 
 ### 7.2 `POST /api/v1/skills`
 
-Permission: `ai.skills.write`. `name` and `prompt` are required; `scopes`
-is a JSON array string; `isActive` defaults to `true`.
+权限：`ai.skills.write`。`name` 和 `prompt` 为必填；`scopes`
+是 JSON 数组字符串；`isActive` 默认为 `true`。
 
 ```json
 {
@@ -388,30 +379,29 @@ is a JSON array string; `isActive` defaults to `true`.
 
 ### 7.3 `PUT /api/v1/skills/{id}` / `DELETE /api/v1/skills/{id}`
 
-Permission: `ai.skills.write`. Soft delete returns `{ "id": 2 }`.
+权限：`ai.skills.write`。软删除返回 `{ "id": 2 }`。
 
-## 8. AI Experts and AgentRun module (`/api/v1/...`)
+## 8. AI 专家与 AgentRun 模块（`/api/v1/...`）
 
-`ExpertsController` is mounted on `api/v1` (not `api/v1/experts`) to keep
-the legacy `/experts` and `/expert-runs` paths. `/expert-runs` is the stable
-compatibility route name; its domain resource and Flutter DTO are `AgentRun`.
-All new AI workflows must use AgentRun. The Expert endpoint supplies policy
-(role, prompt, permitted Skills and permissions) and never executes a Skill or
-Connector call itself.
+`ExpertsController` 挂载在 `api/v1` 下（而非 `api/v1/experts`），以保留
+旧的 `/experts` 和 `/expert-runs` 路径。`/expert-runs` 是稳定的兼容路由名；
+其领域资源和 Flutter DTO 均为 `AgentRun`。所有新的 AI 工作流必须使用
+AgentRun。Expert 接口只提供策略（角色、提示词、允许的 Skill 和权限），
+自身绝不执行 Skill 或 Connector 调用。
 
-AgentRun status is always one of:
+AgentRun 状态永远是以下之一：
 
 ```text
 draft | queued | planning | running | completed | failed | cancelled
 ```
 
-The client renders only display-safe Run events and controlled actions. It must
-not show prompts, chain-of-thought, provider logs, credentials or vendor fields.
+客户端只渲染可安全展示的 Run 事件和受控操作。它不得展示提示词、
+思维链、供应商日志、凭据或厂商字段。
 
 ### 8.1 `GET /api/v1/experts`
 
-Permission: `ai.read`. Optional query params: `query`, `category`, `type`
-(`expert` | `group`).
+权限：`ai.read`。可选查询参数：`query`、`category`、`type`
+（`expert` | `group`）。
 
 ```json
 [
@@ -438,7 +428,7 @@ Permission: `ai.read`. Optional query params: `query`, `category`, `type`
 
 ### 8.2 `GET /api/v1/experts/{id}?type=expert|group`
 
-Permission: `ai.read`.
+权限：`ai.read`。
 
 ```json
 {
@@ -457,13 +447,13 @@ Permission: `ai.read`.
 }
 ```
 
-For `type=group` the persona/methodology/toolPolicy fields are replaced by
-`OrchestrationPolicy`.
+对于 `type=group`，persona/methodology/toolPolicy 字段由
+`OrchestrationPolicy` 取代。
 
-### 8.3 `POST /api/v1/expert-runs` (create AgentRun)
+### 8.3 `POST /api/v1/expert-runs`（创建 AgentRun）
 
-Permission: `ai.run`. Creates an AgentRun and queues it; response `Data` is the same as
-`GET /api/v1/expert-runs/{id}`.
+权限：`ai.run`。创建 AgentRun 并放入队列；响应 `Data` 与
+`GET /api/v1/expert-runs/{id}` 相同。
 
 ```json
 {
@@ -474,9 +464,9 @@ Permission: `ai.run`. Creates an AgentRun and queues it; response `Data` is the 
 }
 ```
 
-### 8.4 `GET /api/v1/expert-runs/{id}` (get AgentRun)
+### 8.4 `GET /api/v1/expert-runs/{id}`（获取 AgentRun）
 
-Permission: `ai.run`.
+权限：`ai.run`。
 
 ```json
 {
@@ -496,7 +486,7 @@ Permission: `ai.run`.
 
 ### 8.5 `GET /api/v1/expert-runs/{id}/events`
 
-Permission: `ai.run`. Returns ordered run events.
+权限：`ai.run`。返回按顺序排列的 Run 事件。
 
 ```json
 [
@@ -512,8 +502,8 @@ Permission: `ai.run`. Returns ordered run events.
 
 ### 8.6 `POST /api/v1/expert-runs/{id}/cancel`
 
-Permission: `ai.run`. Best-effort cancel; immediately-cancellable runs are
-flipped to `cancelled`, others record `cancelRequestedAt`.
+权限：`ai.run`。尽力而为的取消；可立即取消的 Run 会被翻转为
+`cancelled`，其他的记录 `cancelRequestedAt`。
 
 ```json
 { "id": 9, "cancelRequested": true }
@@ -521,8 +511,7 @@ flipped to `cancelled`, others record `cancelRequestedAt`.
 
 ### 8.7 `POST /api/v1/expert-runs/{id}/retry`
 
-Permission: `ai.run`. Allowed only when the AgentRun is in `failed` or
-`cancelled`.
+权限：`ai.run`。仅当 AgentRun 处于 `failed` 或 `cancelled` 状态时允许。
 
 ```json
 { "id": 9, "status": "queued" }
@@ -530,8 +519,8 @@ Permission: `ai.run`. Allowed only when the AgentRun is in `failed` or
 
 ### 8.8 `POST /api/v1/expert-runs/{id}/actions`
 
-Permission: `ai.run`. Creates a controlled action for later Skill execution;
-creating an action does not execute an external effect.
+权限：`ai.run`。为后续 Skill 执行创建一个受控操作；
+创建操作不会执行任何外部影响。
 
 ```json
 {
@@ -541,22 +530,21 @@ creating an action does not execute an external effect.
 }
 ```
 
-`actionType` must be one of `plan`, `todos`, `calendar_events`,
-`smart_home_device`. A future Skill executor validates the action and then uses
-the Connector gateway; Flutter must never invoke vendor, Home Assistant, MQTT,
-Zigbee or Matter protocols directly.
+`actionType` 必须是 `plan`、`todos`、`calendar_events`、
+`smart_home_device` 之一。未来的 Skill 执行器会校验操作，然后通过
+Connector 网关执行；Flutter 绝不能直接调用厂商、Home Assistant、MQTT、
+Zigbee 或 Matter 协议。
 
-### 8.9 `POST /api/v1/housekeeper-runs` (legacy compatibility)
+### 8.9 `POST /api/v1/housekeeper-runs`（旧版兼容）
 
-This endpoint is retained for the existing SmartHome Mock workflow. New screens
-must start from `POST /api/v1/expert-runs` and consume AgentRun events/actions.
-Home Assistant is a future SmartHome Connector adapter, not a dependency of the
-AgentRun API contract.
+该接口为现有的 SmartHome Mock 工作流保留。新页面必须从
+`POST /api/v1/expert-runs` 开始，并消费 AgentRun 事件/操作。
+Home Assistant 是未来的 SmartHome Connector 适配器，不是 AgentRun
+API 契约的依赖。
 
-Permission: `ai.run`. Creates a completed, displayable household analysis from
-the already-synced SmartHome read model. It never sends device commands. The
-request uses a fixed intent, an optional current-tenant space, and an optional
-UUID idempotency key:
+权限：`ai.run`。根据已同步的 SmartHome 读模型创建一条已完成、
+可展示的家庭分析。它绝不发送设备命令。请求使用固定意图、可选的
+当前租户空间，以及可选的 UUID 幂等键：
 
 ```json
 {
@@ -566,12 +554,12 @@ UUID idempotency key:
 }
 ```
 
-`intent` is one of `sleep`, `away`, `arrive`, `environment_review`. The response
-has `Id`, `Status`, `ResultSummary`, timestamps, `Events` and `Actions`. Events
-contain only `Sequence`, `Type`, `Message` and `CreatedAt`. Each device action
-has `Status: "pending"`; it exposes a canonical `DeviceId`, display name,
-capability and target value, but no connector credential, vendor ID or protocol
-field. `environment_review` returns no device actions.
+`intent` 为 `sleep`、`away`、`arrive`、`environment_review` 之一。响应包含
+`Id`、`Status`、`ResultSummary`、时间戳、`Events` 和 `Actions`。事件只包含
+`Sequence`、`Type`、`Message` 和 `CreatedAt`。每个设备操作都有
+`Status: "pending"`；它暴露规范的 `DeviceId`、显示名称、能力和目标值，
+但不包含连接器凭据、厂商 ID 或协议字段。`environment_review` 不返回
+设备操作。
 
 ```json
 {
@@ -593,20 +581,18 @@ field. `environment_review` returns no device actions.
 }
 ```
 
-An unsupported intent returns `422`; when migration `009` has not initialized
-the household expert, the endpoint returns a readable `503`. Neither error
-executes a device action.
+不支持的意图返回 `422`；当迁移 `009` 尚未初始化家庭管家专家时，
+该接口返回可读的 `503`。两种错误都不会执行设备操作。
 
 ### 8.10 `GET /api/v1/expert-runs/{id}/actions`
 
-Permission: `ai.run`. Returns the same safe household Run/Event/Action view for
-the current user and tenant. A `404` response means the run is not owned by the
-current user in the current tenant.
+权限：`ai.run`。为当前用户和租户返回相同的安全家庭 Run/Event/Action
+视图。返回 `404` 表示该 Run 不属于当前租户中的当前用户。
 
 ### 8.11 `POST /api/v1/expert-runs/{runId}/actions/{actionId}/confirm`
 
-Permission: `ai.run`. Confirms exactly one pending `smart_home_device` action.
-The client must create and preserve a UUID idempotency key for this confirmation:
+权限：`ai.run`。确认恰好一个待处理的 `smart_home_device` 操作。
+客户端必须为该确认创建并保留一个 UUID 幂等键：
 
 ```json
 {
@@ -614,11 +600,10 @@ The client must create and preserve a UUID idempotency key for this confirmation
 }
 ```
 
-Before sending a command, the API rechecks that the Run belongs to the current
-user and tenant, the device remains online, its capability is writable with a
-matching value type, the Connector is healthy, and the member's Connector scope
-contains the capability permission. A repeated request with the same key returns
-the recorded result and never sends a second command.
+发送命令之前，API 会重新检查：Run 属于当前用户和租户、设备仍然在线、
+其能力可写且值类型匹配、Connector 健康，并且成员的 Connector 范围
+包含该能力权限。使用相同键的重复请求会返回已记录的结果，
+绝不再发送第二次命令。
 
 ```json
 {
@@ -633,16 +618,30 @@ the recorded result and never sends a second command.
 }
 ```
 
-Configuration/secret errors return `503`; remote device-service failures return
-`502`. Neither response exposes credentials, vendor IDs, service names or raw
-provider errors. A cross-user or cross-tenant action returns `404`.
+配置/密钥错误返回 `503`；远端设备服务故障返回 `502`。两种响应都
+不暴露凭据、厂商 ID、服务名或原始供应商错误。跨用户或跨租户的操作
+返回 `404`。
 
-### 8.12 SmartHome read model (`/api/v1/smart-home`)
+### 8.11.1 V2.2 L1 批量确认（已发布，完整契约见 8.19 确认中心）
 
-Permission: `smart_home.read`. These endpoints support the Home+ space-first
-view. All data is isolated by the access token tenant; clients must not send a
-tenant ID. The responses intentionally omit connector credentials, vendor IDs
-and protocol-specific fields.
+`POST /api/v1/homes/{homeId}/confirmations/batch-confirm` 已于 B12
+发布，请求与幂等重放语义见 8.19。仅当每个选中项都是 `pending`、
+未过期且 `riskLevel: "L1"` 时，UI 才可展示批量操作；绝不可为 L2
+或 L3 项提供此控件。该请求是"全有或全无"：任一违规项整体拒绝，
+客户端必须刷新确认列表，而不是自动重试子集。网络重试时复用同一个
+UUID；仅当用户改变了选中的集合后才创建新 UUID。
+
+V2.2 家庭成员卡片将 `memberStatus` 渲染为 `active`、`away`、
+`permanently_left` 或 `deceased`；终态修正属于受审计的管理操作，
+不是普通开关。知识视图必须保留来源、置信度和冲突策略元数据。
+设备健康视图只消费规范化的 `zigbeeRole`、`batteryLevel`、
+`signalLqi` 和 `healthStatus`。
+
+### 8.12 SmartHome 读模型（`/api/v1/smart-home`）
+
+权限：`smart_home.read`。这些接口支持 Home+ 空间优先视图。
+所有数据按访问令牌租户隔离；客户端不得发送租户 ID。
+响应有意省略连接器凭据、厂商 ID 和协议特定字段。
 
 `GET /api/v1/smart-home/spaces`
 
@@ -659,8 +658,8 @@ and protocol-specific fields.
 ]
 ```
 
-`GET /api/v1/smart-home/devices?spaceId=12` accepts an optional `spaceId`.
-The device response supplies normalized capabilities and state freshness:
+`GET /api/v1/smart-home/devices?spaceId=12` 接受可选的 `spaceId`。
+设备响应提供规范化的能力和状态新鲜度：
 
 ```json
 [
@@ -679,60 +678,90 @@ The device response supplies normalized capabilities and state freshness:
 ]
 ```
 
-`GET /api/v1/smart-home/scenes` returns active scene cards (`Id`, `Key`,
-`Name`, `Summary`, `Status`, `UpdatedAt`). Scene execution is not yet exposed;
-the UI must treat this as read-only until the confirmed Action API is delivered.
+`GET /api/v1/smart-home/scenes` 返回启用的场景卡片（`Id`、`Key`、
+`Name`、`Summary`、`Status`、`UpdatedAt`）。场景执行尚未开放；
+在确认的 Action API 交付之前，UI 必须将其视为只读。
 
-### 8.13 Dashboard and scene runs (`/api/v1`)
+`GET /api/v1/smart-home/devices/health`（B10 发布）按家庭/空间聚合
+`Healthy`、`Degraded`、`Offline`、`LowBattery` 计数与主导状态。
 
-`GET /api/v1/dashboard` requires `smart_home.read`. It returns a single
-user-and-tenant-scoped view with `GeneratedAt` and `PartialFailure`. `Home`,
-`Scenes`, `Todos`, `Calendar`, and `Suggestion` are independent modules. Each
-module has `Status` (`available` or `unavailable`), `Data`, `UpdatedAt`, and an
-optional readable `Message`; the UI must retain available cards when another
-module is unavailable.
+`GET /api/v1/smart-home/devices/{deviceId}/health`（B14 发布）返回
+单台设备健康详情：
 
-`Home.Data` contains household counts and space summaries with device online /
-offline counts and the latest normalized state timestamp. `Todos.Data` and
-`Calendar.Data` contain at most six current-user items for today. `Scenes.Data`
-always exposes the standard `arrive_home`, `leave_home`, and `sleep` shortcuts.
-The response never exposes connector credentials, vendor entity IDs, protocol
-fields, or raw device state.
+```json
+{
+  "Id": 34,
+  "SpaceId": 12,
+  "Name": "卧室空调",
+  "DeviceType": "air_conditioner",
+  "OnlineStatus": "online",
+  "ZigbeeRole": "router",
+  "BatteryLevel": 15,
+  "SignalLqi": 90,
+  "HealthStatus": "low_battery",
+  "StateUpdatedAt": "2026-08-04T09:00:00Z"
+}
+```
 
-`POST /api/v1/smart-home/scenes/{sceneKey}/run` requires `ai.run` and accepts:
+跨家庭或不存在返回 `404`；`StateUpdatedAt` 是最近采样时间，过期
+状态不得描述为实时。UI 应展示电量/信号/健康语义标签而非原始值。
+
+### 8.13 仪表盘与场景运行（`/api/v1`）
+
+`GET /api/v1/dashboard` 需要 `smart_home.read`。它返回一个按用户和
+租户隔离的视图，包含 `GeneratedAt` 和 `PartialFailure`。`Home`、
+`PendingConfirmations`、`StewardActivities`、`Scenes`、`Todos`、
+`Calendar` 和 `Suggestion` 是独立模块。每个模块都有 `Status`
+（`available` 或 `unavailable`）、`Data`、`UpdatedAt` 和可选的
+可读 `Message`；当一个模块不可用时，UI 必须保留其他可用模块的
+卡片，且待确认事项（`PendingConfirmations`）在任何模块失败时仍应
+优先展示。
+
+`Home.Data` 包含家庭统计和空间摘要（产品契约中的 `homeSummary`），
+含设备在线/离线数量以及最新的规范化状态时间戳。
+`PendingConfirmations.Data` 是最多 6 条未过期的待确认事项
+（`Id`、`RiskLevel`、`Title`、`ImpactSummary`、`Status`、
+`ExpiresAt`、`UpdatedAt`），按到期时间升序。
+`StewardActivities.Data` 是最多 6 条最近管家动态（`Id`、`Category`、
+`Title`、`RiskLevel`、`Status`、`ResultSummary`、`CreatedAt`）。
+`quickActions`（快捷入口）为前端静态入口，不经过后端。
+`Todos.Data` 和 `Calendar.Data` 最多包含今天当前用户的 6 条。
+`Scenes.Data` 始终暴露标准的 `arrive_home`、`leave_home` 和
+`sleep` 快捷方式。响应绝不暴露连接器凭据、厂商实体 ID、协议字段
+或原始设备状态。
+
+`POST /api/v1/smart-home/scenes/{sceneKey}/run` 需要 `ai.run`，接受：
 
 ```json
 { "idempotencyKey": "9c1f9a71-6d38-4e6a-b1c2-7ef6cf16d6d3" }
 ```
 
-Supported keys are `arrive_home`, `leave_home`, and `sleep` (the aliases
-`arrive` and `away` are also accepted). The endpoint creates the same safe
-Housekeeper Run view as `POST /api/v1/housekeeper-runs`: actions remain
-`pending` until individually confirmed through the existing Action API. It
-never dispatches a device command directly.
+支持的键为 `arrive_home`、`leave_home` 和 `sleep`（别名 `arrive` 和
+`away` 也可接受）。该接口创建与 `POST /api/v1/housekeeper-runs`
+相同的安全 Housekeeper Run 视图：操作保持 `pending` 状态，直到通过
+现有的 Action API 逐一确认。它绝不直接下发设备命令。
 
-### 8.14 Connector management (`/api/v1`)
+### 8.14 连接器管理（`/api/v1`）
 
-Connector responses never contain `credentialRef`, URL, access token, refresh
-token, vendor entity ID or protocol fields. The tenant is derived from the
-access token; clients must not send a tenant ID.
+Connector 响应绝不包含 `credentialRef`、URL、访问令牌、刷新令牌、
+厂商实体 ID 或协议字段。租户从访问令牌中推导；客户端不得发送租户 ID。
 
 `GET /api/v1/connector-providers`
 
-Permission: `connector.read`. Returns active catalog entries (`Id`, `Code`,
-`Name`, `ConnectorType`, `Description`).
+权限：`connector.read`。返回启用的目录条目（`Id`、`Code`、
+`Name`、`ConnectorType`、`Description`）。
 
 `GET /api/v1/connectors`
 
-Permission: `connector.read`. Owners and admins receive the tenant's connector
-list; members receive only connectors that have an active personal grant.
-Each item includes `Id`, `ProviderId`, `ProviderCode`, `ProviderName`, `Name`,
-`Status`, `LastSyncAt`, `LastHealthAt`, `CreatedAt` and `UpdatedAt`.
+权限：`connector.read`。所有者和管理员收到租户的连接器列表；
+成员只收到拥有有效个人授权的连接器。每项包含 `Id`、`ProviderId`、
+`ProviderCode`、`ProviderName`、`Name`、`Status`、`LastSyncAt`、
+`LastHealthAt`、`CreatedAt` 和 `UpdatedAt`。
 
 `POST /api/v1/connectors`
 
-Permission: `connector.write` (owner/admin). Only the following body fields are
-accepted; unknown or vendor credential fields return `422`.
+权限：`connector.write`（所有者/管理员）。仅接受以下请求体字段；
+未知或厂商凭据字段返回 `422`。
 
 ```json
 {
@@ -742,17 +771,15 @@ accepted; unknown or vendor credential fields return `422`.
 }
 ```
 
-`credentialRef` must belong to the caller's tenant. It is validated but never
-returned. With `SecretVault:Enabled=false` (the default), creation returns
-`503` and a readable configuration message. A successful creation always starts
-as `disconnected`.
+`credentialRef` 必须属于调用者的租户。它会经过校验但绝不返回。
+当 `SecretVault:Enabled=false`（默认值）时，创建返回 `503` 和可读的
+配置消息。创建成功后始终以 `disconnected` 状态开始。
 
 `POST /api/v1/connectors/{id}/test`
 
-Permission: `connector.write` (owner/admin). Tests the configured Home
-Assistant connection and updates its health. A successful response returns only
-the normalized operation view; it never exposes the HA URL, token or entity
-information.
+权限：`connector.write`（所有者/管理员）。测试已配置的 Home Assistant
+连接并更新其健康状态。成功响应只返回规范化的操作视图；绝不暴露
+HA URL、令牌或实体信息。
 
 ```json
 {
@@ -768,57 +795,55 @@ information.
 }
 ```
 
-`POST /api/v1/connectors/{id}/discovery` and `POST /api/v1/connectors/{id}/sync`
+`POST /api/v1/connectors/{id}/discovery` 和 `POST /api/v1/connectors/{id}/sync`
 
-Permission: `connector.write` (owner/admin). Both requests query the HA state
-API, map only light, switch, air-conditioner, cover and sensor entities to the
-standard device model, then write the current normalized state snapshot. They
-return `ConnectorId`, `Status`, `DeviceCount`, `LastHealthAt` and `LastSyncAt`.
-Unknown HA domains are ignored. `502` means HA is unreachable, rejected the
-request or returned invalid data; `503` means the Vault is unavailable, denied
-the tenant path, or contains an invalid secret. Neither response includes raw
-HA entity IDs or protocol fields.
+权限：`connector.write`（所有者/管理员）。两个请求都会查询 HA 状态
+API，只将 light、switch、air-conditioner、cover 和 sensor 实体映射到
+标准设备模型，然后写入当前规范化的状态快照。它们返回 `ConnectorId`、
+`Status`、`DeviceCount`、`LastHealthAt` 和 `LastSyncAt`。未知的 HA
+域会被忽略。`502` 表示 HA 不可达、拒绝了请求或返回了无效数据；
+`503` 表示 Vault 不可用、拒绝了租户路径或包含无效密钥。两种响应都
+不包含原始 HA 实体 ID 或协议字段。
 
-`POST /api/v1/connectors/{id}/sync` returns `202` after persisting a background
-sync job. Poll `GET /api/v1/connectors/sync-jobs/{jobId}` with `connector.read`.
-The job view contains only `Id`, `ConnectorId`, `Status`, `Reason`, `AttemptNo`,
-`AvailableAt`, `CompletedAt` and `UpdatedAt`; status is `queued`, `running`,
-`completed`, or `failed`. The server applies a 30-second timeout and up to
-three attempts with exponential backoff. Clients must not retry by creating
-parallel requests while a job is queued or running.
+`POST /api/v1/connectors/{id}/sync` 在持久化后台同步任务后返回 `202`。
+使用 `connector.read` 轮询 `GET /api/v1/connectors/sync-jobs/{jobId}`。
+任务视图只包含 `Id`、`ConnectorId`、`Status`、`Reason`、`AttemptNo`、
+`AvailableAt`、`CompletedAt` 和 `UpdatedAt`；状态为 `queued`、`running`、
+`completed` 或 `failed`。服务器应用 30 秒超时，最多三次尝试并带指数
+退避。任务处于 `queued` 或 `running` 时，客户端不得通过创建并行请求
+来重试。
 
-Runtime Vault requirements: set `SecretVault:Enabled=true` and
-`SecretVault:Endpoint` to a HashiCorp Vault base URL, and supply its token only
-through the process environment variable named by
-`SecretVault:TokenEnvironmentVariable` (default
-`NEXUSMIND_SECRET_VAULT_TOKEN`). For
-`vault://tenants/12/secrets/home-assistant`, the adapter reads
-`GET {Endpoint}/v1/tenants/12/secrets/home-assistant`. The Vault KV response
-may use either `data.baseUrl` / `data.accessToken` or KV v2
-`data.data.baseUrl` / `data.data.accessToken`; both values remain inside the
-adapter process memory.
+运行时 Vault 要求：将 `SecretVault:Enabled=true` 和
+`SecretVault:Endpoint` 设为 HashiCorp Vault 基础 URL，并仅通过
+`SecretVault:TokenEnvironmentVariable` 指定的进程环境变量提供其令牌
+（默认 `NEXUSMIND_SECRET_VAULT_TOKEN`）。对于
+`vault://tenants/12/secrets/home-assistant`，适配器读取
+`GET {Endpoint}/v1/tenants/12/secrets/home-assistant`。Vault KV 响应
+可以使用 `data.baseUrl` / `data.accessToken` 或 KV v2 的
+`data.data.baseUrl` / `data.data.accessToken`；两个值都保留在适配器
+进程内存中。
 
 `GET /api/v1/connectors/{id}/authorization`
 
-Permission: `connector.read`. Returns only the current member's grant:
-`ConnectorId`, `UserId`, `Scopes`, `UpdatedAt`. A member without a grant gets
-`403`; a connector outside the current tenant gets `404`.
+权限：`connector.read`。只返回当前成员的授权：
+`ConnectorId`、`UserId`、`Scopes`、`UpdatedAt`。没有授权的成员得到
+`403`；当前租户之外的连接器得到 `404`。
 
 `PUT /api/v1/connectors/{id}/authorizations/{memberUserId}`
 
-Permission: `connector.write` (owner/admin). Grants or replaces a current
-tenant member's scopes. The request must contain one to 32 well-formed scopes.
+权限：`connector.write`（所有者/管理员）。授予或替换当前租户成员的
+范围。请求必须包含 1 到 32 个格式良好的范围。
 
 ```json
 { "scopes": ["smart_home.read", "smart_home.light.write"] }
 ```
 
-### 8.15 Automation rules (`/api/v1/automation-rules`)
+### 8.15 自动化规则（`/api/v1/automation-rules`）
 
-`GET /api/v1/automation-rules` requires `automation.read`; `POST` and
-`PATCH /api/v1/automation-rules/{id}` require `automation.write` (owner/admin).
-The tenant and owner come from the access token. Clients cannot submit an
-owner, tenant, credential, vendor entity identifier, or arbitrary command.
+`GET /api/v1/automation-rules` 需要 `automation.read`；`POST` 和
+`PATCH /api/v1/automation-rules/{id}` 需要 `automation.write`
+（所有者/管理员）。租户和所有者来自访问令牌。客户端不能提交
+所有者、租户、凭据、厂商实体标识符或任意命令。
 
 ```json
 {
@@ -839,30 +864,26 @@ owner, tenant, credential, vendor entity identifier, or arbitrary command.
 }
 ```
 
-`triggerType` is `time_schedule`, `device_state_change`, `scene_completed`, or
-`sync_completed`. Time triggers support `fixed_time` (`time: "21:30"`),
-`sun` (`sunrise`/`sunset`) and one-shot `countdown` (`fireAt` UTC).
-Device-state triggers require a tenant-owned `deviceId`; scene triggers use an
-existing scene key; sync-completion triggers can optionally narrow to a
-connector ID. Conditions compare a normalized device state using `deviceId`,
-`capability`, optional `operator: "not_equals"`, and `value`. Actions are
-limited to built-in `sceneKey` values.
+`triggerType` 为 `time_schedule`、`device_state_change`、`scene_completed`
+或 `sync_completed`。时间触发器支持 `fixed_time`（`time: "21:30"`）、
+`sun`（`sunrise`/`sunset`）和一次性 `countdown`（`fireAt` UTC）。
+设备状态触发器需要一个租户拥有的 `deviceId`；场景触发器使用现有的
+场景键；同步完成触发器可选地收窄到某个连接器 ID。条件使用 `deviceId`、
+`capability`、可选的 `operator: "not_equals"` 和 `value` 比较规范化
+的设备状态。操作仅限于内置的 `sceneKey` 值。
 
-`approvalPolicy` is `manual_confirmation` or `auto_execute`. The first creates
-normal pending Run Actions. The second uses the rule owner's current Connector
-authorization and the existing idempotent confirmation/audit path; it does not
-expose a direct device command API. Updates require `rowVersion` and return
-`409` on a concurrent change. Responses expose only the normalized rule view.
+`approvalPolicy` 为 `manual_confirmation` 或 `auto_execute`。前者创建
+正常的待处理 Run 操作。后者使用规则所有者的当前 Connector 授权和
+现有的幂等确认/审计路径；它不暴露直接的设备命令 API。更新需要
+`rowVersion`，并发变更时返回 `409`。响应只暴露规范化的规则视图。
 
-### 8.16 Expert Files (`/api/v1`)
+### 8.16 专家文件（`/api/v1`）
 
-All responses and audits are tenant-isolated. Files, attachments, and
-read-tokens never include credentials, internal object paths, storage provider
-keys, vendor entity IDs or third-party file IDs.
+所有响应和审计按租户隔离。文件、附件和读取令牌绝不包含凭据、
+内部对象路径、存储提供方密钥、厂商实体 ID 或第三方文件 ID。
 
-`POST /api/v1/expert-files` — permission `expert_file.write`. Creates an upload
-session. The request is metadata-only; binary is uploaded through the
-returned short-lived URL.
+`POST /api/v1/expert-files` — 权限 `expert_file.write`。创建上传会话。
+请求仅含元数据；二进制内容通过返回的短时 URL 上传。
 
 ```json
 {
@@ -885,38 +906,36 @@ returned short-lived URL.
 }
 ```
 
-`POST /api/v1/expert-files/{fileId}/objects` — permission `expert_file.write`.
-Posts the committed object metadata; the server transitions the file to
-`scanning` and then to `ready` or `rejected` based on the scanner result. Only
-`ready` files can be attached or read.
+`POST /api/v1/expert-files/{fileId}/objects` — 权限 `expert_file.write`。
+提交已提交的对象元数据；服务器根据扫描结果将文件转为 `scanning`，
+然后转为 `ready` 或 `rejected`。只有 `ready` 的文件才能被附加或读取。
 
-`GET /api/v1/expert-files` — permission `expert_file.read`. Returns the latest
-100 summary rows (`Id`, `Name`, `MimeType`, `SizeBytes`, `Status`, scan fields,
-expiry, soft-delete flag, `RowVersion`).
+`GET /api/v1/expert-files` — 权限 `expert_file.read`。返回最新的 100 行
+摘要（`Id`、`Name`、`MimeType`、`SizeBytes`、`Status`、扫描字段、
+过期时间、软删除标记、`RowVersion`）。
 
-`DELETE /api/v1/expert-files/{fileId}` — permission `expert_file.write`. Soft
-delete plus storage cleanup; the response is the post-delete summary.
+`DELETE /api/v1/expert-files/{fileId}` — 权限 `expert_file.write`。
+软删除并清理存储；响应为删除后的摘要。
 
-`POST /api/v1/expert-files/{fileId}/read-token?purpose=download` — permission
-`expert_file.read`. Issues a 10-minute `readToken` and `readUrl`; the response
-never contains the internal object key or storage path.
+`POST /api/v1/expert-files/{fileId}/read-token?purpose=download` — 权限
+`expert_file.read`。签发 10 分钟有效的 `readToken` 和 `readUrl`；
+响应绝不包含内部对象键或存储路径。
 
-`POST /api/v1/experts/{expertId}/files` and
-`POST /api/v1/expert-runs/{runId}/files` — permission `expert_file.write`. The
-body is `{ "fileId": <id>, "idempotencyKey"?: "<uuid>" }`. Only `ready` files
-in the caller's tenant are accepted.
+`POST /api/v1/experts/{expertId}/files` 和
+`POST /api/v1/expert-runs/{runId}/files` — 权限 `expert_file.write`。
+请求体为 `{ "fileId": <id>, "idempotencyKey"?: "<uuid>" }`。只接受
+调用者租户内 `ready` 状态的文件。
 
-### 8.17 Team Runs (`/api/v1/team-runs`)
+### 8.17 团队运行（`/api/v1/team-runs`）
 
-Permission: `team_run.write` for `POST /team-runs`, `/cancel`, `/retry`;
-`team_run.read` for everything else. The first published `teamVersion` is `1`;
-clients must send `"teamVersion": "1"` exactly. Only three modes are accepted:
-`sequential`, `parallel`, `synthesis`. External side effects (device writes,
-notifications, etc.) remain governed by the existing Run Action confirmation,
-Adapter and audit chain; team runs may only orchestrate Expert and ExpertFile
-references that the caller already owns.
+`POST /team-runs`、`/cancel`、`/retry` 需要 `team_run.write` 权限；
+其余接口需要 `team_run.read`。首个发布的 `teamVersion` 是 `1`；
+客户端必须精确发送 `"teamVersion": "1"`。只接受三种模式：
+`sequential`、`parallel`、`synthesis`。外部副作用（设备写入、
+通知等）仍由现有的 Run 操作确认、适配器和审计链路治理；团队运行
+只能编排调用者已经拥有的 Expert 和 ExpertFile 引用。
 
-`POST /api/v1/team-runs` body:
+`POST /api/v1/team-runs` 请求体：
 
 ```json
 {
@@ -932,79 +951,282 @@ references that the caller already owns.
 }
 ```
 
-The server freezes the team, computes the per-member permission intersection
-(`ai.read`, `ai.run`, plus the `toolPolicy` from the ExpertVersion), and writes
-the audit entry `team_run_create`. `parentAgentRunId` must reference an
-existing `AgentRun` in the caller's tenant. The response is `TeamRunSummary`
-(`Id`, `Status`, `Mode`, `TeamVersion`, `ParentAgentRunId`, timestamps,
-`RowVersion`).
+服务器冻结团队，计算每个成员的权限交集（`ai.read`、`ai.run`，加上
+ExpertVersion 的 `toolPolicy`），并写入审计条目 `team_run_create`。
+`parentAgentRunId` 必须引用调用者租户中已有的 `AgentRun`。响应为
+`TeamRunSummary`（`Id`、`Status`、`Mode`、`TeamVersion`、
+`ParentAgentRunId`、时间戳、`RowVersion`）。
 
-`GET /api/v1/team-runs/{id}` returns `TeamRunSummary`. `Status` is one of
-`pending | running | completed | failed | cancelled`.
+`GET /api/v1/team-runs/{id}` 返回 `TeamRunSummary`。`Status` 为
+`pending | running | completed | failed | cancelled` 之一。
 
-`GET /api/v1/team-runs/{id}/events` returns the recent audit-derived
-`TeamRunEvent` list. No prompt, model output or vendor log is exposed.
+`GET /api/v1/team-runs/{id}/events` 返回最近的审计派生
+`TeamRunEvent` 列表。不暴露任何提示词、模型输出或供应商日志。
 
-`GET /api/v1/team-runs/{id}/members` returns each member's display name,
-`StageOrder`, `ExpertVersionId`, optional `ChildAgentRunId`, `Status`,
-optional `LastErrorCode`, and `PermissionIntersectionSummary` (comma-separated
-scope names).
+`GET /api/v1/team-runs/{id}/members` 返回每个成员的显示名称、
+`StageOrder`、`ExpertVersionId`、可选的 `ChildAgentRunId`、`Status`、
+可选的 `LastErrorCode` 和 `PermissionIntersectionSummary`（逗号分隔的
+范围名）。
 
-`GET /api/v1/team-runs/{id}/synthesis` is only available when the run is
-`completed`; otherwise the endpoint returns `409`. The view contains
-`Summary`, `Highlights`, and `CompletedAt`. Intermediate member outputs and
-prompts are not returned at any step.
+`GET /api/v1/team-runs/{id}/synthesis` 仅当运行处于 `completed` 状态时
+可用；否则返回 `409`。视图包含 `Summary`、`Highlights` 和 `CompletedAt`。
+任何步骤都不会返回中间成员输出和提示词。
 
-`POST /api/v1/team-runs/{id}/cancel` is only valid while the run is `pending`
-or `running`. `POST /api/v1/team-runs/{id}/retry` is only valid after a
-terminal status. Both write audit entries and update the
-`HomeMind.Automation` counters. Cross-tenant or unknown `teamRunId` returns
-`404`.
+`POST /api/v1/team-runs/{id}/cancel` 仅在运行处于 `pending` 或
+`running` 时有效。`POST /api/v1/team-runs/{id}/retry` 仅在终态之后
+有效。两者都会写入审计条目并更新 `HomeMind.Automation` 计数器。
+跨租户或未知的 `teamRunId` 返回 `404`。
 
-## 9. Permission summary
+### 8.18 管家动态（`/api/v1/homes/{homeId}/activities`）
 
-| Endpoint group | Policy |
+所有 `homeId` 必须等于 JWT `tenant_id`；跨家庭资源一律返回 `404`。
+
+`GET /api/v1/homes/{homeId}/activities?limit=&cursor=`
+
+权限：`steward.activity.read`（B14 收敛）。游标分页（按 `CreatedAt`+`Id` 倒序，
+`limit` 上限 50）。响应：
+
+```json
+{
+  "Code": 0,
+  "Msg": "查询成功。",
+  "Data": {
+    "Items": [
+      {
+        "Id": 1,
+        "RunId": 42,
+        "Category": "reporting",
+        "Title": "已确认：调低热水器温度",
+        "Description": null,
+        "RiskLevel": "L2",
+        "Status": "confirmed",
+        "ResultSummary": null,
+        "Undoable": false,
+        "UndoneAt": null,
+        "CreatedAt": "2026-08-05T10:00:00Z",
+        "UpdatedAt": "2026-08-05T10:00:00Z"
+      }
+    ],
+    "Cursor": null
+  }
+}
+```
+
+`GET /api/v1/homes/{homeId}/activities/{id}` 返回单条活动；不存在
+返回 `404`。
+
+`POST /api/v1/homes/{homeId}/activities/{id}/undo`
+
+权限：`confirmation.write`（B14 收敛）。撤销仅接受 `Undoable=true` 且 `Status=completed` 的
+活动；服务端在撤销前实时复验资源状态并写 `activity_undo` 审计。
+非已完成或不可撤销返回 `422`，已撤销返回 `409`。撤销为本地状态
+迁移（置位 `UndoneAt`、`Undoable=false`），当前不调用设备 Adapter。
+
+### 8.19 确认中心（`/api/v1/homes/{homeId}/confirmations`）
+
+`GET /api/v1/homes/{homeId}/confirmations?riskLevel=&status=`
+
+权限：`confirmation.read`（B14 收敛）。`riskLevel` 仅 `L1`/`L2`/`L3`，`status` 为
+`pending`/`confirmed`/`denied`/`expired`/`cancelled`；非法参数返回
+`422`。`pending` 项自动排除已过期项（过期采用计算语义，不写回填）。
+
+`POST /api/v1/homes/{homeId}/confirmations/{id}/confirm`
+
+权限：`confirmation.write`（B14 收敛）。请求体 `{ "IdempotencyKey": "uuid" }`（必填，仅校验
+UUID 格式）。确认后写入 `confirmation_confirm` 审计并生成管家动态；
+关联的 `pending` 活动转为 `confirmed`。重复确认已确认项返回现有
+结果（`200` 重放，不重复审计）；已终态或过期返回 `409`。
+
+`POST /api/v1/homes/{homeId}/confirmations/{id}/deny`
+
+权限：`confirmation.write`（B14 收敛）。请求体 `{ "Reason": "1-512 字符" }`（必填）。拒绝
+后写 `confirmation_deny` 审计（原因入审计）；关联 `pending` 活动
+转为 `cancelled`。已拒绝返回 `200` 重放；已确认/终态/过期返回 `409`。
+
+`POST /api/v1/homes/{homeId}/confirmations/batch-confirm`
+
+权限：`confirmation.write`（B14 收敛）。仅 L1 批量确认，请求体：
+
+```json
+{
+  "ConfirmationIds": [101, 102, 103],
+  "IdempotencyKey": "bc20666d-1639-420f-94d4-f5acb45762e1"
+}
+```
+
+服务在单事务内预验证所有 ID 属于当前 JWT 家庭、均为未过期
+`pending` 的 L1 项且无重复 ID 后原子确认。任一违规整体拒绝：
+形状非法（键非 UUID/空列表/重复 ID/超 50 项）→ `422`；任一 ID
+跨家庭 → `404`；任一 L2/L3、非 pending、已终态、已过期 → `409`。
+同一幂等键且同一 ID 集合的重复请求返回首次结果
+（`200` 幂等重放），绝不重复确认；同键异集 → `409`。响应：
+
+```json
+{
+  "Code": 0,
+  "Msg": "批量确认完成。",
+  "Data": {
+    "ConfirmedCount": 2,
+    "Items": [
+      {
+        "Id": 101,
+        "ActivityId": null,
+        "RiskLevel": "L1",
+        "Title": "开阳台灯",
+        "Description": null,
+        "ImpactSummary": null,
+        "SuggestedAction": null,
+        "Status": "confirmed",
+        "ExpiresAt": null,
+        "ConfirmedAt": "2026-08-05T10:00:00Z",
+        "DeniedAt": null,
+        "ExpiredAt": null,
+        "UpdatedAt": "2026-08-05T10:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+确认、拒绝与批量确认均写入 `family_audit_logs` 与管家动态；响应
+绝不包含凭据、供应商字段、Prompt 或模型思考链。
+
+### 8.20 个人偏好收藏（`/api/v1/life/favorites`，B15 发布）
+
+家庭归属由 JWT 推导，客户端不得发送家庭 ID；跨家庭与越权访问
+一律返回 `404`。
+
+| 路由 | 权限 | 说明 |
+| --- | --- | --- |
+| `GET /api/v1/life/favorites?category=&visibility=` | `life.favorite.read` | 列表；`private` 项仅归属成员本人可见 |
+| `GET /api/v1/life/favorites/{id}` | `life.favorite.read` | 详情；不存在或不可见统一 `404` |
+| `POST /api/v1/life/favorites` | `life.favorite.write` | 创建；`OwnerMemberId` 可空，缺省为当前成员 |
+| `PUT /api/v1/life/favorites/{id}` | `life.favorite.write` | 更新；仅本人或家庭管理员，否则 `403` |
+| `DELETE /api/v1/life/favorites/{id}` | `life.favorite.write` | 软删除；权限同上 |
+| `POST /api/v1/life/favorites/import` | `life.favorite.write` | 对话导入；`Source` 留痕入审计 |
+
+`GET` 响应视图：
+
+```json
+[
+  {
+    "Id": 501,
+    "OwnerMemberId": 3,
+    "Category": "restaurant",
+    "Name": "老王面馆",
+    "DetailJson": "{\"cuisine\":\"面食\",\"address\":\"...\",\"tags\":[\"面\"],\"source\":\"小红书\"}",
+    "Visibility": "private",
+    "CreatedAt": "2026-08-06T02:00:00Z",
+    "UpdatedAt": "2026-08-06T02:00:00Z"
+  }
+]
+```
+
+创建/导入请求体：`{ "Category", "Name", "DetailJson"?, "Visibility"?
+（默认 private）, "OwnerMemberId"?（创建）/ "Source"?（导入） }`。
+UI 不得把 `private` 收藏展示给家庭其他成员；破坏性删除必须二次确认。
+
+### 8.21 个人生活专家翻牌（`POST /api/v1/experts/personal-life-expert/runs`，B16 发布）
+
+权限：`ai.run`。请求体：
+
+```json
+{
+  "Intent": "recommend",
+  "InputJson": "{\"time\":\"evening\",\"location\":\"城西\",\"taste\":\"面\"}",
+  "IdempotencyKey": "bc20666d-1639-420f-94d4-f5acb45762e1"
+}
+```
+
+`Intent` 仅 `recommend`（`plan` 待行程规划版本开放）；`InputJson` 必须
+为合法 JSON。响应 `Data` 含 `Status`、`ResultSummary`、`Events`
+时间线与 `Recommendations`（`FavoriteId`、`Name`、`Reason`、`Tags`）。
+翻牌为只读 L1，不产生确认动作。专家未初始化（017 未应用）→ `503`。
+UI 展示建议卡时呈现理由与标签，不渲染任何提示或思考链。
+
+### 8.22 行程规划与日历同步（B17 发布）
+
+`POST /api/v1/experts/personal-life-expert/runs`，`Intent: "plan"`：
+
+```json
+{
+  "Intent": "plan",
+  "InputJson": "{\"destination\":\"杭州\",\"days\":2}",
+  "IdempotencyKey": "bc20666d-1639-420f-94d4-f5acb45762e1"
+}
+```
+
+`InputJson` 支持 `destination`（必填，1-64 字符）与 `days`（1-7，默认 1）。
+响应 `Data` 含 `Status: "pending_actions"`、`ResultSummary` 与 `Actions`
+（`Id`、`ActionType: "calendar_create_event"`、`Status`、`Title`、
+`Description`、`RiskLevel: "L1"`）。
+
+`POST /api/v1/experts/personal-life-expert/runs/{runId}/actions/{actionId}/confirm`
+请求体 `{ "IdempotencyKey": "uuid" }`：确认后逐日创建日历事件
+（标题 `{目的地} 行程 D{n}`），重复幂等键返回首次结果，动作已终态
+返回 `409`。UI 行程页应在确认前展示影响范围（N 天 → N 个日历事件）
+与确认要求；提交中禁用按钮并使用新的幂等键。
+
+## 9. 权限汇总
+
+| 接口组 | 策略 |
 | --- | --- |
-| `GET /api/v1/auth/me`, `POST /api/v1/auth/logout` | `identity.read` |
+| `GET /api/v1/auth/me`、`POST /api/v1/auth/logout` | `identity.read` |
 | `GET /api/v1/experts[...]` | `ai.read` |
 | `POST /api/v1/expert-runs[...]` | `ai.run` |
-| `GET /api/v1/skills`, `POST /api/v1/skills`, `PUT/DELETE /api/v1/skills/{id}` | `ai.skills.read` / `ai.skills.write` |
-| `GET /api/v1/calendar/events`, `GET /api/v1/calendar/subscriptions` | `calendar.read` |
+| `GET /api/v1/skills`、`POST /api/v1/skills`、`PUT/DELETE /api/v1/skills/{id}` | `ai.skills.read` / `ai.skills.write` |
+| `GET /api/v1/calendar/events`、`GET /api/v1/calendar/subscriptions` | `calendar.read` |
 | `POST/PUT/DELETE /api/v1/calendar/...` | `calendar.write` |
-| `GET /api/v1/todos`, `.../subtasks` (read) | `todo.read` |
+| `GET /api/v1/todos`、`.../subtasks`（读取） | `todo.read` |
 | `POST/PUT/DELETE /api/v1/todos[...]` | `todo.write` |
-| `GET /api/v1/smart-home/spaces`, `/devices`, `/scenes` | `smart_home.read` |
-| `GET /api/v1/connector-providers`, `GET /api/v1/connectors`, `GET /api/v1/connectors/{id}/authorization` | `connector.read` |
-| `POST /api/v1/connectors`, `/connectors/{id}/test`, `/connectors/{id}/discovery`, `/connectors/{id}/sync`, `PUT /api/v1/connectors/{id}/authorizations/{memberUserId}` | `connector.write` |
+| `GET /api/v1/smart-home/spaces`、`/devices`、`/scenes` | `smart_home.read` |
+| `GET /api/v1/connector-providers`、`GET /api/v1/connectors`、`GET /api/v1/connectors/{id}/authorization` | `connector.read` |
+| `POST /api/v1/connectors`、`/connectors/{id}/test`、`/connectors/{id}/discovery`、`/connectors/{id}/sync`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}` | `connector.write` |
 | `GET /api/v1/automation-rules` | `automation.read` |
 | `POST/PATCH /api/v1/automation-rules[...]` | `automation.write` |
-| `GET /api/v1/expert-files`, `POST /api/v1/expert-files/{fileId}/read-token` | `expert_file.read` |
-| `POST /api/v1/expert-files`, `/expert-files/{fileId}/objects`, `DELETE /api/v1/expert-files/{fileId}`, `POST /api/v1/experts/{expertId}/files`, `POST /api/v1/expert-runs/{runId}/files` | `expert_file.write` |
-| `GET /api/v1/team-runs/{id}`, `/events`, `/members`, `/synthesis` | `team_run.read` |
-| `POST /api/v1/team-runs`, `/cancel`, `/retry` | `team_run.write` |
+| `GET /api/v1/expert-files`、`POST /api/v1/expert-files/{fileId}/read-token` | `expert_file.read` |
+| `POST /api/v1/expert-files`、`/expert-files/{fileId}/objects`、`DELETE /api/v1/expert-files/{fileId}`、`POST /api/v1/experts/{expertId}/files`、`POST /api/v1/expert-runs/{runId}/files` | `expert_file.write` |
+| `GET /api/v1/team-runs/{id}`、`/events`、`/members`、`/synthesis` | `team_run.read` |
+| `POST /api/v1/team-runs`、`/cancel`、`/retry` | `team_run.write` |
+| `GET /api/v1/homes/{homeId}/members`、`/knowledge`、`/decisions`（读取） | `family.read` |
+| `POST/PUT /api/v1/homes/{homeId}/members[...]`、`/knowledge`、`/decisions` | `family.write` |
+| `GET /api/v1/homes/{homeId}/activities`、`/activities/{id}` | `steward.activity.read` |
+| `GET /api/v1/homes/{homeId}/confirmations` | `confirmation.read` |
+| `POST /api/v1/homes/{homeId}/activities/{id}/undo`、`/confirmations/{id}/confirm`、`/confirmations/{id}/deny`、`/confirmations/batch-confirm` | `confirmation.write` |
+| `GET/POST/PUT/DELETE /api/v1/life/favorites[...]`、`POST /api/v1/life/favorites/import` | `life.favorite.read` / `life.favorite.write`（B14 预注册，B15 起消费） |
 
-Roles (`owner` / `admin` / `member` / `viewer`) and the allowed policies are
-defined in `HomeMind.Api/Services/Authorization.cs`. Adjust there when adding
-new roles or scopes.
+角色（`owner` / `admin` / `member` / `viewer`）及允许的策略在
+`HomeMind.Api/Services/Authorization.cs` 中定义。新增角色或范围时
+请在那里调整。
 
-## 10. Type / enum reference
+## 10. 类型 / 枚举参考
 
-| Field | Allowed values |
+| 字段 | 允许的值 |
 | --- | --- |
-| `Todo.status` | `pending`, `in_progress`, `completed` |
-| `Todo.type` | `task`, `shopping`, `habit`, `note` (free-form string is accepted) |
-| `Todo.priority` | `p0`–`p3` (free-form string is accepted) |
-| `CalendarEvent.allDay` | boolean |
-| `CalendarEvent.repeatRule` | iCalendar RRULE string |
-| `Todo.repeatRule` | iCalendar RRULE string |
+| `Todo.status` | `pending`、`in_progress`、`completed` |
+| `Todo.type` | `task`、`shopping`、`habit`、`note`（接受自由格式字符串） |
+| `Todo.priority` | `p0`–`p3`（接受自由格式字符串） |
+| `CalendarEvent.allDay` | 布尔值 |
+| `CalendarEvent.repeatRule` | iCalendar RRULE 字符串 |
+| `Todo.repeatRule` | iCalendar RRULE 字符串 |
 | `ExpertCatalog.catalogType` | `expert` \| `group` |
 | `AgentRun.sourceType` | `expert` \| `group` |
 | `AgentRun.status` | `draft` \| `queued` \| `planning` \| `running` \| `completed` \| `failed` \| `cancelled` |
 | `AgentRunAction.actionType` | `plan` \| `todos` \| `calendar_events` \| `smart_home_device` |
 | `HousekeeperRun.intent` | `sleep` \| `away` \| `arrive` \| `environment_review` |
-| `HousekeeperRunAction.status` | Legacy compatibility action; `pending` until its explicit confirmation route is invoked. New screens use `AgentRunAction`. |
+| `HousekeeperRunAction.status` | 旧版兼容操作；在其显式确认路由被调用前保持 `pending`。新页面使用 `AgentRunAction`。 |
 | `SmartHomeDevice.onlineStatus` | `online` \| `offline` \| `unknown` |
+| `FamilyMember.memberStatus`（V2.2 规划） | `active` \| `away` \| `permanently_left` \| `deceased` |
+| `FamilyKnowledge.conflictResolutionStrategy`（V2.2 规划） | `latest` \| `authority` \| `majority` |
+| `SmartHomeDevice.zigbeeRole`（V2.2 规划） | `end_device` \| `router` \| `coordinator` |
+| `SmartHomeDevice.healthStatus`（V2.2 规划） | `healthy` \| `degraded` \| `offline` \| `low_battery` |
 | `AutomationRule.triggerType` | `time_schedule` \| `device_state_change` \| `scene_completed` \| `sync_completed` |
 | `AutomationRule.approvalPolicy` | `manual_confirmation` \| `auto_execute` |
 | `ConnectorSyncJob.status` | `queued` \| `running` \| `completed` \| `failed` |
-| `Subscription.platform` (auth) | `h5` \| `android` \| `ios` |
+| `Subscription.platform`（认证） | `h5` \| `android` \| `ios` |
+
+## 10. V2.4 Connector Scope 与个人授权（待发布）
+
+家庭/个人 Connector 的产品模型已确认，但 B18/B19 API 尚未发布。发布后，客户端以 `bindingScope` 区分 `household` 与 `personal`：家庭实例只显示当前成员授权状态；个人实例只向 owner 显示本人归属和 OAuth 状态。客户端不得接收、存储或记录 OAuth code、access token、refresh token、`credentialRef` 或 Provider 原始回调。
+
+预期个人授权流程为：创建授权会话 -> 跳转 Provider -> 服务端 callback -> 查询脱敏状态 -> 本人撤销。Flutter 和 Web 在字段、错误、重试、过期和撤销契约写入本文件前，不得实现 HTTP Repository。角色使用现有 `tenant_members.role` 固定值 `owner/admin/member/viewer`；Web 路由由前端发布并按服务端权限守卫，不存在客户端维护 API 路由或可编辑角色的接口。

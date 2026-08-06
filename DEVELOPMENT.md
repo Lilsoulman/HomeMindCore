@@ -107,11 +107,15 @@ The convention is enforced centrally in `HomeMind.Api/Startup.cs`:
 
 ### 4. Error contract
 
-- 4xx responses use the same `ApiResponse<T>` envelope with non-zero `Code`.
+- Every response uses `ApiResponse<T>`. `Code` is a stable application error
+  code and is never an HTTP status code; `0` means success. The canonical code
+  table is in `docs/api-implementation.md`.
 - 401/403/404 are produced through `ApiControllerBase.UnauthorizedResult<T>` /
-  `NotFoundResult<T>` so the envelope stays consistent.
+  `NotFoundResult<T>` so the envelope stays consistent. Login credential
+  failures are HTTP 400 with `Code=20000`; reserve HTTP 401 for access or
+  refresh token failures.
 - Currently gated routes (`POST /api/v1/auth/wechat/exchange`,
-  `POST /api/v1/calendar/ical/fetch`) return HTTP 501 with `Code=501` and a
+  `POST /api/v1/calendar/ical/fetch`) return HTTP 501 with `Code=50000` and a
   descriptive `Msg`. Do not remove the 501 status until the underlying
   configuration is supplied.
 

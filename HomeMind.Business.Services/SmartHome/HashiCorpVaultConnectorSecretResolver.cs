@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using HomeMind.Business.IServices.Connector;
 using HomeMind.Business.IServices.SmartHome;
 using Microsoft.Extensions.Configuration;
 

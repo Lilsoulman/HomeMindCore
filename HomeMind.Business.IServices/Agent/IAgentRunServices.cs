@@ -12,4 +12,7 @@ public interface IAgentRunServices
     Task<ServiceResult> CancelAsync(long userId, long tenantId, long runId, CancellationToken cancellationToken = default);
     Task<ServiceResult> RetryAsync(long userId, long tenantId, long runId, CancellationToken cancellationToken = default);
     Task<ServiceResult> CreateActionAsync(long userId, long tenantId, long runId, AgentRunActionRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>按专家/来源类型列出当前用户的运行记录，按主键倒序。</summary>
+    Task<ServiceResult> ListAsync(long userId, long tenantId, string? sourceType, long? expertId, int limit, CancellationToken cancellationToken = default);
 }

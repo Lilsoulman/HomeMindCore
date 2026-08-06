@@ -15,7 +15,6 @@ namespace HomeMind.Common.Model.Entities;
 [Table("attachments")] public sealed class Attachment { [Key, Column("id")] public long Id { get; set; } }
 [Table("calendar_event_exceptions")] public sealed class CalendarEventException { [Key, Column("id")] public long Id { get; set; } }
 [Table("ical_overrides")] public sealed class IcalOverride { [Key, Column("id")] public long Id { get; set; } }
-[Table("ai_configs")] public sealed class AiConfig { [Key, Column("user_id")] public long UserId { get; set; } }
 [Table("ai_call_logs")] public sealed class AiCallLog { [Key, Column("id")] public long Id { get; set; } }
 [Table("user_settings")] public sealed class UserSetting { [Column("user_id")] public long UserId { get; set; } [Column("k")] public string Key { get; set; } = null!; }
 [Table("push_subscriptions")] public sealed class PushSubscription { [Key, Column("id")] public long Id { get; set; } }

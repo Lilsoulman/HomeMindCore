@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\HomeMind.Business.Services\HomeMind.Business.Services.csproj" />
+    <ProjectReference Include="..\HomeMind.Business.IServices\HomeMind.Business.IServices.csproj" />
+    <ProjectReference Include="..\HomeMind.Common.Model\HomeMind.Common.Model.csproj" />
+    <ProjectReference Include="..\HomeMind.Common.Repository\HomeMind.Common.Repository.csproj" />
+  </ItemGroup>
+
+</Project>

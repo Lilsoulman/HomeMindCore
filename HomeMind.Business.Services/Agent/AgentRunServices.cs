@@ -124,6 +124,20 @@ public sealed class AgentRunServices : IAgentRunServices
         return new ServiceResult(200, "Agent 任务已重新进入队列。", ToView(run));
     }
 
+    public async Task<ServiceResult> ListAsync(long userId, long tenantId, string? sourceType, long? expertId, int limit, CancellationToken cancellationToken = default)
+    {
+        if (limit <= 0 || limit > 50) limit = 10;
+        var query = _db.AgentRuns.Where(x => x.TenantId == tenantId && x.UserId == userId);
+        if (sourceType is not null) query = query.Where(x => x.SourceType == sourceType);
+        if (expertId is not null)
+        {
+            var versionIds = await _db.ExpertVersions.Where(v => v.ExpertId == expertId).Select(v => v.Id).ToListAsync(cancellationToken);
+            query = query.Where(x => x.ExpertVersionId != null && versionIds.Contains(x.ExpertVersionId.Value));
+        }
+        var items = await query.OrderByDescending(x => x.Id).Take(limit).ToListAsync(cancellationToken);
+        return new ServiceResult(200, "查询成功。", items.Select(ToView).ToArray());
+    }
+
     public async Task<ServiceResult> CreateActionAsync(long userId, long tenantId, long runId, AgentRunActionRequest request, CancellationToken cancellationToken = default)
     {
         if (!AllowedActionTypes.Contains(request.ActionType) || !IsJson(request.RequestJson ?? "{}"))

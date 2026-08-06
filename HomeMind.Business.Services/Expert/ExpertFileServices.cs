@@ -278,6 +278,113 @@ public sealed class ExpertFileServices : IExpertFileServices
         return new ServiceResult(200, "读取令牌已签发。", new ExpertFileReadTokenResponse(file.Id, purpose, token, readUrl, expires));
     }
 
+    public async Task<ServiceResult> RegisterGeneratedFileAsync(long userId, long tenantId, string name, string mimeType, byte[] content, long? attachRunId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(mimeType) || content.Length == 0)
+        {
+            return new ServiceResult(422, "文件名、MIME 类型与文件内容均不能为空。");
+        }
+
+        var now = DateTime.UtcNow;
+        var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(content)).ToLowerInvariant();
+        var file = new ExpertFile
+        {
+            TenantId = tenantId,
+            OwnerUserId = userId,
+            Name = name.Trim(),
+            MimeType = mimeType.Trim().ToLowerInvariant(),
+            SizeBytes = content.Length,
+            Sha256 = sha256,
+            Status = ExpertFileStatus.Ready,
+            QuotaBytes = 0,
+            ExpiresAt = now.Add(DefaultRetention),
+            CreatedAt = now,
+            UpdatedAt = now,
+            RowVersion = 1,
+            SyncVersion = 1
+        };
+        _db.ExpertFiles.Add(file);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        string objectKey;
+        try
+        {
+            objectKey = await _storage.WriteGeneratedAsync(tenantId, file.Id, file.Name, content, cancellationToken);
+        }
+        catch (Exception error)
+        {
+            _logger.LogWarning(error, "Generated expert file write failed for file {FileId}", file.Id);
+            file.SoftDeletedAt = DateTime.UtcNow;
+            file.Status = ExpertFileStatus.Deleted;
+            await _db.SaveChangesAsync(cancellationToken);
+            return new ServiceResult(503, "对象存储暂不可用，请稍后重试。");
+        }
+
+        _db.ExpertFileObjects.Add(new ExpertFileObject
+        {
+            ExpertFileId = file.Id,
+            ObjectKey = objectKey,
+            SizeBytes = content.Length,
+            OffsetBytes = 0,
+            UploadedAt = now
+        });
+        if (attachRunId is not null)
+        {
+            _db.ExpertFileAttachments.Add(new ExpertFileAttachment
+            {
+                TenantId = tenantId,
+                ExpertFileId = file.Id,
+                ExpertId = null,
+                AgentRunId = attachRunId,
+                AttachedByUserId = userId,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+        }
+        _db.TeamRunAudits.Add(new TeamRunAudit
+        {
+            TenantId = tenantId,
+            ActorUserId = userId,
+            ExpertFileId = file.Id,
+            Action = "file_generated",
+            Result = "success",
+            PayloadJson = JsonSerializer.Serialize(new { attachRunId }),
+            CreatedAt = now
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+        return new ServiceResult(201, "生成文件已就绪。", new { fileId = file.Id, file.Status, file.Name, file.MimeType, file.SizeBytes });
+    }
+
+    public async Task<ServiceResult> GetContentAsync(long userId, long tenantId, long fileId, CancellationToken cancellationToken = default)
+    {
+        var file = await _db.ExpertFiles.SingleOrDefaultAsync(x => x.Id == fileId && x.TenantId == tenantId && x.SoftDeletedAt == null, cancellationToken);
+        if (file is null || file.Status != ExpertFileStatus.Ready) return new ServiceResult(404, "请求的文件不存在或尚未就绪。");
+        var objectKey = await _db.ExpertFileObjects.Where(x => x.ExpertFileId == file.Id).Select(x => x.ObjectKey).FirstOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrEmpty(objectKey)) return new ServiceResult(404, "文件对象尚未提交。");
+        byte[] bytes;
+        try
+        {
+            bytes = await _storage.ReadAllBytesAsync(tenantId, file.Id, objectKey, cancellationToken);
+        }
+        catch (Exception error)
+        {
+            _logger.LogWarning(error, "Expert file content read failed for file {FileId}", file.Id);
+            return new ServiceResult(503, "对象存储读取失败，请稍后重试。");
+        }
+        _db.TeamRunAudits.Add(new TeamRunAudit
+        {
+            TenantId = tenantId,
+            ActorUserId = userId,
+            ExpertFileId = file.Id,
+            Action = "file_read",
+            Result = "success",
+            PayloadJson = JsonSerializer.Serialize(new { purpose = "content" }),
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+        return new ServiceResult(200, "读取成功。", new GeneratedFileContent(bytes, file.MimeType, file.Name));
+    }
+
     private static ExpertFileSummary ToSummary(ExpertFile file) => new(
         file.Id, file.Name, file.MimeType, file.SizeBytes, file.Status,
         file.ScanProvider, file.ScanCompletedAt, file.RejectionReason,

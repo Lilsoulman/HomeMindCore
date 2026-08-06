@@ -8,4 +8,6 @@ public interface ISmartHomeReadServices
     Task<ServiceResult> ListSpacesAsync(long tenantId, CancellationToken cancellationToken = default);
     Task<ServiceResult> ListDevicesAsync(long tenantId, long? spaceId, CancellationToken cancellationToken = default);
     Task<ServiceResult> ListScenesAsync(long tenantId, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetDeviceHealthAsync(long tenantId, long? spaceId, CancellationToken cancellationToken = default);
+    Task<ServiceResult> GetDeviceHealthDetailAsync(long tenantId, long deviceId, CancellationToken cancellationToken = default);
 }

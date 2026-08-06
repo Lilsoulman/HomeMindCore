@@ -1,6 +1,9 @@
 using System.Text.Json;
 using HomeMind.Business.IServices.AI;
+using HomeMind.Business.IServices.Connector;
 using HomeMind.Business.IServices.SmartHome;
+using HomeMind.Business.Services.Connectors.Adapters;
+using HomeMind.Business.Services.Connectors.Bridge;
 using HomeMind.Business.Services.SmartHome;
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Model.Entities.SmartHome;
@@ -14,6 +17,7 @@ namespace HomeMind.Business.Services.AI;
 /// <summary>
 /// Deterministic V1 housekeeper orchestration. It reads only the normalized
 /// SmartHome model and persists suggestions; it never resolves or calls a connector.
+/// 设备命令经 CommandRelayService 转发，确认、幂等与审计链路不被绕过。
 /// </summary>
 public sealed class HousekeeperRunServices : IHousekeeperRunServices
 {
@@ -23,12 +27,12 @@ public sealed class HousekeeperRunServices : IHousekeeperRunServices
     };
 
     private readonly HomeMindDbContext _db;
-    private readonly IReadOnlyDictionary<string, IConnectorAdapter> _adapters;
+    private readonly CommandRelayService _relay;
 
-    public HousekeeperRunServices(HomeMindDbContext db, IEnumerable<IConnectorAdapter> adapters)
+    public HousekeeperRunServices(HomeMindDbContext db, CommandRelayService relay)
     {
         _db = db;
-        _adapters = adapters.ToDictionary(x => x.ProviderCode, StringComparer.OrdinalIgnoreCase);
+        _relay = relay;
     }
 
     public async Task<ServiceResult> CreateAsync(long userId, long tenantId, HousekeeperRunRequest request, CancellationToken cancellationToken = default)
@@ -74,6 +78,8 @@ public sealed class HousekeeperRunServices : IHousekeeperRunServices
             RequestIdempotencyKey = idempotencyKey,
             Input = JsonSerializer.Serialize(new { intent, spaceId = request.SpaceId }),
             Status = "planning",
+            Mode = HousekeeperRunPolicies.Steward,
+            AutoConfirmPolicy = HousekeeperRunPolicies.L3Only,
             EstimatedCredits = version.EstimatedCredits,
             StartedAt = now,
             CreatedAt = now
@@ -145,7 +151,7 @@ public sealed class HousekeeperRunServices : IHousekeeperRunServices
 
         var now = DateTime.UtcNow;
         var reference = new ConnectorReference(context.Connector!.Id, tenantId, context.Connector.CredentialRef!);
-        var health = await context.Adapter!.TestConnectionAsync(reference, cancellationToken);
+        var health = await _relay.TestConnectionAsync(context.ProviderCode!, reference, cancellationToken);
         context.Connector.LastHealthAt = now;
         context.Connector.Status = health.Succeeded ? "connected" : "failed";
         context.Connector.UpdatedAt = now;
@@ -178,7 +184,8 @@ public sealed class HousekeeperRunServices : IHousekeeperRunServices
         try
         {
             using var targetDocument = JsonDocument.Parse(draft.TargetValue.GetRawText());
-            result = await context.Adapter!.ExecuteCommandAsync(
+            result = await _relay.ExecuteAsync(
+                context.ProviderCode!,
                 reference,
                 new DeviceCommand(context.Connector.Id, context.Device.Id, draft.Capability, targetDocument.RootElement.Clone(), userId, action.Id, idempotencyKey),
                 cancellationToken);
@@ -326,7 +333,9 @@ public sealed class HousekeeperRunServices : IHousekeeperRunServices
             run.CreatedAt,
             run.FinishedAt,
             events.Select(x => new HousekeeperRunEventView(x.Sequence, x.EventType, ReadMessage(x.Payload), x.CreatedAt)).ToArray(),
-            actions.Select(ToActionView).ToArray());
+            actions.Select(ToActionView).ToArray(),
+            run.Mode,
+            run.AutoConfirmPolicy);
     }
 
     private static HousekeeperRunActionView ToActionView(ExpertRunAction action)
@@ -348,8 +357,8 @@ public sealed class HousekeeperRunServices : IHousekeeperRunServices
         var authorized = await _db.UserConnectorAuthorizations.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.UserId == userId && x.WorkspaceConnectorId == connector.Id && x.DeletedAt == null, cancellationToken);
         if (authorized is null || !ScopeAllows(authorized.Scope, capability.Permission)) return ExecutionContext.Failure(403, "当前成员未获该设备能力的执行授权。");
         var providerCode = await _db.ConnectorProviders.Where(x => x.Id == connector.ConnectorProviderId && x.DeletedAt == null && x.Status == "active").Select(x => x.Code).SingleOrDefaultAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(providerCode) || !_adapters.TryGetValue(providerCode, out var adapter)) return ExecutionContext.Failure(501, "该连接器尚未提供设备行动适配器。");
-        return new ExecutionContext(device, connector, adapter, null);
+        if (string.IsNullOrWhiteSpace(providerCode) || !_relay.SupportsProvider(providerCode)) return ExecutionContext.Failure(501, "该连接器尚未提供设备行动适配器。");
+        return new ExecutionContext(device, connector, providerCode, null);
     }
 
     private async Task<int> NextSequenceAsync(long runId, CancellationToken cancellationToken) =>
@@ -435,7 +444,7 @@ public sealed class HousekeeperRunServices : IHousekeeperRunServices
 
     private sealed record ReadContext(IReadOnlyList<SmartHomeSpace> Spaces, IReadOnlyList<SmartHomeDevice> Devices, IReadOnlyList<DeviceCapability> Capabilities);
     private sealed record ActionDraft(string Title, string Description, long DeviceId, string DeviceName, string Capability, JsonElement TargetValue);
-    private sealed record ExecutionContext(SmartHomeDevice? Device, WorkspaceConnector? Connector, IConnectorAdapter? Adapter, ServiceResult? Error)
+    private sealed record ExecutionContext(SmartHomeDevice? Device, WorkspaceConnector? Connector, string? ProviderCode, ServiceResult? Error)
     {
         public static ExecutionContext Failure(int statusCode, string message) => new(null, null, null, new ServiceResult(statusCode, message));
     }

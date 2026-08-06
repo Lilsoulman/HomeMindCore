@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using HomeMind.Business.IServices.Agent;
 using HomeMind.Business.IServices.AI;
 using HomeMind.Business.IServices.SmartHome;
 using HomeMind.Common.Model.Entities.SmartHome;
@@ -15,6 +16,8 @@ namespace HomeMind.Business.Services.SmartHome;
 /// <summary>Evaluates authorized rules and delegates effects to the audited housekeeper workflow.</summary>
 public sealed class AutomationRuleServices : IAutomationRuleServices
 {
+    private const string DailyKnowledgeExpertCode = "daily-knowledge-steward";
+
     private static readonly HashSet<string> TriggerTypes = new(StringComparer.Ordinal)
     {
         "time_schedule", "device_state_change", "scene_completed", "sync_completed"
@@ -26,12 +29,14 @@ public sealed class AutomationRuleServices : IAutomationRuleServices
 
     private readonly HomeMindDbContext _db;
     private readonly IHousekeeperRunServices _housekeeperRuns;
+    private readonly IAgentRunServices _agentRuns;
     private readonly ILogger<AutomationRuleServices> _logger;
 
-    public AutomationRuleServices(HomeMindDbContext db, IHousekeeperRunServices housekeeperRuns, ILogger<AutomationRuleServices> logger)
+    public AutomationRuleServices(HomeMindDbContext db, IHousekeeperRunServices housekeeperRuns, IAgentRunServices agentRuns, ILogger<AutomationRuleServices> logger)
     {
         _db = db;
         _housekeeperRuns = housekeeperRuns;
+        _agentRuns = agentRuns;
         _logger = logger;
     }
 
@@ -97,7 +102,7 @@ public sealed class AutomationRuleServices : IAutomationRuleServices
         }
         if (request.Actions is { } actions)
         {
-            var validated = ValidateActions(actions);
+            var validated = await ValidateActionsAsync(tenantId, actions, cancellationToken);
             if (validated.Error is not null) return validated.Error;
             rule.Actions = validated.Value!;
         }
@@ -143,6 +148,28 @@ public sealed class AutomationRuleServices : IAutomationRuleServices
         var succeeded = false;
         foreach (var action in actions)
         {
+            if (action.TryGetProperty("type", out var type) && string.Equals(type.GetString(), "agent_run", StringComparison.Ordinal))
+            {
+                if (!action.TryGetProperty("expertCode", out var code) || string.IsNullOrWhiteSpace(code.GetString())) continue;
+                var expertId = await _db.Experts.Where(x => x.Code == code.GetString() && x.Status == "active").Select(x => x.Id).FirstOrDefaultAsync(cancellationToken);
+                if (expertId == 0) continue;
+                var inputJson = "{}";
+                if (string.Equals(code.GetString(), DailyKnowledgeExpertCode, StringComparison.Ordinal))
+                {
+                    // 知识管家：知识库优先——随机取一条本地知识条目注入，库空时由模型自由生成。
+                    var items = await _db.KnowledgeItems.Where(x => x.TenantId == rule.TenantId && x.IsActive)
+                        .Select(x => new { x.Title, x.Content }).ToListAsync(cancellationToken);
+                    if (items.Count > 0)
+                    {
+                        var pick = items[Random.Shared.Next(items.Count)];
+                        inputJson = JsonSerializer.Serialize(new { knowledgeItem = new { pick.Title, pick.Content } });
+                    }
+                }
+                var runCreate = await _agentRuns.CreateAsync(rule.OwnerUserId, rule.TenantId,
+                    new AgentRunCreateRequest("expert", expertId, inputJson, Guid.NewGuid().ToString()), cancellationToken);
+                if (runCreate.Succeeded) succeeded = true;
+                continue;
+            }
             if (!action.TryGetProperty("sceneKey", out var sceneKey) || !SmartHomeSceneDefinitions.TryGetIntent(sceneKey.GetString(), out var intent)) continue;
             var create = await _housekeeperRuns.CreateAsync(rule.OwnerUserId, rule.TenantId,
                 new HousekeeperRunRequest(intent, null, Guid.NewGuid().ToString()), cancellationToken);
@@ -179,7 +206,7 @@ public sealed class AutomationRuleServices : IAutomationRuleServices
             ? await ValidateConditionsAsync(tenantId, rawConditions, cancellationToken)
             : Validation.Ok("[]");
         if (conditions.Error is not null) return conditions;
-        var actions = ValidateActions(request.Actions.Value);
+        var actions = await ValidateActionsAsync(tenantId, request.Actions.Value, cancellationToken);
         return actions.Error is null ? Validation.Ok(trigger.Value!, conditions.Value!, actions.Value!) : actions;
     }
 
@@ -192,6 +219,14 @@ public sealed class AutomationRuleServices : IAutomationRuleServices
             var value = kind.GetString();
             if (value is not ("fixed_time" or "sun" or "countdown")) return Validation.Fail("时间触发器 kind 仅支持 fixed_time、sun 或 countdown。");
             if (value == "fixed_time" && (!trigger.TryGetProperty("time", out var time) || !TimeOnly.TryParseExact(time.GetString(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out _))) return Validation.Fail("fixed_time 必须包含 HH:mm 格式的 time。");
+            if (value == "fixed_time" && trigger.TryGetProperty("daysOfWeek", out var days))
+            {
+                if (days.ValueKind != JsonValueKind.Array || days.GetArrayLength() == 0) return Validation.Fail("daysOfWeek 必须是数组。");
+                foreach (var item in days.EnumerateArray())
+                {
+                    if (!item.TryGetInt32(out var day) || day is < 1 or > 7) return Validation.Fail("daysOfWeek 只能包含 1~7 的整数（1=周一）。");
+                }
+            }
             if (value == "sun" && (!trigger.TryGetProperty("event", out var solar) || solar.GetString() is not ("sunrise" or "sunset"))) return Validation.Fail("sun 必须指定 sunrise 或 sunset。");
             if (value == "countdown" && (!trigger.TryGetProperty("fireAt", out var fireAt) || !DateTime.TryParse(fireAt.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out _))) return Validation.Fail("countdown 必须包含 UTC fireAt。");
         }
@@ -212,12 +247,20 @@ public sealed class AutomationRuleServices : IAutomationRuleServices
         return Validation.Ok(conditions.GetRawText());
     }
 
-    private static Validation ValidateActions(JsonElement actions)
+    private async Task<Validation> ValidateActionsAsync(long tenantId, JsonElement actions, CancellationToken cancellationToken)
     {
         if (actions.ValueKind != JsonValueKind.Array || actions.GetArrayLength() == 0) return Validation.Fail("actions 必须是非空数组。");
         foreach (var action in actions.EnumerateArray())
         {
-            if (action.ValueKind != JsonValueKind.Object || !action.TryGetProperty("sceneKey", out var scene) || !SmartHomeSceneDefinitions.TryGetIntent(scene.GetString(), out _)) return Validation.Fail("动作目前仅支持内建 sceneKey。");
+            if (action.ValueKind != JsonValueKind.Object) return Validation.Fail("动作必须是对象。");
+            if (action.TryGetProperty("type", out var type) && string.Equals(type.GetString(), "agent_run", StringComparison.Ordinal))
+            {
+                if (!action.TryGetProperty("expertCode", out var code) || string.IsNullOrWhiteSpace(code.GetString())
+                    || !await _db.Experts.AnyAsync(x => x.Code == code.GetString() && x.Status == "active", cancellationToken))
+                    return Validation.Fail("agent_run 动作必须引用存在的 active 专家 code。");
+                continue;
+            }
+            if (!action.TryGetProperty("sceneKey", out var scene) || !SmartHomeSceneDefinitions.TryGetIntent(scene.GetString(), out _)) return Validation.Fail("动作仅支持内建 sceneKey 或 agent_run 类型。");
         }
         return Validation.Ok(actions.GetRawText());
     }
@@ -256,11 +299,23 @@ public sealed class AutomationRuleServices : IAutomationRuleServices
             var zone = ReadTimeZone(root);
             var local = TimeZoneInfo.ConvertTimeFromUtc(now, zone);
             var due = kind == "fixed_time"
-                ? TimeOnly.ParseExact(root.GetProperty("time").GetString()!, "HH:mm", CultureInfo.InvariantCulture).Hour == local.Hour && TimeOnly.ParseExact(root.GetProperty("time").GetString()!, "HH:mm", CultureInfo.InvariantCulture).Minute == local.Minute
+                ? TimeOnly.ParseExact(root.GetProperty("time").GetString()!, "HH:mm", CultureInfo.InvariantCulture).Hour == local.Hour && TimeOnly.ParseExact(root.GetProperty("time").GetString()!, "HH:mm", CultureInfo.InvariantCulture).Minute == local.Minute && DayOfWeekMatches(root, local)
                 : SolarTime(local.Date, root.GetProperty("event").GetString() == "sunrise", root, zone).Hour == local.Hour && SolarTime(local.Date, root.GetProperty("event").GetString() == "sunrise", root, zone).Minute == local.Minute;
             return due && (rule.LastTriggeredAt is null || TimeZoneInfo.ConvertTimeFromUtc(rule.LastTriggeredAt.Value, zone).Date != local.Date);
         }
         catch (Exception) { return false; }
+    }
+
+    /// <summary>fixed_time 触发器按 daysOfWeek（ISO 1=周一，7=周日）过滤；未配置时每天都匹配。</summary>
+    private static bool DayOfWeekMatches(JsonElement root, DateTime local)
+    {
+        if (!root.TryGetProperty("daysOfWeek", out var days) || days.ValueKind != JsonValueKind.Array) return true;
+        var isoDay = (int)local.DayOfWeek == 0 ? 7 : (int)local.DayOfWeek;
+        foreach (var item in days.EnumerateArray())
+        {
+            if (item.TryGetInt32(out var day) && day == isoDay) return true;
+        }
+        return false;
     }
 
     // NOAA's standard sunrise equation, sufficient for scheduling. Coordinates are optional and default to Beijing.

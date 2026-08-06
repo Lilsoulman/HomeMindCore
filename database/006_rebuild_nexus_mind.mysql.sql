@@ -18,3 +18,4 @@ SOURCE database/010_confirmed_smart_home_actions.mysql.sql;
 SOURCE database/011_agent_runtime_architecture.mysql.sql;
 SOURCE database/012_automation_and_connector_sync.mysql.sql;
 SOURCE database/013_expert_files_and_team_orchestration.mysql.sql;
+SOURCE database/014_v2.2_family_and_steward.mysql.sql;

@@ -1,6 +1,6 @@
 # HomeMind 数据库约定
 
-按顺序执行 `001_mobile_initial_schema.mysql.sql` 至 `013_expert_files_and_team_orchestration.mysql.sql`，数据库名称为 `nexus_mind`。
+按顺序执行 `001_mobile_initial_schema.mysql.sql` 至 `014_v2.2_family_and_steward.mysql.sql`，数据库名称为 `nexus_mind`。
 
 本地开发环境需要清空全部数据并重新建库时，执行 `006_rebuild_nexus_mind.mysql.sql`。该脚本会删除 `nexus_mind`，随后按全部迁移重建表和初始化中文专家目录；不得用于生产库。
 

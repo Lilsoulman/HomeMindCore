@@ -1,4 +1,7 @@
+using HomeMind.Business.IServices.Connector;
 using HomeMind.Business.IServices.SmartHome;
+using HomeMind.Business.Services.Connectors.Adapters;
+using HomeMind.Business.Services.Connectors.Bridge;
 using HomeMind.Common.Model.Entities.SmartHome;
 using HomeMind.Common.Model.ViewModel.Common;
 using HomeMind.Common.Model.ViewModel.Data.SmartHome;
@@ -11,16 +14,16 @@ namespace HomeMind.Business.Services.SmartHome;
 public sealed class ConnectorRuntimeServices : IConnectorRuntimeServices
 {
     private readonly HomeMindDbContext _db;
-    private readonly IReadOnlyDictionary<string, IConnectorAdapter> _adapters;
+    private readonly IReadOnlyDictionary<string, IDeviceAdapter> _adapters;
+    private readonly DeviceSyncService _sync;
     private readonly IConnectorSyncQueue _syncQueue;
-    private readonly IAutomationRuleServices _automation;
 
-    public ConnectorRuntimeServices(HomeMindDbContext db, IEnumerable<IConnectorAdapter> adapters, IConnectorSyncQueue syncQueue, IAutomationRuleServices automation)
+    public ConnectorRuntimeServices(HomeMindDbContext db, IEnumerable<IDeviceAdapter> adapters, DeviceSyncService sync, IConnectorSyncQueue syncQueue)
     {
         _db = db;
         _adapters = adapters.ToDictionary(x => x.ProviderCode, StringComparer.OrdinalIgnoreCase);
+        _sync = sync;
         _syncQueue = syncQueue;
-        _automation = automation;
     }
 
     public async Task<ServiceResult> TestConnectionAsync(long tenantId, long connectorId, CancellationToken cancellationToken = default)
@@ -135,63 +138,18 @@ public sealed class ConnectorRuntimeServices : IConnectorRuntimeServices
         if (context.Error is not null) return context.Error;
         var connector = context.Connector!;
 
-        IReadOnlyList<DiscoveredDevice> discovered;
+        int discoveredCount;
         try
         {
-            discovered = await context.Adapter!.DiscoverDevicesAsync(context.Reference!, cancellationToken);
+            discoveredCount = await _sync.SyncAsync(tenantId, connector, context.ProviderCode!, context.Reference!, cancellationToken);
         }
         catch (ConnectorAdapterException error)
         {
-            await MarkFailedAsync(connector, cancellationToken);
+            await _sync.MarkFailedAsync(connector, cancellationToken);
             return new ServiceResult(IsVaultError(error.ErrorCode) ? 503 : 502, error.Message);
         }
 
-        var now = DateTime.UtcNow;
-        var changedDeviceIds = new List<long>();
-        foreach (var device in discovered)
-        {
-            var space = await FindOrCreateSpaceAsync(tenantId, device.SpaceName, cancellationToken);
-            var persisted = await _db.SmartHomeDevices.SingleOrDefaultAsync(
-                x => x.WorkspaceConnectorId == connector.Id && x.ExternalId == device.ExternalId,
-                cancellationToken);
-            if (persisted is null)
-            {
-                persisted = new SmartHomeDevice
-                {
-                    TenantId = tenantId,
-                    WorkspaceConnectorId = connector.Id,
-                    ExternalId = device.ExternalId,
-                    CreatedAt = now
-                };
-                _db.SmartHomeDevices.Add(persisted);
-            }
-
-            persisted.SpaceId = space.Id;
-            persisted.Name = device.Name;
-            persisted.DeviceType = device.DeviceType;
-            persisted.OnlineStatus = device.OnlineStatus;
-            persisted.StateSummary = StateSummary(device);
-            persisted.LastSeenAt = device.SampledAt;
-            persisted.UpdatedAt = now;
-            persisted.DeletedAt = null;
-            await UpsertCapabilitiesAsync(persisted, device.Capabilities, now, cancellationToken);
-            var previousState = await _db.DeviceStates.Where(x => x.DeviceId == persisted.Id).OrderByDescending(x => x.SampledAt).Select(x => x.State).FirstOrDefaultAsync(cancellationToken);
-            _db.DeviceStates.Add(new DeviceState { DeviceId = persisted.Id, State = device.StateJson, SampledAt = device.SampledAt, CreatedAt = now });
-            if (!string.Equals(previousState, device.StateJson, StringComparison.Ordinal)) changedDeviceIds.Add(persisted.Id);
-        }
-
-        connector.Status = "connected";
-        connector.LastHealthAt = now;
-        connector.LastSyncAt = now;
-        connector.UpdatedAt = now;
-        await _db.SaveChangesAsync(cancellationToken);
-        foreach (var deviceId in changedDeviceIds)
-        {
-            var state = discovered.FirstOrDefault(x => x.ExternalId == _db.SmartHomeDevices.Local.FirstOrDefault(d => d.Id == deviceId)?.ExternalId)?.StateJson ?? "{}";
-            await _automation.HandleDeviceStateChangeAsync(tenantId, deviceId, state, now, cancellationToken);
-        }
-        await _automation.HandleSyncCompletedAsync(tenantId, connector.Id, now, cancellationToken);
-        return new ServiceResult(200, successMessage, new ConnectorOperationView(connector.Id, connector.Status, discovered.Count, connector.LastHealthAt, connector.LastSyncAt));
+        return new ServiceResult(200, successMessage, new ConnectorOperationView(connector.Id, connector.Status, discoveredCount, connector.LastHealthAt, connector.LastSyncAt));
     }
 
     private async Task<RuntimeContext> LoadAsync(long tenantId, long connectorId, CancellationToken cancellationToken)
@@ -205,94 +163,15 @@ public sealed class ConnectorRuntimeServices : IConnectorRuntimeServices
         if (connector is null) return RuntimeContext.Failure(new ServiceResult(404, "请求的连接器不存在或已停用。"));
         if (string.IsNullOrWhiteSpace(connector.Connector.CredentialRef)) return RuntimeContext.Failure(new ServiceResult(422, "连接器未配置凭据引用。"));
         if (!_adapters.TryGetValue(connector.Code, out var adapter)) return RuntimeContext.Failure(new ServiceResult(501, "该连接器尚未提供运行期适配器。"));
-        return new RuntimeContext(connector.Connector, adapter, new ConnectorReference(connector.Connector.Id, tenantId, connector.Connector.CredentialRef), null);
+        return new RuntimeContext(connector.Connector, adapter, connector.Code, new ConnectorReference(connector.Connector.Id, tenantId, connector.Connector.CredentialRef), null);
     }
-
-    private async Task<SmartHomeSpace> FindOrCreateSpaceAsync(long tenantId, string? name, CancellationToken cancellationToken)
-    {
-        var normalizedName = string.IsNullOrWhiteSpace(name) ? "未分配空间" : name.Trim();
-        var existing = await _db.SmartHomeSpaces
-            .Where(x => x.TenantId == tenantId && x.Name == normalizedName && x.DeletedAt == null)
-            .OrderBy(x => x.Id)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (existing is not null) return existing;
-
-        var now = DateTime.UtcNow;
-        var space = new SmartHomeSpace
-        {
-            TenantId = tenantId,
-            Name = normalizedName,
-            SpaceType = "other",
-            Summary = "由 Home Assistant 同步。",
-            SortOrder = 999,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        _db.SmartHomeSpaces.Add(space);
-        await _db.SaveChangesAsync(cancellationToken);
-        return space;
-    }
-
-    private async Task UpsertCapabilitiesAsync(SmartHomeDevice device, IReadOnlyList<DiscoveredDeviceCapability> discovered, DateTime now, CancellationToken cancellationToken)
-    {
-        await _db.SaveChangesAsync(cancellationToken);
-        var existing = await _db.DeviceCapabilities.Where(x => x.DeviceId == device.Id).ToListAsync(cancellationToken);
-        foreach (var capability in discovered)
-        {
-            var persisted = existing.SingleOrDefault(x => x.Capability == capability.Capability);
-            if (persisted is null)
-            {
-                _db.DeviceCapabilities.Add(new DeviceCapability
-                {
-                    DeviceId = device.Id,
-                    Capability = capability.Capability,
-                    CreatedAt = now
-                });
-                persisted = _db.DeviceCapabilities.Local.Last();
-            }
-            persisted.ValueSchema = capability.ValueSchema;
-            persisted.IsWritable = capability.IsWritable;
-            persisted.Permission = CapabilityPermission(device.DeviceType, capability.Capability, capability.IsWritable);
-            persisted.UpdatedAt = now;
-            persisted.DeletedAt = null;
-        }
-    }
-
-    private async Task MarkFailedAsync(WorkspaceConnector connector, CancellationToken cancellationToken)
-    {
-        connector.Status = "failed";
-        connector.LastHealthAt = DateTime.UtcNow;
-        connector.UpdatedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
-    }
-
-    private static string StateSummary(DiscoveredDevice device) => device.OnlineStatus == "offline"
-        ? "设备暂时离线。"
-        : device.DeviceType switch
-        {
-            "light" => "照明状态已同步。",
-            "air_conditioner" => "空调状态已同步。",
-            "cover" => "遮阳设备状态已同步。",
-            "switch" => "开关状态已同步。",
-            _ => "环境状态已同步。"
-        };
-
-    private static string CapabilityPermission(string deviceType, string capability, bool writable) => !writable
-        ? "smart_home.environment.read"
-        : deviceType switch
-        {
-            "light" => "smart_home.light.write",
-            "air_conditioner" => "smart_home.air_conditioner.write",
-            "cover" => "smart_home.cover.write",
-            _ => "smart_home.switch.write"
-        };
 
     private static bool IsVaultError(string? errorCode) => errorCode?.StartsWith("secret_vault", StringComparison.Ordinal) == true || errorCode == "invalid_secret";
 
     private static ConnectorSyncJobView ToSyncJobView(ConnectorSyncJob job) => new(job.Id, job.WorkspaceConnectorId, job.Status, job.Reason, job.AttemptNo, job.AvailableAt, job.CompletedAt, job.UpdatedAt);
 
-    private sealed record RuntimeContext(WorkspaceConnector? Connector, IConnectorAdapter? Adapter, ConnectorReference? Reference, ServiceResult? Error)
+    private sealed record RuntimeContext(WorkspaceConnector? Connector, IDeviceAdapter? Adapter, string? ProviderCode, ConnectorReference? Reference, ServiceResult? Error)
     {
-        public static RuntimeContext Failure(ServiceResult error) => new(null, null, null, error);
+        public static RuntimeContext Failure(ServiceResult error) => new(null, null, null, null, error);
     }
 }

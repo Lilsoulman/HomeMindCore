@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Repository;
 using HomeMind.Common.Infrastructure;
+using HomeMind.Common.Model.ViewModel.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -31,6 +32,8 @@ public static class PermissionNames
     public const string AiRun = "ai.run";
     public const string AiSkillsRead = "ai.skills.read";
     public const string AiSkillsWrite = "ai.skills.write";
+    public const string AiConfigRead = "ai.config.read";
+    public const string AiConfigWrite = "ai.config.write";
     public const string CalendarRead = "calendar.read";
     public const string CalendarWrite = "calendar.write";
     public const string TodoRead = "todo.read";
@@ -45,6 +48,13 @@ public static class PermissionNames
     public const string TeamRunRead = "team_run.read";
     public const string TeamRunWrite = "team_run.write";
     public const string TeamManage = "team.manage";
+    public const string FamilyRead = "family.read";
+    public const string FamilyWrite = "family.write";
+    public const string StewardActivityRead = "steward.activity.read";
+    public const string ConfirmationRead = "confirmation.read";
+    public const string ConfirmationWrite = "confirmation.write";
+    public const string LifeFavoriteRead = "life.favorite.read";
+    public const string LifeFavoriteWrite = "life.favorite.write";
 
     public static IReadOnlyCollection<string> All { get; } = new[]
     {
@@ -53,6 +63,8 @@ public static class PermissionNames
         AiRun,
         AiSkillsRead,
         AiSkillsWrite,
+        AiConfigRead,
+        AiConfigWrite,
         CalendarRead,
         CalendarWrite,
         TodoRead,
@@ -67,6 +79,13 @@ public static class PermissionNames
         ,TeamRunRead
         ,TeamRunWrite
         ,TeamManage
+        ,FamilyRead
+        ,FamilyWrite
+        ,StewardActivityRead
+        ,ConfirmationRead
+        ,ConfirmationWrite
+        ,LifeFavoriteRead
+        ,LifeFavoriteWrite
     };
 }
 
@@ -85,6 +104,8 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         PermissionNames.AiRun,
         PermissionNames.AiSkillsRead,
         PermissionNames.AiSkillsWrite,
+        PermissionNames.AiConfigRead,
+        PermissionNames.AiConfigWrite,
         PermissionNames.CalendarRead,
         PermissionNames.CalendarWrite,
         PermissionNames.TodoRead,
@@ -94,6 +115,13 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         ,PermissionNames.AutomationRead
         ,PermissionNames.ExpertFileRead
         ,PermissionNames.TeamRunRead
+        ,PermissionNames.FamilyRead
+        ,PermissionNames.FamilyWrite
+        ,PermissionNames.StewardActivityRead
+        ,PermissionNames.ConfirmationRead
+        ,PermissionNames.ConfirmationWrite
+        ,PermissionNames.LifeFavoriteRead
+        ,PermissionNames.LifeFavoriteWrite
     };
 
     private static readonly HashSet<string> ViewerPermissions = new(StringComparer.Ordinal)
@@ -101,11 +129,16 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         PermissionNames.IdentityRead,
         PermissionNames.AiRead,
         PermissionNames.AiSkillsRead,
+        PermissionNames.AiConfigRead,
         PermissionNames.CalendarRead,
         PermissionNames.TodoRead,
         PermissionNames.SmartHomeRead
         ,PermissionNames.AutomationRead
         ,PermissionNames.ExpertFileRead
+        ,PermissionNames.FamilyRead
+        ,PermissionNames.StewardActivityRead
+        ,PermissionNames.ConfirmationRead
+        ,PermissionNames.LifeFavoriteRead
     };
 
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PermissionRequirement requirement)
@@ -219,7 +252,7 @@ public sealed class BearerAuthenticationHandler : AuthenticationHandler<Authenti
     {
         Response.StatusCode = statusCode;
         Response.ContentType = "application/json; charset=utf-8";
-        return JsonSerializer.SerializeAsync(Response.Body, ApiResponse<object>.Fail(statusCode, message), new JsonSerializerOptions { PropertyNamingPolicy = null });
+        return JsonSerializer.SerializeAsync(Response.Body, ApiResponse<object>.Fail(ApiErrorCodes.FromHttpStatus(statusCode), message), new JsonSerializerOptions { PropertyNamingPolicy = null });
     }
 }
 

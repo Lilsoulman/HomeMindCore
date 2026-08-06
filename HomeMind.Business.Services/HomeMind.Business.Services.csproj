@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\HomeMind.Business.IServices\HomeMind.Business.IServices.csproj" />
     <ProjectReference Include="..\HomeMind.Common.Repository\HomeMind.Common.Repository.csproj" />
     <ProjectReference Include="..\HomeMind.Common.Infrastructure\HomeMind.Common.Infrastructure.csproj" />

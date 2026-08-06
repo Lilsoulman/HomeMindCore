@@ -1,3 +1,5 @@
+using HomeMind.Business.IServices.Connector;
+
 namespace HomeMind.Business.IServices.SmartHome;
 
 /// <summary>

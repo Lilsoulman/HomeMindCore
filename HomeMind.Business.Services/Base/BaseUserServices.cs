@@ -2,6 +2,7 @@ using HomeMind.Business.IServices.Base;
 using HomeMind.Common.Helpers;
 using HomeMind.Common.Infrastructure;
 using HomeMind.Common.Model.Entities;
+using HomeMind.Common.Model.ViewModel.Common;
 using HomeMind.Common.Model.ViewModel.Data.Base;
 using HomeMind.Common.Repository;
 using Microsoft.EntityFrameworkCore;
@@ -23,7 +24,7 @@ public sealed class BaseUserServices : IBaseUserServices
     public async Task<AuthenticationResult> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.Phone) || string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 8)
-            return new AuthenticationResult(422, "请输入手机号和至少 8 位的密码。", null);
+            return new AuthenticationResult(422, "请输入手机号和至少 8 位的密码。", null, ApiErrorCodes.ValidationFailed);
 
         var phoneHash = DbValue.Sha256(request.Phone.Trim());
         var existing = await FindLoginAsync(phoneHash, cancellationToken);
@@ -31,11 +32,12 @@ public sealed class BaseUserServices : IBaseUserServices
         {
             return PasswordHasher.Verify(request.Password, existing.PasswordHash)
                 ? await CreateSucceededResultAsync(existing.UserId, existing.TenantId, request.InstallationId, request.Platform, cancellationToken: cancellationToken)
-                : new AuthenticationResult(409, "该手机号已绑定其他账号。", null);
+                : new AuthenticationResult(409, "该手机号已绑定其他账号。", null, ApiErrorCodes.Conflict);
         }
 
+        var now = DateTime.UtcNow;
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-        var user = new User { DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? "HomeMind 用户" : request.DisplayName.Trim() };
+        var user = new User { DisplayName = string.IsNullOrWhiteSpace(request.DisplayName) ? "HomeMind 用户" : request.DisplayName.Trim(), CreatedAt = now, UpdatedAt = now };
         _db.Users.Add(user);
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -45,31 +47,33 @@ public sealed class BaseUserServices : IBaseUserServices
             Code = $"user-{user.Id}",
             Name = $"个人空间 {user.Id}",
             Status = "active",
-            OwnerUserId = user.Id
+            OwnerUserId = user.Id,
+            CreatedAt = now,
+            UpdatedAt = now
         };
-        _db.UserIdentities.Add(new UserIdentity { UserId = user.Id, Provider = "phone", Issuer = "sms", SubjectKind = "e164", SubjectHash = phoneHash, VerifiedAt = DateTime.UtcNow, IsPrimary = true });
-        _db.PasswordCredentials.Add(new PasswordCredential { UserId = user.Id, PasswordHash = PasswordHasher.Hash(request.Password) });
+        _db.UserIdentities.Add(new UserIdentity { UserId = user.Id, Provider = "phone", Issuer = "sms", SubjectKind = "e164", SubjectHash = phoneHash, VerifiedAt = now, IsPrimary = true, CreatedAt = now });
+        _db.PasswordCredentials.Add(new PasswordCredential { UserId = user.Id, PasswordHash = PasswordHasher.Hash(request.Password), PasswordChangedAt = now, FailedAttempts = 0 });
         _db.Tenants.Add(tenant);
         await _db.SaveChangesAsync(cancellationToken);
-        _db.TenantMembers.Add(new TenantMember { TenantId = tenant.Id, UserId = user.Id, Role = "owner", Status = "active" });
-        var result = await CreateSucceededResultAsync(user.Id, tenant.Id, request.InstallationId, request.Platform, cancellationToken: cancellationToken);
+        _db.TenantMembers.Add(new TenantMember { TenantId = tenant.Id, UserId = user.Id, Role = "owner", Status = "active", JoinedAt = now, CreatedAt = now, UpdatedAt = now });
+        await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return result;
+        return await CreateSucceededResultAsync(user.Id, tenant.Id, request.InstallationId, request.Platform, cancellationToken: cancellationToken);
     }
 
     public async Task<AuthenticationResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(request.Phone) || string.IsNullOrWhiteSpace(request.Password))
-            return new AuthenticationResult(401, "手机号或密码错误。", null);
+            return new AuthenticationResult(400, "手机号或密码错误。", null, ApiErrorCodes.AuthenticationFailed);
         var row = await FindLoginAsync(DbValue.Sha256(request.Phone.Trim()), cancellationToken);
         return row is null || !PasswordHasher.Verify(request.Password, row.PasswordHash)
-            ? new AuthenticationResult(401, "手机号或密码错误。", null)
+            ? new AuthenticationResult(400, "手机号或密码错误。", null, ApiErrorCodes.AuthenticationFailed)
             : await CreateSucceededResultAsync(row.UserId, row.TenantId, request.InstallationId, request.Platform, cancellationToken: cancellationToken);
     }
 
     public async Task<AuthenticationResult> RefreshAsync(RefreshRequest request, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(request.RefreshToken)) return new AuthenticationResult(401, "刷新令牌无效或已过期。", null);
+        if (string.IsNullOrWhiteSpace(request.RefreshToken)) return new AuthenticationResult(401, "刷新令牌无效或已过期。", null, ApiErrorCodes.RefreshTokenInvalid);
         var now = DateTime.UtcNow;
         var tokenHash = DbValue.Sha256(request.RefreshToken);
         var row = await (from refresh in _db.AuthRefreshTokens
@@ -77,7 +81,7 @@ public sealed class BaseUserServices : IBaseUserServices
                          where refresh.TokenHash == tokenHash && refresh.RevokedAt == null && refresh.ExpiresAt > now
                                && tenant.TenantType == "personal" && tenant.Status == "active"
                          select new RefreshRow(refresh, tenant.Id)).SingleOrDefaultAsync(cancellationToken);
-        if (row is null) return new AuthenticationResult(401, "刷新令牌无效或已过期。", null);
+        if (row is null) return new AuthenticationResult(401, "刷新令牌无效或已过期。", null, ApiErrorCodes.RefreshTokenInvalid);
 
         row.Token.RevokedAt = now;
         row.Token.RevokeReason = "rotated";
@@ -87,7 +91,7 @@ public sealed class BaseUserServices : IBaseUserServices
 
     public async Task<BaseUserViewModel?> GetCurrentUserAsync(long userId, CancellationToken cancellationToken = default) =>
         await _db.Users.Where(x => x.Id == userId && x.DeletedAt == null)
-            .Select(x => new BaseUserViewModel(x.Id, x.DisplayName, x.AvatarUrl, x.Status, x.Timezone, x.Locale, x.CreatedAt))
+            .Select(x => new BaseUserViewModel(x.Id, x.DisplayName, x.AvatarUrl, x.Status, x.Timezone, x.Locale, x.CreatedAt, ""))
             .SingleOrDefaultAsync(cancellationToken);
 
     private Task<LoginRow?> FindLoginAsync(byte[] phoneHash, CancellationToken cancellationToken) =>
@@ -109,7 +113,7 @@ public sealed class BaseUserServices : IBaseUserServices
             var device = await _db.AuthDevices.SingleOrDefaultAsync(x => x.UserId == userId && x.InstallationId == installation, cancellationToken);
             if (device is null)
             {
-                device = new AuthDevice { UserId = userId, InstallationId = installation, Platform = string.IsNullOrWhiteSpace(platform) ? "h5" : platform, LastSeenAt = now };
+                device = new AuthDevice { UserId = userId, InstallationId = installation, Platform = string.IsNullOrWhiteSpace(platform) ? "h5" : platform, LastSeenAt = now, CreatedAt = now };
                 _db.AuthDevices.Add(device);
             }
             else
@@ -122,7 +126,7 @@ public sealed class BaseUserServices : IBaseUserServices
         }
 
         var refresh = DbValue.RandomToken();
-        _db.AuthRefreshTokens.Add(new AuthRefreshToken { UserId = userId, DeviceId = deviceId.Value, FamilyId = familyId ?? Guid.NewGuid().ToString(), TokenHash = DbValue.Sha256(refresh), ExpiresAt = now.AddDays(_tokens.RefreshTokenDays) });
+        _db.AuthRefreshTokens.Add(new AuthRefreshToken { UserId = userId, DeviceId = deviceId.Value, FamilyId = familyId ?? Guid.NewGuid().ToString(), TokenHash = DbValue.Sha256(refresh), ExpiresAt = now.AddDays(_tokens.RefreshTokenDays), CreatedAt = now });
         await _db.SaveChangesAsync(cancellationToken);
         return new AuthenticationResult(200, "登录成功。", new AuthSessionViewModel(_tokens.CreateAccessToken(userId, tenantId, deviceId.Value), refresh, userId, tenantId));
     }

@@ -11,6 +11,7 @@ using Microsoft.OpenApi.Models;
 using HomeMind.Api.Services;
 using HomeMind.Business.Services;
 using HomeMind.Common.Infrastructure;
+using HomeMind.Common.Model.ViewModel.Common;
 using System;
 using System.IO;
 using System.Linq;
@@ -54,6 +55,7 @@ namespace HomeMind.Api
             services.AddHomeMindData(_configuration);
             services.AddHomeMindBusinessServices();
             services.AddHostedService<AutomationWorker>();
+            services.AddHostedService<AgentRuntimeWorker>();
             services.AddSingleton<TokenService>();
             services.AddSingleton<HomeMind.Common.Infrastructure.SecretProtector>();
             services.AddScoped<AccessTokenValidator>();
@@ -89,7 +91,7 @@ namespace HomeMind.Api
                 });
             services.Configure<ApiBehaviorOptions>(options =>
                 options.InvalidModelStateResponseFactory = _ =>
-                    new BadRequestObjectResult(ApiResponse<object>.Fail(422, "请求参数格式错误。")));
+                    new BadRequestObjectResult(ApiResponse<object>.Fail(ApiErrorCodes.ValidationFailed, "请求参数格式错误。")));
             services.AddSwaggerGen(options =>
             {
                 options.SwaggerDoc("v1", new OpenApiInfo
@@ -119,10 +121,15 @@ namespace HomeMind.Api
                         "TeamRuns" => "智能能力 / 专家与运行",
                         "HousekeeperRuns" => "智能能力 / 专家与运行",
                         "Skills" => "智能能力 / 技能",
+                        "AiConfig" => "智能能力 / AI 配置",
                         "SmartHome" => "智能家居 / 家庭空间",
                         "Connectors" => "智能家居 / 连接器管理",
+                        "Family" => "家庭上下文 / 成员与知识",
+                        "Steward" => "家庭上下文 / 管家协同",
                         "Calendar" => "效率工具 / 日历",
                         "Todos" => "效率工具 / 待办",
+                        "Life" => "个人生活 / 偏好收藏",
+                        "LifeRuns" => "个人生活 / 专家运行",
                         _ => "未分类"
                     }
                 });
@@ -154,7 +161,7 @@ namespace HomeMind.Api
                 await JsonSerializer.SerializeAsync(
                     context.Response.Body,
                     ApiResponse<object>.Fail(
-                        isDatabaseError ? 503 : 500,
+                        isDatabaseError ? ApiErrorCodes.DependencyUnavailable : ApiErrorCodes.InternalError,
                         isDatabaseError ? "数据库服务暂时不可用。" : "服务器发生未预期错误。"),
                     new JsonSerializerOptions { PropertyNamingPolicy = null });
             }));
@@ -173,7 +180,7 @@ namespace HomeMind.Api
                 response.ContentType = "application/json; charset=utf-8";
                 await JsonSerializer.SerializeAsync(
                     response.Body,
-                    ApiResponse<object>.Fail(response.StatusCode, message),
+                    ApiResponse<object>.Fail(ApiErrorCodes.FromHttpStatus(response.StatusCode), message),
                     new JsonSerializerOptions { PropertyNamingPolicy = null });
             });
             app.UseAuthentication();

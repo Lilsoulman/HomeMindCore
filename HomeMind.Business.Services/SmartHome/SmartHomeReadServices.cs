@@ -60,7 +60,11 @@ public sealed class SmartHomeReadServices : ISmartHomeReadServices
             device.OnlineStatus,
             device.StateSummary,
             latestStates.GetValueOrDefault(device.Id),
-            capabilities.Where(x => x.DeviceId == device.Id).Select(x => new DeviceCapabilityView(x.Capability, x.ValueSchema, x.Permission, x.IsWritable)).ToArray())));
+            capabilities.Where(x => x.DeviceId == device.Id).Select(x => new DeviceCapabilityView(x.Capability, x.ValueSchema, x.Permission, x.IsWritable)).ToArray(),
+            device.ZigbeeRole,
+            device.BatteryLevel,
+            device.SignalLqi,
+            device.HealthStatus)));
     }
 
     public async Task<ServiceResult> ListScenesAsync(long tenantId, CancellationToken cancellationToken = default)
@@ -71,6 +75,44 @@ public sealed class SmartHomeReadServices : ISmartHomeReadServices
             .ToListAsync(cancellationToken);
         if (scenes.Count == 0 && _mockEnabled) return new ServiceResult(200, "查询成功。", MockScenes());
         return new ServiceResult(200, "查询成功。", scenes.Select(x => new SceneView(x.Id, x.SceneKey, x.Name, x.Summary, x.Status, x.UpdatedAt)));
+    }
+
+    public async Task<ServiceResult> GetDeviceHealthAsync(long tenantId, long? spaceId, CancellationToken cancellationToken = default)
+    {
+        var query = _db.SmartHomeDevices.Where(x => x.TenantId == tenantId && x.DeletedAt == null);
+        if (spaceId is not null) query = query.Where(x => x.SpaceId == spaceId);
+        var buckets = await query.GroupBy(x => x.HealthStatus)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+        var total = buckets.Sum(x => x.Count);
+        var healthy = buckets.FirstOrDefault(x => x.Status == "healthy")?.Count ?? 0;
+        var degraded = buckets.FirstOrDefault(x => x.Status == "degraded")?.Count ?? 0;
+        var offline = buckets.FirstOrDefault(x => x.Status == "offline")?.Count ?? 0;
+        var lowBattery = buckets.FirstOrDefault(x => x.Status == "low_battery")?.Count ?? 0;
+        var dominant = buckets.OrderByDescending(x => x.Count).ThenBy(x => x.Status).Select(x => x.Status).FirstOrDefault();
+        return new ServiceResult(200, "查询成功。", new DeviceHealthSummaryView(total, healthy, degraded, offline, lowBattery, dominant));
+    }
+
+    public async Task<ServiceResult> GetDeviceHealthDetailAsync(long tenantId, long deviceId, CancellationToken cancellationToken = default)
+    {
+        var device = await _db.SmartHomeDevices.SingleOrDefaultAsync(x => x.Id == deviceId && x.TenantId == tenantId && x.DeletedAt == null, cancellationToken);
+        if (device is null) return new ServiceResult(404, "请求的设备不存在。");
+        var sampledAt = await _db.DeviceStates
+            .Where(x => x.DeviceId == deviceId)
+            .OrderByDescending(x => x.SampledAt)
+            .Select(x => (DateTime?)x.SampledAt)
+            .FirstOrDefaultAsync(cancellationToken);
+        return new ServiceResult(200, "查询成功。", new DeviceHealthDetailView(
+            device.Id,
+            device.SpaceId,
+            device.Name,
+            device.DeviceType,
+            device.OnlineStatus,
+            device.ZigbeeRole,
+            device.BatteryLevel,
+            device.SignalLqi,
+            device.HealthStatus,
+            sampledAt));
     }
 
     private static IReadOnlyList<SmartHomeSpaceView> MockSpaces() =>
@@ -84,10 +126,10 @@ public sealed class SmartHomeReadServices : ISmartHomeReadServices
     {
         var all = new[]
         {
-            new SmartHomeDeviceView(-201, -101, "客厅主灯", "light", "online", "已开启，亮度 60%。", DateTime.UtcNow, [new DeviceCapabilityView("power", "{\"type\":\"boolean\"}", "smart_home.light.write", true), new DeviceCapabilityView("brightness", "{\"type\":\"number\"}", "smart_home.light.write", true)]),
-            new SmartHomeDeviceView(-202, -101, "客厅温湿度传感器", "sensor", "online", "温度 25 C，湿度 48%。", DateTime.UtcNow, [new DeviceCapabilityView("temperature", "{\"type\":\"number\"}", "smart_home.environment.read", false), new DeviceCapabilityView("humidity", "{\"type\":\"number\"}", "smart_home.environment.read", false)]),
-            new SmartHomeDeviceView(-203, -102, "卧室空调", "air_conditioner", "online", "26 C，睡眠模式未开启。", DateTime.UtcNow, [new DeviceCapabilityView("power", "{\"type\":\"boolean\"}", "smart_home.air_conditioner.write", true), new DeviceCapabilityView("temperature", "{\"type\":\"number\"}", "smart_home.air_conditioner.write", true)]),
-            new SmartHomeDeviceView(-204, -103, "老人房照明", "light", "online", "已关闭。", DateTime.UtcNow, [new DeviceCapabilityView("power", "{\"type\":\"boolean\"}", "smart_home.light.write", true)])
+            new SmartHomeDeviceView(-201, -101, "客厅主灯", "light", "online", "已开启，亮度 60%。", DateTime.UtcNow, [new DeviceCapabilityView("power", "{\"type\":\"boolean\"}", "smart_home.light.write", true), new DeviceCapabilityView("brightness", "{\"type\":\"number\"}", "smart_home.light.write", true)], "router", (byte)100, 220, "healthy"),
+            new SmartHomeDeviceView(-202, -101, "客厅温湿度传感器", "sensor", "online", "温度 25 C，湿度 48%。", DateTime.UtcNow, [new DeviceCapabilityView("temperature", "{\"type\":\"number\"}", "smart_home.environment.read", false), new DeviceCapabilityView("humidity", "{\"type\":\"number\"}", "smart_home.environment.read", false)], "end_device", (byte)35, 110, "degraded"),
+            new SmartHomeDeviceView(-203, -102, "卧室空调", "air_conditioner", "online", "26 C，睡眠模式未开启。", DateTime.UtcNow, [new DeviceCapabilityView("power", "{\"type\":\"boolean\"}", "smart_home.air_conditioner.write", true), new DeviceCapabilityView("temperature", "{\"type\":\"number\"}", "smart_home.air_conditioner.write", true)], "router", (byte)15, 90, "low_battery"),
+            new SmartHomeDeviceView(-204, -103, "老人房照明", "light", "offline", "已关闭。", DateTime.UtcNow, [new DeviceCapabilityView("power", "{\"type\":\"boolean\"}", "smart_home.light.write", true)], "end_device", null, null, "offline")
         };
         return spaceId is null ? all : all.Where(x => x.SpaceId == spaceId).ToArray();
     }

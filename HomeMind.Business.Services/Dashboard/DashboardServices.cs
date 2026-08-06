@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HomeMind.Business.Services.Dashboard;
 
-/// <summary>Reads independent dashboard modules without exposing connector or provider details.</summary>
+/// <summary>仪表板聚合服务；各模块独立读取并降级，不暴露连接器或厂商细节。</summary>
 public sealed class DashboardServices : IDashboardServices
 {
     private readonly HomeMindDbContext _db;
@@ -18,13 +18,34 @@ public sealed class DashboardServices : IDashboardServices
     {
         var now = DateTime.UtcNow;
         var home = await ReadModuleAsync(() => ReadHomeAsync(tenantId, cancellationToken), EmptyHome(), cancellationToken);
+        var pendingConfirmations = await ReadModuleAsync(() => ReadPendingConfirmationsAsync(tenantId, now, cancellationToken), Array.Empty<DashboardConfirmationView>(), cancellationToken);
+        var stewardActivities = await ReadModuleAsync(() => ReadStewardActivitiesAsync(tenantId, cancellationToken), Array.Empty<DashboardStewardActivityView>(), cancellationToken);
         var scenes = await ReadModuleAsync(() => ReadScenesAsync(tenantId, now, cancellationToken), Array.Empty<SceneView>(), cancellationToken);
         var todos = await ReadModuleAsync(() => ReadTodosAsync(userId, tenantId, now, cancellationToken), Array.Empty<DashboardTodoView>(), cancellationToken);
         var calendar = await ReadModuleAsync(() => ReadCalendarAsync(userId, tenantId, now, cancellationToken), Array.Empty<DashboardCalendarEventView>(), cancellationToken);
         var suggestion = await ReadModuleAsync(() => ReadSuggestionAsync(userId, tenantId, cancellationToken), null, cancellationToken);
-        var partialFailure = new[] { home.Status, scenes.Status, todos.Status, calendar.Status, suggestion.Status }.Any(x => x != "available");
+        var partialFailure = new[] { home.Status, pendingConfirmations.Status, stewardActivities.Status, scenes.Status, todos.Status, calendar.Status, suggestion.Status }.Any(x => x != "available");
 
-        return new ServiceResult(200, partialFailure ? "看板已返回，部分数据暂不可用。" : "查询成功。", new DashboardView(now, partialFailure, home, scenes, todos, calendar, suggestion));
+        return new ServiceResult(200, partialFailure ? "看板已返回，部分数据暂不可用。" : "查询成功。",
+            new DashboardView(now, partialFailure, home, pendingConfirmations, stewardActivities, scenes, todos, calendar, suggestion));
+    }
+
+    /// <summary>读取待确认事项模块：仅返回未过期且仍待处理的确认项，按到期时间升序取前 6 条。</summary>
+    private async Task<DashboardModule<IReadOnlyList<DashboardConfirmationView>>> ReadPendingConfirmationsAsync(long tenantId, DateTime now, CancellationToken cancellationToken)
+    {
+        var items = await _db.ConfirmationItems.Where(x => x.HomeId == tenantId && x.Status == "pending" && (x.ExpiresAt == null || x.ExpiresAt > now))
+            .OrderBy(x => x.ExpiresAt == null).ThenBy(x => x.ExpiresAt).ThenBy(x => x.Id).Take(6)
+            .Select(x => new DashboardConfirmationView(x.Id, x.RiskLevel, x.Title, x.ImpactSummary, x.Status, x.ExpiresAt, x.UpdatedAt)).ToListAsync(cancellationToken);
+        return Available<IReadOnlyList<DashboardConfirmationView>>(items, items.Select(x => x.UpdatedAt).DefaultIfEmpty().Max());
+    }
+
+    /// <summary>读取管家动态模块：按创建时间倒序取最近 6 条活动。</summary>
+    private async Task<DashboardModule<IReadOnlyList<DashboardStewardActivityView>>> ReadStewardActivitiesAsync(long tenantId, CancellationToken cancellationToken)
+    {
+        var items = await _db.StewardActivities.Where(x => x.HomeId == tenantId)
+            .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(6)
+            .Select(x => new DashboardStewardActivityView(x.Id, x.Category, x.Title, x.RiskLevel, x.Status, x.ResultSummary, x.CreatedAt)).ToListAsync(cancellationToken);
+        return Available<IReadOnlyList<DashboardStewardActivityView>>(items, items.Select(x => x.CreatedAt).DefaultIfEmpty().Max());
     }
 
     private async Task<DashboardModule<DashboardHomeView>> ReadHomeAsync(long tenantId, CancellationToken cancellationToken)

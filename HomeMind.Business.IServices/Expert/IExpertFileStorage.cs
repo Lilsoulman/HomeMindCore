@@ -10,4 +10,10 @@ public interface IExpertFileStorage
     Task CommitObjectAsync(long tenantId, long fileId, string objectKey, long offsetBytes, long sizeBytes, string sha256, CancellationToken cancellationToken = default);
     Task<string> GenerateReadTokenAsync(long tenantId, long fileId, string objectKey, string purpose, CancellationToken cancellationToken = default);
     Task DeleteAsync(long tenantId, long fileId, string objectKey, CancellationToken cancellationToken = default);
+
+    /// <summary>服务端直接写入生成文件字节流，返回对象键。</summary>
+    Task<string> WriteGeneratedAsync(long tenantId, long fileId, string fileName, byte[] content, CancellationToken cancellationToken = default);
+
+    /// <summary>读取对象完整字节流，供内容下载端点使用。</summary>
+    Task<byte[]> ReadAllBytesAsync(long tenantId, long fileId, string objectKey, CancellationToken cancellationToken = default);
 }

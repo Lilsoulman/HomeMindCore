@@ -1,5 +1,8 @@
 using HomeMind.Common.Model.Entities;
+using HomeMind.Common.Model.Entities.Family;
+using HomeMind.Common.Model.Entities.Life;
 using HomeMind.Common.Model.Entities.SmartHome;
+using HomeMind.Common.Model.Entities.Steward;
 using Microsoft.EntityFrameworkCore;
 
 namespace HomeMind.Common.Repository;
@@ -34,6 +37,7 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<CalendarEventException> CalendarEventExceptions => Set<CalendarEventException>();
     public DbSet<IcalOverride> IcalOverrides => Set<IcalOverride>();
     public DbSet<AiSkill> AiSkills => Set<AiSkill>();
+    public DbSet<KnowledgeItem> KnowledgeItems => Set<KnowledgeItem>();
     public DbSet<AiConfig> AiConfigs => Set<AiConfig>();
     public DbSet<AiCallLog> AiCallLogs => Set<AiCallLog>();
     public DbSet<UserSetting> UserSettings => Set<UserSetting>();
@@ -76,6 +80,15 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<TeamRun> TeamRuns => Set<TeamRun>();
     public DbSet<TeamRunMember> TeamRunMembers => Set<TeamRunMember>();
     public DbSet<TeamRunAudit> TeamRunAudits => Set<TeamRunAudit>();
+    public DbSet<FamilyMember> FamilyMembers => Set<FamilyMember>();
+    public DbSet<FamilyKnowledge> FamilyKnowledge => Set<FamilyKnowledge>();
+    public DbSet<DecisionHistory> DecisionHistory => Set<DecisionHistory>();
+    public DbSet<FamilyAuditLog> FamilyAuditLogs => Set<FamilyAuditLog>();
+    public DbSet<StewardActivity> StewardActivities => Set<StewardActivity>();
+    public DbSet<ConfirmationItem> ConfirmationItems => Set<ConfirmationItem>();
+    public DbSet<ConfirmationBatchRecord> ConfirmationBatchRecords => Set<ConfirmationBatchRecord>();
+    public DbSet<PersonalFavorite> PersonalFavorites => Set<PersonalFavorite>();
+    public DbSet<TravelAttraction> TravelAttractions => Set<TravelAttraction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -120,6 +133,15 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<TeamRun>().Property(x => x.SynthesisResultJson).HasColumnType("json");
         modelBuilder.Entity<TeamRunMember>().Property(x => x.PermissionIntersectionJson).HasColumnType("json");
         modelBuilder.Entity<TeamRunAudit>().Property(x => x.PayloadJson).HasColumnType("json");
+        modelBuilder.Entity<FamilyMember>().Property(x => x.Preferences).HasColumnType("json");
+        modelBuilder.Entity<FamilyMember>().Property(x => x.Birthday).HasColumnType("date");
+        modelBuilder.Entity<FamilyKnowledge>().Property(x => x.ConfidenceScore).HasPrecision(4, 3);
+        modelBuilder.Entity<DecisionHistory>().Property(x => x.Alternatives).HasColumnType("json");
+        modelBuilder.Entity<FamilyAuditLog>().Property(x => x.BeforeJson).HasColumnType("json");
+        modelBuilder.Entity<FamilyAuditLog>().Property(x => x.AfterJson).HasColumnType("json");
+        modelBuilder.Entity<ConfirmationBatchRecord>().HasIndex(x => new { x.HomeId, x.IdempotencyKey }).IsUnique();
+        modelBuilder.Entity<ConfirmationBatchRecord>().Property(x => x.ConfirmationIdsJson).HasColumnType("json");
+        modelBuilder.Entity<ConfirmationBatchRecord>().Property(x => x.ResultJson).HasColumnType("json");
     }
 
     private static void ConfigureStoreGeneratedTimestamps(ModelBuilder modelBuilder)
