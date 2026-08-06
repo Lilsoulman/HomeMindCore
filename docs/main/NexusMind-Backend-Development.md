@@ -319,6 +319,19 @@ V2.3 在承接 V2.2 家庭协同、三级风险、知识与设备健康契约的
 
 V2.3 前置“个人生活专家”（code=`personal-life-expert`，category=`life`），首期交付探店翻牌与行程规划。推荐与行程复用既有 Expert Run、Run Action、确认与审计链路，不新建运行时；后端新增个人偏好数据层与 CRUD API。OCR 第三方截图识别与短视频生成不进入本期。
 
+### 12.0 B18 AI 配置启用开关
+
+为落实「设置：AI 配置」三态交互（新增/只读/编辑）与只读态启用开关，`ai_configs` 表新增 `enabled TINYINT(1) NOT NULL DEFAULT 1` 列（迁移 `database/023_ai_config_enabled.mysql.sql` 与 EF Migration `20260806021643_AddAiConfigEnabled`），`AiConfigRequest` 扩展 `Enabled` 字段，`AiConfigController` 的 `GET/PUT /api/v1/ai/config` 返回与接收 `enabled`；切换开关不传 `apiKey` 即可保留密文。
+
+闸门新增 `IAiConfigServices.IsEnabledAsync(userId)`，统一在两处消费：
+
+1. `AiCapabilitiesController` 占位 `POST /api/v1/ai/{generate,chat,stream}`（权限 `ai.run`）：调用前校验，未启用 → HTTP 422 / `Code=42200` `Msg="AI 生成能力已禁用，请在设置中开启。"`；启用 → 暂返 HTTP 501 占位。
+2. `AgentRunProcessor` 在调用 `ILLMClient` 之前校验，未启用 → `FailAsync(LlmErrorCodes.AiConfigDisabled, "AI 生成能力已禁用，请在设置中开启。")`，终态为 `failed`，不消耗模型配额。
+
+`LlmErrorCodes.AiConfigDisabled = "ai_config_disabled"` 与既有 `AiConfigMissing` 区分语义（缺配置 vs 主动禁用），错误码与 `Code=42200` 仍由客户端解析。文档同步：`docs/api-implementation.md` §响应与错误码（增加 `42200`）、§鉴权策略（`ai.config.read/write` 字段说明）、§模块表（AI 配置行）；`docs/frontend-api-integration.md` §AI 配置示例与 §9 权限汇总待前端 PR 同步。
+
+定向验证：`dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b18-verify` 通过（0 errors）；`dotnet test` 全绿 81/81（新增 `AiConfigServicesTests` 5 项：未配置 → 不可用、默认启用 → 可用、显式禁用 → 不可用、缺省/空字符串 `apiKey` 保留密文）；真实 MySQL `023` 顺序迁移与 AI 端到端按部署环境验证。
+
 ### 12.1 数据模型与迁移
 
 新增 `017_v2.3_personal_favorites.mysql.sql`：

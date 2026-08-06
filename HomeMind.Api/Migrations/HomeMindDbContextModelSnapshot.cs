@@ -48,7 +48,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("TokenId");
 
-                    b.ToTable("auth_access_token_revocations");
+                    b.ToTable("auth_access_token_revocations", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ActionExecutionAudit", b =>
@@ -107,7 +107,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("action_execution_audits");
+                    b.ToTable("action_execution_audits", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.AgentRun", b =>
@@ -198,7 +198,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_runs");
+                    b.ToTable("expert_runs", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.AiCallLog", b =>
@@ -210,7 +210,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ai_call_logs");
+                    b.ToTable("ai_call_logs", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.AiConfig", b =>
@@ -228,6 +228,10 @@ namespace HomeMind.Api.Migrations
                         .HasColumnType("datetime(3)")
                         .HasColumnName("deleted_at");
 
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("tinyint(1)")
+                        .HasColumnName("enabled");
+
                     b.Property<string>("Endpoint")
                         .HasColumnType("varchar(512)")
                         .HasColumnName("endpoint");
@@ -240,7 +244,7 @@ namespace HomeMind.Api.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("sync_version");
 
-                    b.Property<double>("Temperature")
+                    b.Property<decimal>("Temperature")
                         .HasColumnType("decimal(3,2)")
                         .HasColumnName("temperature");
 
@@ -250,7 +254,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("UserId");
 
-                    b.ToTable("ai_configs");
+                    b.ToTable("ai_configs", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.AiSkill", b =>
@@ -307,7 +311,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ai_skills");
+                    b.ToTable("ai_skills", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Attachment", b =>
@@ -319,7 +323,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("attachments");
+                    b.ToTable("attachments", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.AuthAuditLog", b =>
@@ -331,7 +335,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("auth_audit_logs");
+                    b.ToTable("auth_audit_logs", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.AuthDevice", b =>
@@ -378,7 +382,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("auth_devices");
+                    b.ToTable("auth_devices", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.AuthRefreshToken", b =>
@@ -433,7 +437,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("auth_refresh_tokens");
+                    b.ToTable("auth_refresh_tokens", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.AuthVerificationChallenge", b =>
@@ -444,7 +448,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("auth_verification_challenges");
+                    b.ToTable("auth_verification_challenges", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.CalendarEvent", b =>
@@ -519,7 +523,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("calendar_events");
+                    b.ToTable("calendar_events", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.CalendarEventException", b =>
@@ -531,7 +535,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("calendar_event_exceptions");
+                    b.ToTable("calendar_event_exceptions", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.CalendarSubscription", b =>
@@ -596,7 +600,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("calendar_subscriptions");
+                    b.ToTable("calendar_subscriptions", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.CreditLedgerEntry", b =>
@@ -608,7 +612,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("credit_ledger");
+                    b.ToTable("credit_ledger", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Expert", b =>
@@ -661,7 +665,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("experts");
+                    b.ToTable("experts", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertFile", b =>
@@ -745,7 +749,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_files");
+                    b.ToTable("expert_files", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertFileAttachment", b =>
@@ -785,7 +789,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_file_attachments");
+                    b.ToTable("expert_file_attachments", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertFileObject", b =>
@@ -818,7 +822,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_file_objects");
+                    b.ToTable("expert_file_objects", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertGroup", b =>
@@ -866,7 +870,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_groups");
+                    b.ToTable("expert_groups", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertGroupMember", b =>
@@ -881,7 +885,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("GroupVersionId", "ExpertVersionId");
 
-                    b.ToTable("expert_group_members");
+                    b.ToTable("expert_group_members", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertGroupVersion", b =>
@@ -922,7 +926,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_group_versions");
+                    b.ToTable("expert_group_versions", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertJob", b =>
@@ -957,7 +961,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_jobs");
+                    b.ToTable("expert_jobs", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertRunAction", b =>
@@ -1013,7 +1017,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_run_actions");
+                    b.ToTable("expert_run_actions", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertRunContext", b =>
@@ -1025,7 +1029,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_run_contexts");
+                    b.ToTable("expert_run_contexts", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.ExpertVersion", b =>
@@ -1081,7 +1085,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("expert_versions");
+                    b.ToTable("expert_versions", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Family.DecisionHistory", b =>
@@ -1147,7 +1151,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("decision_history");
+                    b.ToTable("decision_history", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Family.FamilyAuditLog", b =>
@@ -1201,7 +1205,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("family_audit_logs");
+                    b.ToTable("family_audit_logs", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Family.FamilyKnowledge", b =>
@@ -1283,7 +1287,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("family_knowledge");
+                    b.ToTable("family_knowledge", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Family.FamilyMember", b =>
@@ -1370,7 +1374,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("family_members");
+                    b.ToTable("family_members", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.IcalOverride", b =>
@@ -1382,7 +1386,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("ical_overrides");
+                    b.ToTable("ical_overrides", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.PasswordCredential", b =>
@@ -1412,7 +1416,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("UserId");
 
-                    b.ToTable("password_credentials");
+                    b.ToTable("password_credentials", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Plan", b =>
@@ -1424,7 +1428,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("plans");
+                    b.ToTable("plans", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.PlanItem", b =>
@@ -1436,7 +1440,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("plan_items");
+                    b.ToTable("plan_items", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.PushSubscription", b =>
@@ -1448,7 +1452,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("push_subscriptions");
+                    b.ToTable("push_subscriptions", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.RunArtifact", b =>
@@ -1460,7 +1464,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("run_artifacts");
+                    b.ToTable("run_artifacts", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.RunEvent", b =>
@@ -1499,7 +1503,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("run_events");
+                    b.ToTable("run_events", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.RunStep", b =>
@@ -1511,7 +1515,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("run_steps");
+                    b.ToTable("run_steps", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.RunStepDependency", b =>
@@ -1526,7 +1530,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("StepId", "DependsOnStepId");
 
-                    b.ToTable("run_step_dependencies");
+                    b.ToTable("run_step_dependencies", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.RunStepUsage", b =>
@@ -1538,7 +1542,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("run_step_usage");
+                    b.ToTable("run_step_usage", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.AutomationRule", b =>
@@ -1612,7 +1616,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("automation_rules");
+                    b.ToTable("automation_rules", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.ConnectorProvider", b =>
@@ -1669,7 +1673,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("connector_providers");
+                    b.ToTable("connector_providers", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.ConnectorSyncJob", b =>
@@ -1736,7 +1740,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("connector_sync_jobs");
+                    b.ToTable("connector_sync_jobs", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.DeviceCapability", b =>
@@ -1787,7 +1791,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("device_capabilities");
+                    b.ToTable("device_capabilities", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.DeviceState", b =>
@@ -1816,7 +1820,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("device_states");
+                    b.ToTable("device_states", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.Scene", b =>
@@ -1867,7 +1871,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("scenes");
+                    b.ToTable("scenes", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.SceneAction", b =>
@@ -1909,7 +1913,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("scene_actions");
+                    b.ToTable("scene_actions", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.SmartHomeDevice", b =>
@@ -1993,7 +1997,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("smart_home_devices");
+                    b.ToTable("smart_home_devices", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.SmartHomeSpace", b =>
@@ -2043,7 +2047,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("smart_home_spaces");
+                    b.ToTable("smart_home_spaces", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.UserConnectorAuthorization", b =>
@@ -2088,7 +2092,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("user_connector_authorizations");
+                    b.ToTable("user_connector_authorizations", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SmartHome.WorkspaceConnector", b =>
@@ -2146,7 +2150,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("workspace_connectors");
+                    b.ToTable("workspace_connectors", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Steward.ConfirmationBatchRecord", b =>
@@ -2184,7 +2188,7 @@ namespace HomeMind.Api.Migrations
                     b.HasIndex("HomeId", "IdempotencyKey")
                         .IsUnique();
 
-                    b.ToTable("confirmation_batch_records");
+                    b.ToTable("confirmation_batch_records", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Steward.ConfirmationItem", b =>
@@ -2275,7 +2279,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("confirmation_items");
+                    b.ToTable("confirmation_items", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Steward.StewardActivity", b =>
@@ -2347,7 +2351,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("steward_activities");
+                    b.ToTable("steward_activities", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Subtask", b =>
@@ -2394,7 +2398,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("subtasks");
+                    b.ToTable("subtasks", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SyncChangeLog", b =>
@@ -2406,7 +2410,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("SyncVersion");
 
-                    b.ToTable("sync_change_log");
+                    b.ToTable("sync_change_log", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SyncClient", b =>
@@ -2418,7 +2422,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("sync_clients");
+                    b.ToTable("sync_clients", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.SyncMutation", b =>
@@ -2433,7 +2437,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("ClientId", "MutationId");
 
-                    b.ToTable("sync_mutations");
+                    b.ToTable("sync_mutations", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.TeamRun", b =>
@@ -2499,7 +2503,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("team_runs");
+                    b.ToTable("team_runs", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.TeamRunAudit", b =>
@@ -2553,7 +2557,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("team_run_audits");
+                    b.ToTable("team_run_audits", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.TeamRunMember", b =>
@@ -2612,7 +2616,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("team_run_members");
+                    b.ToTable("team_run_members", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.TeamRunTemplate", b =>
@@ -2672,7 +2676,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("team_run_templates");
+                    b.ToTable("team_run_templates", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.TeamRunTemplateVersion", b =>
@@ -2720,7 +2724,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("team_run_template_versions");
+                    b.ToTable("team_run_template_versions", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Tenant", b =>
@@ -2766,7 +2770,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("tenants");
+                    b.ToTable("tenants", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.TenantMember", b =>
@@ -2806,7 +2810,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("TenantId", "UserId");
 
-                    b.ToTable("tenant_members");
+                    b.ToTable("tenant_members", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.Todo", b =>
@@ -2898,7 +2902,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("todos");
+                    b.ToTable("todos", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.TodoList", b =>
@@ -2910,7 +2914,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("todo_lists");
+                    b.ToTable("todo_lists", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.TodoTag", b =>
@@ -2922,7 +2926,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("todo_tags");
+                    b.ToTable("todo_tags", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.TodoTagLink", b =>
@@ -2937,7 +2941,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("TodoId", "TagId");
 
-                    b.ToTable("todo_tag_links");
+                    b.ToTable("todo_tag_links", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.User", b =>
@@ -2987,7 +2991,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("users");
+                    b.ToTable("users", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.UserConsent", b =>
@@ -3006,7 +3010,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("UserId", "ConsentType", "Version");
 
-                    b.ToTable("user_consents");
+                    b.ToTable("user_consents", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.UserExpertPreference", b =>
@@ -3025,7 +3029,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("TenantId", "UserId", "ExpertId");
 
-                    b.ToTable("user_expert_preferences");
+                    b.ToTable("user_expert_preferences", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.UserIdentity", b =>
@@ -3086,7 +3090,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("user_identities");
+                    b.ToTable("user_identities", (string)null);
                 });
 
             modelBuilder.Entity("HomeMind.Common.Model.Entities.UserSetting", b =>
@@ -3101,7 +3105,7 @@ namespace HomeMind.Api.Migrations
 
                     b.HasKey("UserId", "Key");
 
-                    b.ToTable("user_settings");
+                    b.ToTable("user_settings", (string)null);
                 });
 #pragma warning restore 612, 618
         }

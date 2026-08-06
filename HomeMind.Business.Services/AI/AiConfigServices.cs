@@ -24,7 +24,7 @@ public sealed class AiConfigServices : IAiConfigServices
     {
         var item = await _db.AiConfigs.FindAsync(new object[] { userId }, cancellationToken);
         return item is null
-            ? new ServiceResult(200, "查询成功。", new { Endpoint = (string?)null, Model = (string?)null, Temperature = 0.7, HasApiKey = false })
+            ? new ServiceResult(200, "查询成功。", new { Endpoint = (string?)null, Model = (string?)null, Temperature = 0.7, HasApiKey = false, Enabled = true })
             : new ServiceResult(200, "查询成功。", ToView(item));
     }
 
@@ -38,18 +38,26 @@ public sealed class AiConfigServices : IAiConfigServices
         var item = await _db.AiConfigs.FindAsync(new object[] { userId }, cancellationToken);
         if (item is null)
         {
-            item = new AiConfig { UserId = userId };
+            item = new AiConfig { UserId = userId, Enabled = request.Enabled };
             _db.AiConfigs.Add(item);
         }
 
         item.Endpoint = endpoint.ToString();
         item.Model = request.Model.Trim();
         item.Temperature = request.Temperature;
+        item.Enabled = request.Enabled;
         if (!string.IsNullOrWhiteSpace(request.ApiKey)) item.ApiKeyEncrypted = _secretProtector.Encrypt(request.ApiKey.Trim());
         item.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(cancellationToken);
         return new ServiceResult(200, "保存成功。", ToView(item));
     }
 
-    private static object ToView(AiConfig x) => new { x.Endpoint, x.Model, x.Temperature, HasApiKey = x.ApiKeyEncrypted is { Length: > 0 } };
+    /// <summary>未配置或显式禁用均视为不可用，避免未保存配置的用户绕过开关。</summary>
+    public async Task<bool> IsEnabledAsync(long userId, CancellationToken cancellationToken = default)
+    {
+        var item = await _db.AiConfigs.FindAsync(new object[] { userId }, cancellationToken);
+        return item is not null && item.Enabled;
+    }
+
+    private static object ToView(AiConfig x) => new { x.Endpoint, x.Model, x.Temperature, HasApiKey = x.ApiKeyEncrypted is { Length: > 0 }, x.Enabled };
 }

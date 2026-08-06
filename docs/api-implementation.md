@@ -24,7 +24,7 @@ JSON 输入中的这些值。
 | 待办 | `GET/POST /api/v1/todos`；`PUT/DELETE /api/v1/todos/{id}`；`POST /api/v1/todos/{id}/subtasks`、`PUT/DELETE /api/v1/todos/{id}/subtasks/{subId}` |
 | 日历 | `GET/POST /api/v1/calendar/events`、`PUT/DELETE /api/v1/calendar/events/{id}`；`GET/POST /api/v1/calendar/subscriptions`、`PUT/DELETE /api/v1/calendar/subscriptions/{id}`；`POST /api/v1/calendar/ical/fetch`（未实现） |
 | 技能 | `GET/POST /api/v1/skills`；`PUT/DELETE /api/v1/skills/{id}` |
-| AI 配置 | `GET/PUT /api/v1/ai/config`；API 密钥由服务端加密存储，响应仅回传 `hasApiKey` |
+| AI 配置 | `GET/PUT /api/v1/ai/config`（B18 新增 `enabled` 字段，默认 `true`，切换开关不传 `apiKey` 即可保留密文）；`POST /api/v1/ai/{generate,chat,stream}`（B18 占位，启用 → 501，未启用 → 422 + `Code=42200`） |
 | 专家目录 | `GET /api/v1/experts`、`GET /api/v1/experts/{id}` |
 | 智能体运行时 / 专家运行 | `POST /api/v1/expert-runs`、`GET /api/v1/expert-runs/{id}`、`/events`、`/actions`、`/actions/{actionId}/confirm`、`/cancel`、`/retry`；`POST /api/v1/expert-runs/{id}/actions` 创建动作。路由名称为兼容性保留，但领域资源为 `AgentRun`。 |
 | 专家文件（V1） | `POST/GET /api/v1/expert-files`、`POST /api/v1/expert-files/{fileId}/objects`、`DELETE /api/v1/expert-files/{fileId}`、`POST /api/v1/expert-files/{fileId}/read-token`、`POST /api/v1/experts/{expertId}/files`、`POST /api/v1/expert-runs/{runId}/files` |
@@ -58,6 +58,7 @@ JSON 输入中的这些值。
 | --- | --- | --- |
 | `10000` | 请求无效 | `400`、`405` |
 | `10001` | 请求参数验证失败 | `422` |
+| `42200` | 业务前置条件未满足（如 AI 配置已禁用） | `422` |
 | `20000` | 登录凭据无效 | `400` |
 | `20001` | 访问令牌缺失、无效、过期或已被吊销 | `401` |
 | `20002` | 刷新令牌无效、过期或已被吊销 | `401` |
@@ -103,7 +104,7 @@ HTTP `401` 并附带 `Code: 20001`。`POST /api/v1/auth/logout`
 | `ai.read` | 专家目录与运行查询 | owner / admin / member / viewer |
 | `ai.run` | 创建与确认 AgentRun、确认动作、运行场景 | owner / admin / member |
 | `ai.skills.read` / `ai.skills.write` | 技能目录读写 | owner / admin / member（读全员，写 owner/admin/member） |
-| `ai.config.read` / `ai.config.write` | AI 调用配置读写（endpoint/模型/温度/密钥） | owner / admin / member（读全员，写 owner/admin/member） |
+| `ai.config.read` / `ai.config.write` | AI 调用配置读写（endpoint/模型/温度/启用开关/密钥） | owner / admin / member（读全员，写 owner/admin/member） |
 | `calendar.read` / `calendar.write` | 日历事件与订阅 | owner / admin / member / viewer（仅 owner/admin/member 写） |
 | `todo.read` / `todo.write` | 待办与子任务 | owner / admin / member / viewer（仅 owner/admin/member 写） |
 | `smart_home.read` | 空间 / 设备 / 场景 / 设备健康（聚合摘要与单设备健康详情） | owner / admin / member / viewer |

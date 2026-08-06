@@ -381,6 +381,42 @@ configured."`（配置 SSRF 白名单规则前，iCal 网络拉取处于禁用�
 
 权限：`ai.skills.write`。软删除返回 `{ "id": 2 }`。
 
+### 7.4 `GET /api/v1/ai/config`
+
+权限：`ai.config.read`。返回当前用户的 AI 配置（B18 起含启用开关）。未配置时返回默认值。
+
+```json
+{
+  "Code": 0,
+  "Msg": "查询成功。",
+  "Data": {
+    "Endpoint": "https://api.openai.com/v1",
+    "Model": "gpt-4.1-mini",
+    "Temperature": 0.7,
+    "HasApiKey": true,
+    "Enabled": true
+  }
+}
+```
+
+### 7.5 `PUT /api/v1/ai/config`
+
+权限：`ai.config.write`。请求体小驼峰；`apiKey` 可空（不传或空字符串均保留已保存密文）；`enabled` 用于切换 AI 生成能力总开关。切换开关时仅传 `enabled` 即可，不会丢失 API Key。
+
+```json
+{
+  "endpoint": "https://api.openai.com/v1",
+  "model": "gpt-4.1-mini",
+  "temperature": 0.7,
+  "enabled": true,
+  "apiKey": "sk-..."
+}
+```
+
+### 7.6 `POST /api/v1/ai/{generate,chat,stream}`（B18 占位）
+
+权限：`ai.run`。调用前服务端校验 `enabled`；未启用 → HTTP 422、`Code=42200`、`Msg="AI 生成能力已禁用，请在设置中开启。"`；启用 → 暂返 HTTP 501 占位（待后续切片接入）。请求体 `{ "prompt": "..." }`，当前切片仅占位。
+
 ## 8. AI 专家与 AgentRun 模块（`/api/v1/...`）
 
 `ExpertsController` 挂载在 `api/v1` 下（而非 `api/v1/experts`），以保留
@@ -1175,6 +1211,9 @@ UI 展示建议卡时呈现理由与标签，不渲染任何提示或思考链�
 | `GET /api/v1/experts[...]` | `ai.read` |
 | `POST /api/v1/expert-runs[...]` | `ai.run` |
 | `GET /api/v1/skills`、`POST /api/v1/skills`、`PUT/DELETE /api/v1/skills/{id}` | `ai.skills.read` / `ai.skills.write` |
+| `GET /api/v1/ai/config` | `ai.config.read` |
+| `PUT /api/v1/ai/config` | `ai.config.write` |
+| `POST /api/v1/ai/{generate,chat,stream}`（B18 占位） | `ai.run` |
 | `GET /api/v1/calendar/events`、`GET /api/v1/calendar/subscriptions` | `calendar.read` |
 | `POST/PUT/DELETE /api/v1/calendar/...` | `calendar.write` |
 | `GET /api/v1/todos`、`.../subtasks`（读取） | `todo.read` |
@@ -1209,6 +1248,7 @@ UI 展示建议卡时呈现理由与标签，不渲染任何提示或思考链�
 | `CalendarEvent.allDay` | 布尔值 |
 | `CalendarEvent.repeatRule` | iCalendar RRULE 字符串 |
 | `Todo.repeatRule` | iCalendar RRULE 字符串 |
+| `AiConfig.enabled`（B18 起） | 布尔值；`false` 时 AI 生成能力（`/ai/{generate,chat,stream}` 与专家运行）整体不可用 |
 | `ExpertCatalog.catalogType` | `expert` \| `group` |
 | `AgentRun.sourceType` | `expert` \| `group` |
 | `AgentRun.status` | `draft` \| `queued` \| `planning` \| `running` \| `completed` \| `failed` \| `cancelled` |

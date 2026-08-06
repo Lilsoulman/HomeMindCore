@@ -33,6 +33,8 @@ public static class LlmErrorCodes
 {
     /// <summary>用户尚未配置 AI 服务。</summary>
     public const string AiConfigMissing = "ai_config_missing";
+    /// <summary>用户已保存 AI 服务但主动禁用了 AI 生成能力。</summary>
+    public const string AiConfigDisabled = "ai_config_disabled";
     /// <summary>调用超时。</summary>
     public const string Timeout = "llm_timeout";
     /// <summary>HTTP 层错误（认证失败、限流、服务端错误等）。</summary>

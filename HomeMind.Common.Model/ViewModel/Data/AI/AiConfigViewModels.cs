@@ -4,5 +4,6 @@ namespace HomeMind.Common.Model.ViewModel.Data.AI;
 /// <param name="Endpoint">OpenAI 兼容的 API 端点地址，如 https://api.openai.com/v1。</param>
 /// <param name="Model">默认使用的模型名称。</param>
 /// <param name="Temperature">生成温度参数，取值范围 0~1。</param>
+/// <param name="Enabled">是否启用 AI 生成能力；false 时 <c>/api/v1/ai/{generate,chat,stream}</c> 与专家运行整体不可用。</param>
 /// <param name="ApiKey">API 密钥，可空表示不修改已保存的密钥。</param>
-public sealed record AiConfigRequest(string Endpoint, string Model, double Temperature, string? ApiKey);
+public sealed record AiConfigRequest(string Endpoint, string Model, double Temperature, bool Enabled, string? ApiKey);

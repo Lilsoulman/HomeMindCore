@@ -27,14 +27,16 @@ public sealed class AgentRunProcessor : IAgentRunProcessor
     private readonly SecretProtector _secretProtector;
     private readonly IPptxBuilder _pptx;
     private readonly IExpertFileServices _files;
+    private readonly IAiConfigServices _config;
 
-    public AgentRunProcessor(HomeMindDbContext db, ILLMClient llm, SecretProtector secretProtector, IPptxBuilder pptx, IExpertFileServices files)
+    public AgentRunProcessor(HomeMindDbContext db, ILLMClient llm, SecretProtector secretProtector, IPptxBuilder pptx, IExpertFileServices files, IAiConfigServices config)
     {
         _db = db;
         _llm = llm;
         _secretProtector = secretProtector;
         _pptx = pptx;
         _files = files;
+        _config = config;
     }
 
     public async Task<int> ProcessNextAsync(CancellationToken cancellationToken = default)
@@ -82,6 +84,8 @@ public sealed class AgentRunProcessor : IAgentRunProcessor
                 return await FailAsync(run.Id, job.Id, LlmErrorCodes.HttpError, "专家版本不存在。", cancellationToken);
 
             var systemPrompt = await BuildSystemPromptAsync(source.version, cancellationToken);
+            if (!await _config.IsEnabledAsync(run.UserId, cancellationToken))
+                return await FailAsync(run.Id, job.Id, LlmErrorCodes.AiConfigDisabled, "AI 生成能力已禁用，请在设置中开启。", cancellationToken);
             var config = await _db.AiConfigs.FindAsync(new object?[] { run.UserId }, cancellationToken);
             if (config is null || config.ApiKeyEncrypted.Length == 0)
                 return await FailAsync(run.Id, job.Id, LlmErrorCodes.AiConfigMissing, "尚未配置 AI 服务，请在设置中填写 API 地址与密钥。", cancellationToken);

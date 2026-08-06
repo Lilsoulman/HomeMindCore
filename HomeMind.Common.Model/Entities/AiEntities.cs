@@ -43,6 +43,8 @@ public sealed class AiConfig
     [Column("model", TypeName = "varchar(128)")] public string Model { get; set; } = null!;
     /// <summary>生成温度参数，取值范围 0~1，精确到两位小数。</summary>
     [Column("temperature", TypeName = "decimal(3,2)")] public double Temperature { get; set; } = 0.7;
+    /// <summary>是否启用 AI 生成能力；<c>false</c> 时 <c>/api/v1/ai/{generate,chat,stream}</c> 与专家运行整体不可用，调用方应返回 422。</summary>
+    [Column("enabled", TypeName = "tinyint(1)")] public bool Enabled { get; set; } = true;
     /// <summary>API 密钥密文，由 SecretProtector 加密，永不回传客户端；未配置时为空数组。</summary>
     [Column("api_key_encrypted", TypeName = "blob")] public byte[] ApiKeyEncrypted { get; set; } = Array.Empty<byte>();
     /// <summary>记录最近一次修改时间（UTC）。</summary>

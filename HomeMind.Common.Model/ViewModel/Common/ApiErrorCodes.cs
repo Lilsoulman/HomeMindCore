@@ -10,6 +10,8 @@ public static class ApiErrorCodes
     public const int RequestInvalid = 10000;
     /// <summary>请求参数验证失败（HTTP 422）。</summary>
     public const int ValidationFailed = 10001;
+    /// <summary>业务前置条件未满足（HTTP 422），例如 AI 配置已禁用。</summary>
+    public const int PreconditionFailed = 42200;
 
     /// <summary>登录凭据无效（HTTP 400）。</summary>
     public const int AuthenticationFailed = 20000;

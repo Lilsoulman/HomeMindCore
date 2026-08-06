@@ -10,6 +10,13 @@
 - 每次实施完成、部分完成、受阻或验证失败后，都必须先回写本计划的当前状态、下一步、验收结果和未验证依赖；随后在同一变更中按 `计划 → 后端开发设计 → api-implementation.md` 的顺序同步调整 `NexusMind-Backend-Development.md`、将受影响的路由、错误码、权限策略、响应格式、状态机、Swagger 描述与未发布契约写入 `docs/api-implementation.md`，最后再同步 `NexusMind-Product-Master-Design.md` 中受影响的设计、约束和实施状态；任何与产品总设计冲突的内容仍须以产品总设计为准。
 - 手工调整代码后，如出现 Bug、测试不通过或实现与既定契约不一致，也必须遵循同一闭环：先调整本计划，再按 `计划 → 后端开发设计 → api-implementation.md` 的顺序同步回写受影响的路由、错误码、权限、响应与状态机，最后同步 `NexusMind-Product-Master-Design.md`；不得只修代码而不更新计划、设计和 API 实现文档。
 - 如问题需要改变产品范围、领域语义、风险规则或跨端契约，仍须先由产品总设计确认决策，再同步修订后端开发设计和本计划；计划不得覆盖产品总设计。
+- 每个切片实施完成、验证通过并回写本计划及同步文档后，必须执行 Git 上传指令归档：
+  ```bash
+  git add -A
+  git commit -m "feat: <切片标识> <一句话完成说明>"
+  git push
+  ```
+  提交必须包含切片代码、计划回写与设计同步的全部变更，且必须在切换到下一切片前完成。
 
 ## 当前基线
 
@@ -36,14 +43,14 @@
 | 创作者中心本地 MCP Bridge | `HomeMind.CreatorMcp` 以 stdio MCP JSON-RPC 提供 `sync_creator_center`、`search_creator_center`、`get_creator_item`、`creator_sync_status`；使用既有 Bearer Token 调用专家/专家组和技能只读 API，显式同步至本地 SQLite；默认排除 Prompt，敏感数据必须同时满足进程开关与调用参数 | `dotnet build HomeMind.CreatorMcp/HomeMind.CreatorMcp.csproj --no-restore -o .build/mcp-verify` 已通过（0 warnings / 0 errors）；仍需以受限 `ai.read`/`ai.skills.read` Token 验证显式同步、离线查询及敏感字段双重开关。运行配置见 `docs/mcp-creator-center.md` |
 | V2.3 B16 个人生活专家注册与翻牌 | `017` 迁移注册 `personal-life-expert`（category=`life`，expert_versions v1，`tool_policy_json` 声明 `favorite.recommend`/`trip.plan`/`favorite.create`）；`ILifeExpertRunServices`/`LifeExpertRunServices` 确定性翻牌（输入 time/location/taste → 按 tags/cuisine/address 评分 → Top1-2 + 理由，只读 L1，无匹配时私藏库兜底；复用 AgentRun/Mode=steward/AutoConfirmPolicy=L3Only/幂等键）；`LifeRunsController`：`POST /api/v1/experts/personal-life-expert/runs`（`ai.run`，intent=recommend，plan 占位 422）；`LifeExpertRunView`/`LifeExpertRecommendationView` DTO（从 run.Result 解析，不返回提示或思考链）；Swagger Tag `个人生活 / 专家运行` | `dotnet build HomeMind.Api/HomeMind.Api.csproj -o .build/b16-verify` 通过（0 errors / 0 CS1591）；`dotnet test` 全绿 73/73（新增 LifeExpertRunServicesTests 4 项）；真实 AI 推理与端到端翻牌按部署环境验证 |
 | V2.3 B17 行程规划与联调 | `LifeExpertRunServices` 扩展 intent=plan（目的地/天数 1-7/偏好 + 私藏库 travel/restaurant + Mock 天气晴/阴/雨轮换 → 每日上午/下午/晚上安排 → 1 个 `calendar_create_event` Run Action（L1，RequestJson 承载每日安排））；`ConfirmActionAsync` 复用确认/幂等/审计链路：UUID 幂等键 + `ActionExecutionAudits` 重放 + action 状态流转去重，确认后逐日经 `ICalendarServices.CreateEventAsync` 创建日历事件（无连接器/设备维度，`018` 迁移放宽 `action_execution_audits` 两列为 NULL，实体改可空）；`POST /api/v1/experts/personal-life-expert/runs/{runId}/actions/{actionId}/confirm`；`LifeExpertActionView` 暴露动作（RiskLevel=L1）；`api-implementation.md`/`frontend-api-integration.md` 同步行程契约 | `dotnet build HomeMind.Api/HomeMind.Api.csproj -o .build/b17-verify` 通过（0 errors / 0 CS1591）；`dotnet test` 全绿 76/76（新增行程生成/确认执行/幂等 3 项）；真实 MySQL 018 顺序迁移与日历端到端写入按部署环境验证 |
+| V2.3 B18 AI 配置启用开关 | `023` 迁移 `ai_configs.enabled TINYINT(1) NOT NULL DEFAULT 1` + EF Migration `20260806021643_AddAiConfigEnabled`（仅此一列，Surgical Changes，不触碰既有 schema 漂移）；`AiConfig.Enabled` 实体（默认 true）与 `AiConfigRequest.Enabled`；`GET/PUT /api/v1/ai/config` 返回/接收 `enabled`（切换开关不传 `apiKey` 保留密文）；`IAiConfigServices.IsEnabledAsync` 闸门 + `AiCapabilitiesController` 占位 `POST /api/v1/ai/{generate,chat,stream}`（`ai.run`，未启用 → HTTP 422/`Code=42200`，启用 → 501 占位）；`AgentRunProcessor` 调用 LLM 前 `IsEnabledAsync` 校验（`LlmErrorCodes.AiConfigDisabled` 终态 failed，不消耗模型配额）；`ApiErrorCodes.PreconditionFailed=42200`；`api-implementation.md`（模块表/错误码表/鉴权表）、`frontend-api-integration.md`（§7.4-7.6 契约示例/§9 权限汇总/§10 类型参考）、后端开发设计 §12.0 同步 | `dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b18-verify` 通过（0 errors，新增文件 0 警告）；`dotnet test` 全绿 81/81（新增 AiConfigServicesTests 5 项：未配置→不可用、默认启用→可用、显式禁用→不可用、null/空串 apiKey 保留密文）；真实 MySQL 023 顺序迁移与 AI 端到端按部署环境验证 |
 
 ## 下一步
 
-按顺序实施 V2.3 B17-B18 与 MCP Bridge 验证收口；B9-B16 已完成，每项完成时更新本表替换状态，不追加逐日完成记录。
+按顺序实施 V2.3 MCP Bridge 验证收口与 V2.4 B18 Connector Scope 基线；B9-B18 已完成，每项完成时更新本表替换状态，不追加逐日完成记录。
 
 | 优先级 | 切片 | 依赖 | 范围与最小验收 |
 | --- | --- | --- | --- |
-| P2 | B18. AI 配置启用开关 | 移动端 AI 配置页三态改造（新增/只读/编辑） | `AiConfig` 增加 `enabled` 字段（默认 `true`）并持久化；`GET /ai/config` 返回、`PUT /ai/config` 接收 `enabled`；`/ai/generate`、`/ai/chat`、`/ai/stream` 调用前校验 `enabled`，未启用返回 422；DTO/字段中文注释/Swagger 同步；`api-implementation.md`、`frontend-api-integration.md` 同步；构建与定向验证通过。 |
 | P3 | MCP Bridge 验证与交付收口 | `HomeMind.CreatorMcp` 实现与受限 API Token 可用 | 构建通过；`sync_creator_center` 仅在显式调用时访问 API；`search_creator_center` 在离线时只读本机 SQLite；未启用或未显式请求时 Prompt 不落盘、不返回；日志与工具错误不泄漏令牌。 |
 | P4 | B18. Connector Scope 与 OAuth 基线 | 产品总设计 V2.4、B16/B17 稳定 | 新迁移/实体/服务/API：家庭与个人实例隔离、OAuth 授权会话单次使用、回调和凭据仅服务端处理、Run 权限快照含 scope/owner；迁移/跨家庭/跨成员/撤销测试通过。 |
 | P5 | B19. Web 治理 API | B18 | 补齐当前成员/家庭成员角色受控管理、个人连接状态/撤销与 Web 用户/开发端所需字段；固定角色由策略代码维护，若实现菜单偏好仅接受已发布 route_key。 |

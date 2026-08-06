@@ -23,15 +23,15 @@ public sealed class AiConfigController : ApiControllerBase
     /// <param name="configServices">AI 配置业务服务。</param>
     public AiConfigController(IAiConfigServices configServices) => _configServices = configServices;
 
-    /// <summary>读取当前用户的 AI 配置；未配置时返回默认值。</summary>
-    /// <remarks>权限：<c>ai.config.read</c>。</remarks>
+    /// <summary>读取当前用户的 AI 配置；未配置时返回默认值（含启用开关）。</summary>
+    /// <remarks>权限：<c>ai.config.read</c>。返回字段固定为 <c>{ endpoint, model, temperature, hasApiKey, enabled }</c>。</remarks>
     /// <returns>AI 配置的统一响应。</returns>
     [Authorize(Policy = PermissionNames.AiConfigRead)]
     [HttpGet]
     public async Task<ActionResult<ApiResponse<object>>> Get() => ToResponse(await WithUserAsync((user, token) => _configServices.GetAsync(user.UserId, token)));
 
-    /// <summary>保存当前用户的 AI 配置；apiKey 为空表示保留已保存的密钥。</summary>
-    /// <remarks>权限：<c>ai.config.write</c>。密钥加密存储，响应不回传。</remarks>
+    /// <summary>保存当前用户的 AI 配置；apiKey 为空表示保留已保存的密钥，enabled 用于切换 AI 生成能力总开关。</summary>
+    /// <remarks>权限：<c>ai.config.write</c>。请求体字段：<c>endpoint</c>、<c>model</c>、<c>temperature</c>、<c>enabled</c>、<c>apiKey</c>（可空）。切换开关时仅传 <c>enabled</c> 即可，密钥不会被清空。</remarks>
     /// <param name="request">AI 配置保存请求体。</param>
     /// <returns>保存后配置的统一响应。</returns>
     [Authorize(Policy = PermissionNames.AiConfigWrite)]
