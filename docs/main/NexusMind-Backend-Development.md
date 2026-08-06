@@ -313,7 +313,7 @@ V2.3 在承接 V2.2 家庭协同、三级风险、知识与设备健康契约的
 
 ### 11.3 当前实施边界
 
-当前实现序列为 V2.3 的 B16-B17：在已完成的 `personal_favorites` 迁移与 CRUD 基线上，完成 `personal-life-expert` 注册、翻牌/行程 Run 链路与日历同步联调；并完成创作者中心 MCP Bridge 的受限令牌、离线缓存和敏感数据双重开关验证。B9-B15、Expert Files 和多专家团队编排已完成，后续不得因家庭管家或个人生活专家扩展绕过既有 Run Action、确认、权限交集或审计链路。
+当前实现序列为 V2.3 的 B16-B18 与创作者中心 MCP Bridge 验证收口：在已完成的 `personal_favorites` 迁移与 CRUD 基线上，完成 `personal-life-expert` 注册、翻牌/行程 Run 链路与日历同步联调、AI 配置启用开关（B18），并以受限 `ai.read`/`ai.skills.read` Token 完成 MCP Bridge 的显式同步、离线只读与敏感数据双重开关运行期验证（含修复 Windows stdio 管道未显式 UTF-8 导致中文查询乱码的缺陷）。B9-B15、Expert Files 和多专家团队编排已完成，后续不得因家庭管家或个人生活专家扩展绕过既有 Run Action、确认、权限交集或审计链路。
 
 ## 12. V2.3 个人生活专家增量设计
 

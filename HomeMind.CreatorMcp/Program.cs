@@ -10,6 +10,10 @@ internal static class Program
 
     public static async Task Main()
     {
+        // MCP 客户端经 stdio 管道以 UTF-8 收发 JSON-RPC；Windows 下若沿用系统代码页会把中文参数解码为乱码，必须显式固定编码。
+        Console.InputEncoding = System.Text.Encoding.UTF8;
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+
         var options = CreatorCenterOptions.FromEnvironment();
         var store = new CreatorStore(options.DatabasePath);
         await store.InitializeAsync(CancellationToken.None);
