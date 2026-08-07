@@ -823,8 +823,17 @@ Run Action 链路。
 
 `POST /api/v1/smart-home/scenarios/templates/{templateCode}/enable`
 按 `device_type + room + capability` 匹配家庭设备生成实例；同一模板
-重复启用返回既有实例（200）。`templateCode` 支持 `goodnight`/
-`arrive_home`/`leave_home`。
+重复启用返回既有实例（200），已禁用实例重复启用时恢复为 `enabled`。
+`templateCode` 支持 `goodnight`/`arrive_home`/`leave_home`。
+
+**禁用（`smart_home.write`）**
+
+`POST /api/v1/smart-home/scenarios/instances/{instanceId}/disable`
+将实例状态置为 `disabled`（200，幂等），返回的 `Data.Status` 为
+`disabled`。禁用后 `POST /instances/{instanceId}/run` 返回 404
+（「不存在或未启用」）；禁用只阻止新触发，已创建的待确认运行不受
+影响，仍可正常确认执行。实例不存在、跨租户或已软删除返回 404。
+前端可在实例卡片提供「禁用」入口，禁用后按钮态切换为「启用」。
 
 **运行（`ai.run`）**
 
@@ -1582,7 +1591,7 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `GET /api/v1/todos`、`.../subtasks`（读取） | `todo.read` |
 | `POST/PUT/DELETE /api/v1/todos[...]` | `todo.write` |
 | `GET /api/v1/smart-home/spaces`、`/devices`、`/scenes`、`/devices/health`、`/devices/{id}/health`、`/scenarios/templates`、`/scenarios/instances` | `smart_home.read` |
-| `POST /api/v1/smart-home/scenarios/templates/{templateCode}/enable` | `smart_home.write`（B22） |
+| `POST /api/v1/smart-home/scenarios/templates/{templateCode}/enable`、`POST /api/v1/smart-home/scenarios/instances/{instanceId}/disable` | `smart_home.write`（B22/B23） |
 | `POST /api/v1/smart-home/scenes/{sceneKey}/run`、`POST /api/v1/smart-home/scenarios/instances/{instanceId}/run`、`POST /api/v1/smart-home/scenarios/runs/{runId}/actions/{actionId}/confirm` | `ai.run` |
 | `GET /api/v1/connector-providers`、`GET /api/v1/connectors`、`GET /api/v1/connectors/{id}/authorization` | `connector.read` |
 | `POST /api/v1/connectors`、`/connectors/{id}/test`、`/connectors/{id}/discovery`、`/connectors/{id}/sync`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}` | `connector.write` |

@@ -31,7 +31,7 @@ JSON 输入中的这些值。
 | 团队运行（V1） | `POST /api/v1/team-runs`；`GET /api/v1/team-runs/{id}`、`/events`、`/members`、`/synthesis`；`POST /api/v1/team-runs/{id}/cancel`、`/retry` |
 | 家庭管家（兼容） | `POST /api/v1/housekeeper-runs` 仅作为智能体运行时的兼容入口保留 |
 | 智能家居 | `GET /api/v1/smart-home/spaces`、`/devices?spaceId=`、`/scenes`、`/devices/health?spaceId=`；`POST /api/v1/smart-home/scenes/{sceneKey}/run` 创建需确认的场景运行动作（B22 起为兼容代理：懒启用场景模板实例并转调场景运行链路）；归一化的设备发现/状态同步通过连接器路由完成 |
-| 场景工作流（B22） | `GET /api/v1/smart-home/scenarios/templates`、`GET /api/v1/smart-home/scenarios/instances`（`smart_home.read`）；`POST /api/v1/smart-home/scenarios/templates/{templateCode}/enable`（`smart_home.write`）；`POST /api/v1/smart-home/scenarios/instances/{instanceId}/run`、`POST /api/v1/smart-home/scenarios/runs/{runId}/actions/{actionId}/confirm`（`ai.run`）。平台模板 → 家庭实例 → 单场景动作运行；确认后逐步执行设备命令并按 success/partial/failed 汇总 |
+| 场景工作流（B22） | `GET /api/v1/smart-home/scenarios/templates`、`GET /api/v1/smart-home/scenarios/instances`（`smart_home.read`）；`POST /api/v1/smart-home/scenarios/templates/{templateCode}/enable`、`POST /api/v1/smart-home/scenarios/instances/{instanceId}/disable`（`smart_home.write`）；`POST /api/v1/smart-home/scenarios/instances/{instanceId}/run`、`POST /api/v1/smart-home/scenarios/runs/{runId}/actions/{actionId}/confirm`（`ai.run`）。平台模板 → 家庭实例 → 单场景动作运行；确认后逐步执行设备命令并按 success/partial/failed 汇总 |
 | 家庭上下文 | `GET/POST /api/v1/homes/{homeId}/members`、`PUT /api/v1/homes/{homeId}/members/{id}`、`POST /api/v1/homes/{homeId}/members/{id}/correction`；`GET/POST /api/v1/homes/{homeId}/knowledge?category=`、`DELETE /api/v1/homes/{homeId}/knowledge/{id}`；`GET/POST /api/v1/homes/{homeId}/decisions`。所有 homeId 由 `RequireHomeOwner` 校验等于 JWT tenant_id。终态更正写 `family_audit_logs`；知识同 key 冲突按 latest/authority/majority 留痕 |
 | 管家协同 | 管家动态：`GET /api/v1/homes/{homeId}/activities?limit=&cursor=`、`GET /api/v1/homes/{homeId}/activities/{id}`、`POST /api/v1/homes/{homeId}/activities/{id}/undo`；确认中心：`GET /api/v1/homes/{homeId}/confirmations?riskLevel=&status=`、`POST /api/v1/homes/{homeId}/confirmations/{id}/confirm`、`POST /api/v1/homes/{homeId}/confirmations/{id}/deny`、`POST /api/v1/homes/{homeId}/confirmations/batch-confirm`。只读用 `smart_home.read`，写操作用 `ai.run`；确认/拒绝/批量确认/撤销写 `family_audit_logs` 并生成管家动态 |
 | 仪表板 | `GET /api/v1/dashboard` 聚合可独立降级的家、待确认事项、管家动态、场景、今日计划和最新建议模块；`homeSummary` 对应 `Home` 模块，`quickActions` 为前端静态入口 |
@@ -121,7 +121,7 @@ HTTP `401` 并附带 `Code: 20001`。`POST /api/v1/auth/logout`
 | `calendar.read` / `calendar.write` | 日历事件与订阅 | owner / admin / member / viewer（仅 owner/admin/member 写） |
 | `todo.read` / `todo.write` | 待办与子任务 | owner / admin / member / viewer（仅 owner/admin/member 写） |
 | `smart_home.read` | 空间 / 设备 / 场景 / 设备健康（聚合摘要与单设备健康详情）/ 场景模板与实例 | owner / admin / member / viewer |
-| `smart_home.write` | 启用场景模板生成家庭实例（B22） | owner / admin / member |
+| `smart_home.write` | 启用/禁用场景模板实例（B22/B23） | owner / admin / member |
 | `family.read` | 家庭成员 / 家庭知识库 / 决策历史只读（B14 收敛） | owner / admin / member / viewer |
 | `family.write` | 成员变更、终态更正、知识写入与删除、决策记录（B14 收敛） | owner / admin / member |
 | `steward.activity.read` | 管家动态列表与详情（B14 收敛） | owner / admin / member / viewer |
@@ -175,7 +175,12 @@ HTTP `401` 并附带 `Code: 20001`。`POST /api/v1/auth/logout`
   `stepStatus=unavailable` 且携带 `reason`，执行时跳过。
 - `POST /api/v1/smart-home/scenarios/templates/{templateCode}/enable`
   （`smart_home.write`）：按 `device_type + room + capability` 匹配
-  家庭设备生成实例；**缺设备不阻塞启用**；重复启用返回既有实例。
+  家庭设备生成实例；**缺设备不阻塞启用**；重复启用返回既有实例，
+  已禁用实例重复启用时恢复为 `enabled`。
+- `POST /api/v1/smart-home/scenarios/instances/{instanceId}/disable`
+  （`smart_home.write`）：实例状态置为 `disabled`，不再允许触发新
+  运行；重复禁用幂等。禁用只阻止新触发，已创建的待确认运行不受
+  影响；实例不存在、跨租户或已软删除返回 404。
 - `POST /api/v1/smart-home/scenarios/instances/{instanceId}/run`
   （`ai.run`）：创建单个 `scenario` 类型待确认动作，步骤上下文
   承载于动作 RequestJson（`scenario_id`/`scenario_name`/`steps`）；

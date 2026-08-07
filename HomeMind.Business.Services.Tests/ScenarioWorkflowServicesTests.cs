@@ -266,6 +266,93 @@ public class ScenarioWorkflowServicesTests
         Assert.Equal(409, reprocessed.StatusCode);
     }
 
+    /// <summary>禁用已启用实例：状态置为 disabled 并落库，返回实例视图。</summary>
+    [Fact]
+    public async Task Disable_Flips_Enabled_To_Disabled()
+    {
+        await using var db = NewDb("disable-flip");
+        SeedTemplate(db, "goodnight", "晚安", GoodnightSteps);
+        SeedDeviceContext(db);
+        var services = new ScenarioWorkflowServices(db, NewRelay(new FakeCommandExecutor()));
+        var instance = Assert.IsType<ScenarioInstanceView>((await services.EnableAsync(10, 1, "goodnight", default)).Data);
+
+        var result = await services.DisableAsync(1, instance.Id, default);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("disabled", Assert.IsType<ScenarioInstanceView>(result.Data).Status);
+        Assert.Equal("disabled", (await db.ScenarioInstances.SingleAsync()).Status);
+    }
+
+    /// <summary>重复禁用幂等：均返回 200 且实例状态不变。</summary>
+    [Fact]
+    public async Task Disable_Is_Idempotent()
+    {
+        await using var db = NewDb("disable-idempotent");
+        SeedTemplate(db, "goodnight", "晚安", GoodnightSteps);
+        SeedDeviceContext(db);
+        var services = new ScenarioWorkflowServices(db, NewRelay(new FakeCommandExecutor()));
+        var instance = Assert.IsType<ScenarioInstanceView>((await services.EnableAsync(10, 1, "goodnight", default)).Data);
+
+        var first = await services.DisableAsync(1, instance.Id, default);
+        var second = await services.DisableAsync(1, instance.Id, default);
+
+        Assert.Equal(200, first.StatusCode);
+        Assert.Equal(200, second.StatusCode);
+        Assert.Equal("disabled", (await db.ScenarioInstances.SingleAsync()).Status);
+    }
+
+    /// <summary>禁用后触发新运行返回 404，不创建场景动作。</summary>
+    [Fact]
+    public async Task Disable_Then_Run_Returns_404()
+    {
+        await using var db = NewDb("disable-run");
+        SeedTemplate(db, "goodnight", "晚安", GoodnightSteps);
+        SeedDeviceContext(db);
+        var services = new ScenarioWorkflowServices(db, NewRelay(new FakeCommandExecutor()));
+        var instance = Assert.IsType<ScenarioInstanceView>((await services.EnableAsync(10, 1, "goodnight", default)).Data);
+        await services.DisableAsync(1, instance.Id, default);
+
+        var result = await services.RunAsync(10, 1, instance.Id, new ScenarioRunRequest(null), default);
+
+        Assert.Equal(404, result.StatusCode);
+        Assert.Equal(0, await db.ExpertRunActions.CountAsync());
+    }
+
+    /// <summary>实例不存在或跨租户禁用返回 404。</summary>
+    [Fact]
+    public async Task Disable_Missing_Or_Cross_Tenant_Returns_404()
+    {
+        await using var db = NewDb("disable-missing");
+        SeedTemplate(db, "goodnight", "晚安", GoodnightSteps);
+        SeedDeviceContext(db);
+        var services = new ScenarioWorkflowServices(db, NewRelay(new FakeCommandExecutor()));
+        var instance = Assert.IsType<ScenarioInstanceView>((await services.EnableAsync(10, 1, "goodnight", default)).Data);
+
+        var missing = await services.DisableAsync(1, 9999, default);
+        var crossTenant = await services.DisableAsync(2, instance.Id, default);
+
+        Assert.Equal(404, missing.StatusCode);
+        Assert.Equal(404, crossTenant.StatusCode);
+    }
+
+    /// <summary>禁用后重复启用恢复为 enabled，实例不重复创建。</summary>
+    [Fact]
+    public async Task Enable_Revives_Disabled_Instance()
+    {
+        await using var db = NewDb("enable-revive");
+        SeedTemplate(db, "goodnight", "晚安", GoodnightSteps);
+        SeedDeviceContext(db);
+        var services = new ScenarioWorkflowServices(db, NewRelay(new FakeCommandExecutor()));
+        var instance = Assert.IsType<ScenarioInstanceView>((await services.EnableAsync(10, 1, "goodnight", default)).Data);
+        await services.DisableAsync(1, instance.Id, default);
+
+        var result = await services.EnableAsync(10, 1, "goodnight", default);
+
+        Assert.Equal(200, result.StatusCode);
+        Assert.Equal("enabled", Assert.IsType<ScenarioInstanceView>(result.Data).Status);
+        Assert.Equal(1, await db.ScenarioInstances.CountAsync());
+    }
+
     /// <summary>旧场景路由兼容代理：懒启用实例并转调场景运行，自动化场景完成事件仍发布。</summary>
     [Fact]
     public async Task SceneProxy_Lazily_Enables_And_Runs()

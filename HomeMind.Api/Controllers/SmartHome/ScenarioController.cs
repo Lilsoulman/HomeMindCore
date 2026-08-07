@@ -48,6 +48,15 @@ public sealed class ScenarioController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<object>>> Enable(string templateCode) =>
         ToResponse(await WithUserAsync((user, token) => _scenarios.EnableAsync(user.UserId, user.TenantId, templateCode, token)));
 
+    /// <summary>禁用家庭场景实例：状态置为 disabled，不再允许触发新运行；重复禁用幂等。</summary>
+    /// <remarks>权限：<c>smart_home.write</c>。禁用只阻止新触发，已创建的待确认运行不受影响；禁用后重复启用可恢复。</remarks>
+    /// <param name="instanceId">场景实例主键。</param>
+    /// <returns>实例视图统一响应；实例不存在、跨租户或已软删除返回 404。</returns>
+    [Authorize(Policy = PermissionNames.SmartHomeWrite)]
+    [HttpPost("instances/{instanceId:long}/disable")]
+    public async Task<ActionResult<ApiResponse<object>>> Disable(long instanceId) =>
+        ToResponse(await WithUserAsync((user, token) => _scenarios.DisableAsync(user.TenantId, instanceId, token)));
+
     /// <summary>运行一个已启用的场景实例；创建待确认的场景运行动作。</summary>
     /// <remarks>权限：<c>ai.run</c>。确认前不执行任何设备命令；确认/幂等/审计复用既有链路。</remarks>
     /// <param name="instanceId">场景实例主键。</param>

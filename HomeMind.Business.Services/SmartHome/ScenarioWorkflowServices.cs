@@ -68,7 +68,17 @@ public sealed class ScenarioWorkflowServices : IScenarioWorkflowServices
 
         var existing = await _db.ScenarioInstances.SingleOrDefaultAsync(
             x => x.TenantId == tenantId && x.TemplateCode == templateCode && x.DeletedAt == null, cancellationToken);
-        if (existing is not null) return new ServiceResult(200, "场景实例已启用。", ToInstanceView(existing));
+        if (existing is not null)
+        {
+            if (existing.Status == ScenarioInstanceStatus.Disabled)
+            {
+                existing.Status = ScenarioInstanceStatus.Enabled;
+                existing.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync(cancellationToken);
+                return new ServiceResult(200, "场景实例已重新启用。", ToInstanceView(existing));
+            }
+            return new ServiceResult(200, "场景实例已启用。", ToInstanceView(existing));
+        }
 
         var context = await LoadDeviceContextAsync(tenantId, cancellationToken);
         var steps = ResolveSteps(template, context).ToArray();
@@ -88,6 +98,21 @@ public sealed class ScenarioWorkflowServices : IScenarioWorkflowServices
         _db.ScenarioInstances.Add(instance);
         await _db.SaveChangesAsync(cancellationToken);
         return new ServiceResult(201, "场景实例已启用。", ToInstanceView(instance));
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult> DisableAsync(long tenantId, long instanceId, CancellationToken cancellationToken = default)
+    {
+        var instance = await _db.ScenarioInstances.SingleOrDefaultAsync(
+            x => x.Id == instanceId && x.TenantId == tenantId && x.DeletedAt == null, cancellationToken);
+        if (instance is null) return new ServiceResult(404, "请求的场景实例不存在。");
+        if (instance.Status != ScenarioInstanceStatus.Disabled)
+        {
+            instance.Status = ScenarioInstanceStatus.Disabled;
+            instance.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        return new ServiceResult(200, "场景实例已禁用。", ToInstanceView(instance));
     }
 
     /// <inheritdoc />

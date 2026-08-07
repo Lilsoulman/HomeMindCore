@@ -511,8 +511,16 @@ required_failed == 0（optional 失败不影响）→ Run 结果 success,  Actio
 | --- | --- |
 | `GET /scenarios/templates`、`GET /scenarios/instances` | `smart_home.read`（owner/admin/member/viewer） |
 | `POST /scenarios/templates/{templateCode}/enable` | `smart_home.write`（新增，owner/admin/member） |
+| `POST /scenarios/instances/{instanceId}/disable` | `smart_home.write`（B23，owner/admin/member） |
 | `POST /scenarios/instances/{instanceId}/run` | `ai.run` |
 | `POST /scenarios/runs/{runId}/actions/{actionId}/confirm` | `ai.run` |
+
+实例状态流转（B23）：`enabled ↔ disabled`。禁用置 `status=disabled`、
+`updated_at` 刷新，重复禁用幂等返回 200；禁用只阻止新触发（Run 查询
+已含 `Status=enabled`，禁用后自动 404「不存在或未启用」），已创建的
+待确认运行不受影响；`EnableAsync` 对已禁用实例恢复 `enabled` 并返回
+「场景实例已重新启用。」；不写审计（与 Enable 对称）、不校验
+row_version（与既有 Enable/Run 一致）。
 
 旧场景路由兼容代理：`SmartHomeSceneServices.RunAsync(sceneKey)` 经 `SmartHomeSceneDefinitions.TryGetIntent` 校验后**懒启用**对应模板实例（sceneKey 即模板 code）并转调场景运行链路；`HandleSceneCompletedAsync` 发布保留，`automation_rules` 的 sceneKey 动作引用零改动；`scenes`/`scene_actions` 读模型保留（前端已接入契约与 Dashboard `Scenes` 模块不变）。
 
@@ -521,3 +529,5 @@ required_failed == 0（optional 失败不影响）→ Run 结果 success,  Actio
 `scenario_steps` 表仅在出现运营（哪一步失败最多）/用户（为什么场景常失败）/step SLA 与重试分析需求时新增；拖拽编排仅在出现「用户想自己创建场景」而非「启用场景」需求时启动；语音入口（Expert → Scenario Match → Run）在真实意图消费者接入时复用同一 `RunAsync` 执行器，不做重复实现。
 
 **B22 实施状态（2026-08-07）**：迁移 `028_scenario_workflow.mysql.sql` 与 EF 迁移 `AddScenarioWorkflow` 已落地；`ScenarioTemplate`/`ScenarioInstance` 实体、`IScenarioWorkflowServices`/`ScenarioWorkflowServices`（模板/实例列表、Enable Device Resolver 容忍缺设备、Run 单 Action metadata、Confirm 逐步执行与状态汇总）与 `ScenarioController` 5 条路由已发布；权限 `smart_home.write` 注册（owner/admin/member）；`SmartHomeSceneServices` 兼容代理（懒启用 + scene_completed 发布保留）已发布；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 153/153（新增 ScenarioWorkflowServicesTests 12 项）；真实 MySQL 028 顺序迁移已在本机执行验证（3 模板种子落库）；真实设备执行仍按部署环境验证。
+
+**B23 实施状态（2026-08-08）**：`DisableAsync`（接口+实现+`ScenarioController` 第 6 条路由 `POST /scenarios/instances/{instanceId}/disable`，`smart_home.write`）已发布；`EnableAsync` 修正已禁用实例的恢复语义；无新迁移（复用 028 `status` 字段与 `ScenarioInstanceStatus.Disabled` 常量）；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 158/158（新增 ScenarioWorkflowServicesTests 5 项）；真实 MySQL 无需新迁移，设备执行仍按部署环境验证。

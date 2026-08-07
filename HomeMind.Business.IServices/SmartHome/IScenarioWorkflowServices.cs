@@ -34,6 +34,16 @@ public interface IScenarioWorkflowServices
     Task<ServiceResult> EnableAsync(long userId, long tenantId, string templateCode, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 禁用家庭场景实例：状态置为 disabled，不再允许触发新运行；重复禁用幂等。
+    /// 禁用只阻止新触发，已创建的待确认运行不受影响；禁用后重复启用可恢复。
+    /// </summary>
+    /// <param name="tenantId">当前租户标识，由 JWT 推导。</param>
+    /// <param name="instanceId">场景实例主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>实例视图统一响应；实例不存在、跨租户或已软删除返回 404。</returns>
+    Task<ServiceResult> DisableAsync(long tenantId, long instanceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 运行一个已启用的场景实例：创建 AgentRun（SourceType=scenario）与单个
     /// ExpertRunAction（ActionType=scenario，步骤上下文承载于 RequestJson），等待确认。
     /// </summary>
