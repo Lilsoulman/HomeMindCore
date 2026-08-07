@@ -134,6 +134,7 @@ namespace HomeMind.Api
                         "Todos" => "效率工具 / 待办",
                         "Life" => "个人生活 / 偏好收藏",
                         "LifeRuns" => "个人生活 / 专家运行",
+                        "Conversations" => "智能能力 / 专家与运行",
                         _ => "未分类"
                     }
                 });

@@ -155,6 +155,52 @@ public sealed class ExpertGroupVersion
     [Column("estimated_credits")] public decimal EstimatedCredits { get; set; }
 }
 
+/// <summary>专家会话表：用户围绕某领域创建的对话框，绑定专家与连接器（连接器在本阶段仅作元数据落库）。</summary>
+[Table("conversations")]
+public sealed class Conversation
+{
+    /// <summary>会话主键。</summary>
+    [Key, Column("id")] public long Id { get; set; }
+    /// <summary>所属租户标识，会话为个人资源，与 owner 共同隔离。</summary>
+    [Column("tenant_id")] public long TenantId { get; set; }
+    /// <summary>会话所有者用户标识；仅本人可读写，跨用户/跨租户一律 404。</summary>
+    [Column("owner_user_id")] public long OwnerUserId { get; set; }
+    /// <summary>会话标题。</summary>
+    [Column("title", TypeName = "varchar(64)")] public string Title { get; set; } = null!;
+    /// <summary>绑定的专家主键，可空表示尚未选择专家。</summary>
+    [Column("expert_id")] public long? ExpertId { get; set; }
+    /// <summary>绑定的专家版本主键，与专家同空或同非空。</summary>
+    [Column("expert_version_id")] public long? ExpertVersionId { get; set; }
+    /// <summary>绑定的连接器实例主键（单值），本阶段仅元数据，多连接器后续演进。</summary>
+    [Column("workspace_connector_id")] public long? WorkspaceConnectorId { get; set; }
+    /// <summary>创建时间（UTC）。</summary>
+    [Column("created_at", TypeName = "datetime(3)")] public DateTime CreatedAt { get; set; }
+    /// <summary>最近更新时间（UTC）。</summary>
+    [Column("updated_at", TypeName = "datetime(3)")] public DateTime UpdatedAt { get; set; }
+    /// <summary>软删除时间（UTC），非空表示已删除。</summary>
+    [Column("deleted_at", TypeName = "datetime(3)")] public DateTime? DeletedAt { get; set; }
+    /// <summary>行版本号，乐观锁比较字段，更新时递增。</summary>
+    [ConcurrencyCheck, Column("row_version")] public long RowVersion { get; set; } = 1;
+}
+
+/// <summary>会话内对话消息；user 消息在发送时落库，assistant 消息在 Run 终态后落库，均保留 run_id 供追溯。</summary>
+[Table("conversation_messages")]
+public sealed class ConversationMessage
+{
+    /// <summary>消息主键。</summary>
+    [Key, Column("id")] public long Id { get; set; }
+    /// <summary>所属会话主键。</summary>
+    [Column("conversation_id")] public long ConversationId { get; set; }
+    /// <summary>消息角色，取值 user/assistant。</summary>
+    [Column("role", TypeName = "varchar(16)")] public string Role { get; set; } = null!;
+    /// <summary>消息内容；不包含 Prompt 或模型思考链。</summary>
+    [Column("content", TypeName = "text")] public string Content { get; set; } = null!;
+    /// <summary>关联的 Agent 运行主键，可空表示尚未追溯（如历史导入）；同会话内唯一。</summary>
+    [Column("run_id")] public long? RunId { get; set; }
+    /// <summary>消息创建时间（UTC）。</summary>
+    [Column("created_at", TypeName = "datetime(3)")] public DateTime CreatedAt { get; set; }
+}
+
 /// <summary>
 /// AI Agent 的一次可审计运行。物理表保留为 expert_runs，以兼容既有 Todo、Calendar 和 Action 外键。
 /// </summary>
@@ -201,6 +247,8 @@ public sealed class AgentRun
     [Column("started_at")] public DateTime? StartedAt { get; set; }
     /// <summary>结束时间（UTC），失败与取消也会写入。</summary>
     [Column("finished_at")] public DateTime? FinishedAt { get; set; }
+    /// <summary>所属会话主键，可空表示非会话运行；会话运行终态后据此追加 assistant 消息。</summary>
+    [Column("conversation_id")] public long? ConversationId { get; set; }
 }
 
 /// <summary>智能体运行期作业，承载规划、确认、重试等任务。</summary>

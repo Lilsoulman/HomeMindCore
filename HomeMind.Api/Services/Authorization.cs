@@ -58,6 +58,10 @@ public static class PermissionNames
     public const string LifeFavoriteWrite = "life.favorite.write";
     public const string TenantRead = "tenant.read";
     public const string TenantMemberManage = "tenant.member.manage";
+    public const string ConversationRead = "conversation.read";
+    public const string ConversationWrite = "conversation.write";
+    public const string ExpertMineRead = "expert.mine.read";
+    public const string ExpertMineWrite = "expert.mine.write";
 
     public static IReadOnlyCollection<string> All { get; } = new[]
     {
@@ -92,6 +96,10 @@ public static class PermissionNames
         ,LifeFavoriteWrite
         ,TenantRead
         ,TenantMemberManage
+        ,ConversationRead
+        ,ConversationWrite
+        ,ExpertMineRead
+        ,ExpertMineWrite
     };
 }
 
@@ -131,6 +139,10 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         ,PermissionNames.LifeFavoriteWrite
         ,PermissionNames.TenantRead
         ,PermissionNames.TenantMemberManage
+        ,PermissionNames.ConversationRead
+        ,PermissionNames.ConversationWrite
+        ,PermissionNames.ExpertMineRead
+        ,PermissionNames.ExpertMineWrite
     };
 
     private static readonly HashSet<string> ViewerPermissions = new(StringComparer.Ordinal)
@@ -149,6 +161,8 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         ,PermissionNames.ConfirmationRead
         ,PermissionNames.LifeFavoriteRead
         ,PermissionNames.TenantRead
+        ,PermissionNames.ConversationRead
+        ,PermissionNames.ExpertMineRead
     };
 
     /// <summary>V2.4 B19 发布：owner/admin 专享权限，<c>member</c>/<c>viewer</c> 不得调用。</summary>

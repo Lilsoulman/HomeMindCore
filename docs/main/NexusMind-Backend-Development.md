@@ -199,7 +199,7 @@ MQTT 内部主题统一为 `nexusmind/home/{homeId}/device/{deviceId}/state` 和
 | 第三阶段 | 自动化与稳定性 | 规则触发、同步队列、重试与可观测性纳入生产基线 |
 | 第四阶段 | Expert Files 与多专家团队编排 | 上传、扫描、附件、读取令牌；版本化 `sequential`/`parallel`/`synthesis` 团队；成员权限交集；不绕过既有 Action 边界 |
 | 第五阶段 | V2.3 个人生活专家（B15-B17） | `personal_favorites` 迁移、CRUD 与审计；`personal-life-expert` 注册与翻牌/行程 Run 链路；日历同步确认与联调验收 |
-| 第六阶段 | 专家会话与自建专家（B19-B20） | `conversations`/`conversation_messages` 迁移与实体、`experts.owner_user_id` 扩展、`expert_runs.conversation_id`、`IConversationService`（会话 CRUD/消息/上下文拼接）、会话与消息 API、`GET /experts?scope=basic\|mine\|all` 过滤；验收：归属隔离、上下文拼接、消息追溯（run_id）、scope 过滤与跨用户 404 |
+| 第六阶段 | 专家会话与自建专家（B20+B21，B20 已发布） | `conversations`/`conversation_messages` 迁移与实体（B20 已发布）、`experts.owner_user_id` 扩展（B21）、`expert_runs.conversation_id`（B20 已发布）、`IConversationService`（会话 CRUD/消息/上下文拼接，B20 已发布）、会话与消息 API（B20 已发布）、`GET /experts?scope=basic\|mine\|all` 过滤（B21）；验收：归属隔离、上下文拼接、消息追溯（run_id）、scope 过滤与跨用户 404 |
 
 阶段 8（Expert Files 与多专家团队编排）新增 8 张表 `expert_files`、`expert_file_objects`、`expert_file_attachments`、`team_run_templates`、`team_run_template_versions`、`team_runs`、`team_run_members`、`team_run_audits`，全部按 `tenant_id` 隔离并使用 UTC `DATETIME(3)`、乐观 `row_version`、状态/模式检查约束。文件二进制不进入数据库；对象存储由 `IExpertFileStorage` 抽象隔离，`LocalExpertFileStorage` 作为受控本地实现，`ExpertFiles:Storage:Enabled=false` 时返回可读 `503`。扫描走 `IExpertFileScanner`，默认仅做扩展名、MIME、大小、SHA-256 校验；状态固定为 `pending_upload | scanning | ready | rejected | deleted`，仅 `ready` 文件可被附加或被运行时读取。
 
@@ -405,6 +405,8 @@ Web 路由由前端版本发布，服务端权限码始终为唯一授权依据�
 会话化将专家交互从「单次运行」扩展为「会话（对话框）」：移动端纯对话、遍历询问，PC 端承载维护与运行细节。新增迁移 `conversations`、`conversation_messages`，并扩展 `experts.owner_user_id` 与 `expert_runs.conversation_id`（可空）。`experts.owner_user_id` 为空表示平台基础专家（开发端维护、全家可见），非空表示用户自建专家（PC 用户端维护、仅创建者本人可见）。会话发送消息复用既有 `IExpertRunService` 创建 Run（携带 `conversation_id`），消息历史即会话上下文（运行时拼接，复用 `input_context` 语义），终态后写入 `assistant` 消息并保留 `run_id`；跨用户/跨租户访问一律 404。
 
 API：`GET/POST /conversations`、`GET/PUT/DELETE /conversations/{id}`（软删除+审计）、`GET /conversations/{id}/messages`（游标分页）、`POST /conversations/{id}/messages`（发送）；`GET /experts?scope=basic|mine|all` 区分平台基础专家与本人自建专家。权限：`conversation.read/write`（仅本人会话）与 `expert.mine.read/write`（仅本人自建专家）。验收：迁移、归属隔离、上下文拼接、消息追溯（run_id）、scope 过滤与跨用户 404；字段级契约同步 `frontend-api-integration.md` 与 `api-implementation.md`。
+
+**B20 实施状态（2026-08-07）**：迁移 `026_expert_conversations.mysql.sql`（conversations + conversation_messages + expert_runs.conversation_id + family_audit_logs CHECK 扩展 3 动作/1 目标）与 EF 迁移 `AddConversations` 已落地（EF 迁移仅建表/加列，不含 CHECK，遵循仓库 Surgical Changes 约定，不触碰既有 schema 漂移、不更新模型快照）；`Conversation`/`ConversationMessage` 实体与 DbSet 已发布；`IConversationServices`/`ConversationServices`（会话 CRUD、软删除与 `conversation_*` 审计、消息游标分页、上下文拼接：最近 20 条 + 12000 字符预算，产出 `{"messages":[...]}` 作为 input_json；`RecordUserMessageAsync`/`AppendAssistantMessageAsync` 按 `(conversation_id, run_id)` 幂等）已发布；`AgentRunCreateRequest` 扩展可选 `conversationId`，`AgentRunServices.CreateAsync` 校验会话归属（非本人/已软删 404、同键异会话 409）并落库，`AgentRunView` 类型化取代匿名投影；`AgentRunProcessor` 终态（completed/failed）后向会话追加 assistant 消息（内容取 result_summary/错误消息，取消态不追加），无事件总线、复用既有 Worker 轮询；`ConversationsController` 发布 7 个端点（`conversation.read/write`，路由无 homes 前缀，JWT 推导归属）；权限名 `conversation.read/write`、`expert.mine.read/write` 注册（后者 B21 消费）；错误码 `40903`（会话/自建专家乐观锁）；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 133/133（新增 ConversationServicesTests 16 项 + AgentRunConversationTests 3 项）；真实 MySQL 026 顺序迁移与真实 AI 推理端到端会话按部署环境验证。
 
 ## 14. V2.4 B19 Web 治理 API
 

@@ -29,6 +29,10 @@ public sealed class AgentRunServices : IAgentRunServices
         if (request.SourceType is not ("expert" or "group") || !IsJson(request.InputJson))
             return new ServiceResult(422, "请提供有效的专家来源和输入内容。");
 
+        if (request.ConversationId is long conversationId
+            && !await _db.Conversations.AnyAsync(x => x.Id == conversationId && x.TenantId == tenantId && x.OwnerUserId == userId && x.DeletedAt == null, cancellationToken))
+            return new ServiceResult(404, "请求的会话不存在。");
+
         var source = await ResolveSourceAsync(tenantId, request.SourceType, request.SourceId, cancellationToken);
         if (source is null) return new ServiceResult(404, "请求的专家或专家团不存在。");
 
@@ -40,6 +44,8 @@ public sealed class AgentRunServices : IAgentRunServices
         {
             if (existing.SourceType != request.SourceType || existing.ExpertVersionId != source.ExpertVersionId || existing.GroupVersionId != source.GroupVersionId)
                 return new ServiceResult(409, "该幂等键已用于其他 Agent 运行。");
+            if (existing.ConversationId != request.ConversationId)
+                return new ServiceResult(409, "该幂等键已用于其他会话的消息。");
             return new ServiceResult(200, "Agent 运行已存在。", ToView(existing));
         }
 
@@ -55,6 +61,7 @@ public sealed class AgentRunServices : IAgentRunServices
             Input = request.InputJson,
             Status = AgentRunStatus.Queued,
             EstimatedCredits = source.EstimatedCredits,
+            ConversationId = request.ConversationId,
             CreatedAt = now
         };
         _db.AgentRuns.Add(run);
@@ -195,6 +202,8 @@ public sealed class AgentRunServices : IAgentRunServices
         (await _db.RunEvents.Where(x => x.RunId == runId).MaxAsync(x => (int?)x.Sequence, cancellationToken) ?? 0) + 1;
 
     private static bool IsJson(string value) { try { JsonDocument.Parse(value); return true; } catch (JsonException) { return false; } }
-    private static object ToView(AgentRun run) => new { run.Id, run.SourceType, run.Status, run.Input, run.Result, run.ResultSummary, run.EstimatedCredits, run.ActualCredits, run.CreatedAt, run.StartedAt, run.FinishedAt };
+    private static AgentRunView ToView(AgentRun run) => new(
+        run.Id, run.SourceType, run.Status, run.Input, run.Result, run.ResultSummary,
+        run.EstimatedCredits, run.ActualCredits, run.CreatedAt, run.StartedAt, run.FinishedAt, run.ConversationId);
     private sealed record ResolvedSource(long? ExpertVersionId, long? GroupVersionId, decimal EstimatedCredits);
 }

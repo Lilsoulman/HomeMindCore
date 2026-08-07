@@ -183,6 +183,12 @@ public static class FamilyAuditActions
     public const string TenantOwnerTransferred = "tenant_owner_transferred";
     /// <summary>Web 导航偏好被 owner/admin 写入；由导航偏好服务写入。</summary>
     public const string WebNavigationPreferenceUpdated = "web_navigation_preference_updated";
+    /// <summary>专家会话被创建；由会话服务写入。</summary>
+    public const string ConversationCreate = "conversation_create";
+    /// <summary>专家会话被重命名或重绑专家/连接器；由会话服务写入。</summary>
+    public const string ConversationRename = "conversation_rename";
+    /// <summary>专家会话被软删除；由会话服务写入。</summary>
+    public const string ConversationDelete = "conversation_delete";
 }
 
 /// <summary>家庭上下文审计目标类型集合，决定 <see cref="FamilyAuditLog.TargetType"/> 的合法取值。</summary>
@@ -208,6 +214,8 @@ public static class FamilyAuditTargetTypes
     public const string TenantInvitation = "tenant_invitation";
     /// <summary>目标为 <see cref="HomeMind.Common.Model.Entities.WebNavigationPreference"/>。</summary>
     public const string WebNavigationPreference = "web_navigation_preference";
+    /// <summary>目标为 <see cref="HomeMind.Common.Model.Entities.Conversation"/>（会话创建/重命名/软删除）。</summary>
+    public const string Conversation = "conversation";
 }
 
 /// <summary>家庭域审计记录实体；与管家动态、运行事件分离，专门承载 Family 域可审计动作。</summary>

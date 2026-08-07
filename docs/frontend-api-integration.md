@@ -489,34 +489,38 @@ draft | queued | planning | running | completed | failed | cancelled
 ### 8.3 `POST /api/v1/expert-runs`（创建 AgentRun）
 
 权限：`ai.run`。创建 AgentRun 并放入队列；响应 `Data` 与
-`GET /api/v1/expert-runs/{id}` 相同。
+`GET /api/v1/expert-runs/{id}` 相同。B20 起可携带可选的
+`conversationId`（所属专家会话主键，会话发送消息时由服务端传入；
+重复幂等键若会话归属不同返回 409）。
 
 ```json
 {
   "sourceType": "expert",
   "sourceId": 1,
-  "inputJson": "{\"topic\":\"AI safety\"}",
-  "idempotencyKey": "9c1f...uuid"
+  "inputJson": "{\"messages\":[{\"role\":\"user\",\"content\":\"你好\"}]}",
+  "idempotencyKey": "9c1f...uuid",
+  "conversationId": 5
 }
 ```
 
 ### 8.4 `GET /api/v1/expert-runs/{id}`（获取 AgentRun）
 
-权限：`ai.run`。
+权限：`ai.run`。B20 起响应新增 `ConversationId` 字段（可空）。
 
 ```json
 {
   "id": 9,
   "SourceType": "expert",
   "status": "queued",
-  "Input": "{\"topic\":\"AI safety\"}",
+  "Input": "{\"messages\":[{\"role\":\"user\",\"content\":\"你好\"}]}",
   "Result": null,
   "ResultSummary": null,
   "EstimatedCredits": 1,
-  "ActualCredits": null,
+  "ActualCredits": 0,
   "CreatedAt": "2026-08-02T03:11:22.123Z",
   "StartedAt": null,
-  "FinishedAt": null
+  "FinishedAt": null,
+  "ConversationId": 5
 }
 ```
 
@@ -1407,6 +1411,56 @@ UI 展示建议卡时呈现理由与标签，不渲染任何提示或思考链�
 UI 据此渲染"我的连接"列表：`Status` 为连接运行健康，`AuthStatus` 为授权生命周期；
 `LastSessionStatus=pending` 且未过期时展示"等待完成授权"；`revoked` 展示重新授权入口。
 
+### 8.27 专家会话（B20，已发布）
+
+会话为个人资源，路由无 `homes` 前缀，`tenant_id`/`owner_user_id` 由 JWT 推导；
+跨用户/跨租户/已软删一律 `404`。权限：读 `conversation.read`、写 `conversation.write`
+（owner/admin/member/viewer 均可读；写仅 owner/admin/member）。
+
+`GET /api/v1/conversations?limit=20&cursor=`（会话列表，按 `updatedAt` 倒序游标分页）：
+
+```json
+{ "Code": 0, "Msg": "查询成功。", "Data": {
+  "Items": [
+    { "Id": 5, "Title": "杭州周末行程", "ExpertId": 2, "ExpertVersionId": 21,
+      "WorkspaceConnectorId": null, "CreatedAt": "2026-08-07T09:00:00Z",
+      "UpdatedAt": "2026-08-07T09:30:00Z", "RowVersion": 1 }
+  ],
+  "Cursor": null } }
+```
+
+`POST /api/v1/conversations`（创建，请求 `{ "title": "杭州周末行程", "expertId": 2 }`）：
+- `expertId`/`workspaceConnectorId` 均可空；绑定专家时解析最新已发布版本，不可见返回 `404 + 30000`；
+- 成功 `201`，`Data` 为 `ConversationView`（同上结构，含 `RowVersion`）。
+
+`PUT /api/v1/conversations/{id}`（全量更新：重命名/重绑，请求
+`{ "title": "...", "expertId": null, "workspaceConnectorId": null, "rowVersion": 1 }`）：
+- `RowVersion` 与服务端不一致返回 `409 + 40903`（刷新后重试）；
+- `expertId: null` 即解绑专家（后续发送消息将返回 422）。
+
+`DELETE /api/v1/conversations/{id}`：软删除（`200`），消息历史保留留档；重复删除 `404`。
+
+`GET /api/v1/conversations/{id}/messages?limit=20&cursor=`（消息历史，按主键倒序）：
+
+```json
+{ "Code": 0, "Msg": "查询成功。", "Data": {
+  "Items": [
+    { "Id": 101, "Role": "user", "Content": "帮我规划周末去杭州", "RunId": 901,
+      "CreatedAt": "2026-08-07T09:30:00Z" }
+  ],
+  "Cursor": null } }
+```
+
+`POST /api/v1/conversations/{id}/messages`（发送消息，
+请求 `{ "content": "帮我规划周末去杭州", "idempotencyKey": "uuid?" }`）：
+- 未绑定专家返回 `422 + 42200`（"该会话尚未绑定专家"）；
+- 成功创建关联会话的 Expert Run（复用 `POST /expert-runs` 链路，`inputJson` 由服务端按会话历史拼接，
+  客户端**不缓存**会话上下文）；响应 `Data` 为 `{ "RunId": 901, "Status": "queued", "MessageId": 101 }`，
+  新建运行 `201`、幂等重放 `200`；
+- 客户端轮询 `GET /expert-runs/{RunId}`；终态后由后台处理器自动追加 `assistant` 消息
+  （内容为展示安全的结果摘要，`Role=assistant`、`RunId` 可追溯），无需客户端主动写入；
+- 重复 `idempotencyKey` 用于其他会话返回 `409`。
+
 ## 9. 权限汇总
 
 | 接口组 | 策略 |
@@ -1440,6 +1494,8 @@ UI 据此渲染"我的连接"列表：`Status` 为连接运行健康，`AuthStat
 | `GET /api/v1/homes/{homeId}/confirmations` | `confirmation.read` |
 | `POST /api/v1/homes/{homeId}/activities/{id}/undo`、`/confirmations/{id}/confirm`、`/confirmations/{id}/deny`、`/confirmations/batch-confirm` | `confirmation.write` |
 | `GET/POST/PUT/DELETE /api/v1/life/favorites[...]`、`POST /api/v1/life/favorites/import` | `life.favorite.read` / `life.favorite.write`（B14 预注册，B15 起消费） |
+| `GET /api/v1/conversations`、`GET /api/v1/conversations/{id}`、`GET /api/v1/conversations/{id}/messages` | `conversation.read`（B20，仅本人会话） |
+| `POST /api/v1/conversations`、`PUT/DELETE /api/v1/conversations/{id}`、`POST /api/v1/conversations/{id}/messages` | `conversation.write`（B20，仅本人会话） |
 
 角色（`owner` / `admin` / `member` / `viewer`）及允许的策略在
 `HomeMind.Api/Services/Authorization.cs` 中定义。新增角色或范围时
@@ -1458,6 +1514,9 @@ UI 据此渲染"我的连接"列表：`Status` 为连接运行健康，`AuthStat
 | `AiConfig.enabled`（B18 起） | 布尔值；`false` 时 AI 生成能力（`/ai/{generate,chat,stream}` 与专家运行）整体不可用 |
 | `ExpertCatalog.catalogType` | `expert` \| `group` |
 | `AgentRun.sourceType` | `expert` \| `group` |
+| `AgentRun.conversationId`（B20 起） | 专家会话主键，可空 |
+| `ConversationMessage.role` | `user` \| `assistant` |
+| `Conversation.expertId` / `expertVersionId` | 同空或同非空（`expertId` 传 null 解绑） |
 | `AgentRun.status` | `draft` \| `queued` \| `planning` \| `running` \| `completed` \| `failed` \| `cancelled` |
 | `AgentRunAction.actionType` | `plan` \| `todos` \| `calendar_events` \| `smart_home_device` |
 | `HousekeeperRun.intent` | `sleep` \| `away` \| `arrive` \| `environment_review` |

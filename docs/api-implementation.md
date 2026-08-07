@@ -40,6 +40,7 @@ JSON 输入中的这些值。
 | 成员邀请（B19） | `GET /api/v1/homes/{homeId}/invitations?status=`（`tenant.read`）；`POST /api/v1/homes/{homeId}/invitations`、`DELETE /api/v1/homes/{homeId}/invitations/{invitationId}`（`tenant.member.manage`）；`POST /api/v1/invitations/accept`（`tenant.read`，受邀人接受，家庭由邀请记录推导） |
 | Web 导航偏好（B19） | `GET /api/v1/web/navigation`（`tenant.read`，白名单合并当前角色偏好）；`PUT /api/v1/web/navigation`（`tenant.member.manage`，仅接受已发布 route_key） |
 | 我的个人连接（B19） | `GET /api/v1/connector-authorizations/my`（`connector.authorize`，仅本人 personal 实例 + 最近授权会话状态） |
+| 专家会话（B20） | `GET/POST /api/v1/conversations`（`conversation.read/write`，仅本人会话，跨用户/跨租户 404）；`GET/PUT/DELETE /api/v1/conversations/{id}`（PUT 携带 RowVersion 乐观锁，409/40903）；`GET /api/v1/conversations/{id}/messages?limit=&cursor=`（游标分页）；`POST /api/v1/conversations/{id}/messages`（发送 → 创建关联会话的 Expert Run → 落 user 消息，响应 `{RunId,Status,MessageId}`，终态由后台追加 assistant 消息） |
 
 ## 响应与错误码
 
@@ -79,6 +80,7 @@ JSON 输入中的这些值。
 | `42203` | Web 导航偏好提交了未发布的 route_key（B19） | `422` |
 | `40901` | 家庭租户级乐观锁冲突（成员/邀请行版本不匹配，B19） | `409` |
 | `40902` | 家庭成员邀请的受邀标识在当前家庭已存在未结邀请（B19） | `409` |
+| `40903` | 个人资源（专家会话/自建专家）乐观锁冲突（B20/B21） | `409` |
 
 当手机号和密码不匹配时，`POST /api/v1/auth/login` 返回 HTTP `400`
 并附带 `Code: 20000`。这是交互式凭据错误，而非访问令牌过期，
@@ -134,6 +136,8 @@ HTTP `401` 并附带 `Code: 20001`。`POST /api/v1/auth/logout`
 | `expert_file.read` / `expert_file.write` | 专家文件读/写 | owner / admin / member / viewer（仅 owner/admin/member 写） |
 | `team_run.read` / `team_run.write` | 团队运行读/写 | owner / admin / member（写）、全员（读） |
 | `team.manage` | 团队管理预留策略（保留） | — |
+| `conversation.read` / `conversation.write` | 专家会话与消息读/写（B20，仅本人会话，`expert.mine.read/write` 与自建专家共用同角色矩阵） | owner / admin / member / viewer（仅 owner/admin/member 写） |
+| `expert.mine.read` / `expert.mine.write` | 用户自建专家读/写（B20 预注册，B21 起消费；仅本人自建专家） | owner / admin / member / viewer（仅 owner/admin/member 写） |
 
 `member` 角色的 `ConnectorWrite` 需 `owner` 或 `admin` 才能创建或
 修改连接器；当前实现通过控制器分支 `user.Role is "owner" or "admin"`
@@ -543,6 +547,25 @@ Skill 声明 `favorite.recommend`/`trip.plan`/`favorite.create`）：
 审计动作（`family_audit_logs`）：`connector_authorize_started` / `connector_authorize_completed` / `connector_authorize_revoked`，目标类型 `connector_authorization`。
 
 角色维持 `tenant_members.role` 的 `owner/admin/member/viewer` 固定枚举，权限仍由 `PermissionAuthorizationHandler` 映射，不新增角色 CRUD。新增权限名 `connector.authorize`（owner/admin/member）。Web 路由是前端发布配置，不提供 API 路由维护；若未来发布菜单偏好 API，只接受已知 `routeKey`、`enabled`、`sortOrder`，且 owner/admin 才能写入。
+
+## V2.4 专家会话（已发布，B20）
+
+会话为个人资源：租户与所有者均由 JWT 推导，服务层按
+`tenant_id + owner_user_id` 隔离，跨用户/跨租户/已软删资源一律 `404`。
+
+| 端点 | 权限 | 契约要点 |
+| --- | --- | --- |
+| `GET /api/v1/conversations?limit=&cursor=` | `conversation.read` | 仅本人未删除会话，按 `updatedAt` 倒序游标分页；响应 `{ Items: ConversationView[], Cursor }` |
+| `POST /api/v1/conversations` | `conversation.write` | 请求 `{ title, expertId?, workspaceConnectorId? }`；绑定专家解析最新 published 版本，不可见 404；成功 201 写 `conversation_create` 审计 |
+| `GET /api/v1/conversations/{id}` | `conversation.read` | 非本人/已软删 404 |
+| `PUT /api/v1/conversations/{id}` | `conversation.write` | 请求携带 `RowVersion`，不符返回 409/40903；全量替换语义（`expertId: null` 解绑）；写 `conversation_rename` 审计 |
+| `DELETE /api/v1/conversations/{id}` | `conversation.write` | 软删除（`deleted_at`），消息历史保留留档；写 `conversation_delete` 审计 |
+| `GET /api/v1/conversations/{id}/messages?limit=&cursor=` | `conversation.read` | 按主键倒序游标分页，非法游标按第一页处理；消息不返回 Prompt/思考链 |
+| `POST /api/v1/conversations/{id}/messages` | `conversation.write` | 请求 `{ content, idempotencyKey? }`；未绑定专家 422/42200；成功创建关联会话的 Expert Run（携带 `conversationId`）并落 user 消息；响应 `{ RunId, Status, MessageId }`（201 新建/200 幂等重放）；Run 终态后由 `AgentRunProcessor` 追加 assistant 消息（内容取 `result_summary`，幂等按 `(conversation_id, run_id)`） |
+
+上下文拼接：发送时取最近 20 条历史消息（升序），字符预算 12000 从最旧丢弃，
+产出 `{"messages":[{"role":"user"|"assistant","content":"..."}]}` 作为
+`expert_runs.input_json`（AgentRunProcessor 原样作为 LLM UserMessage）。
 
 ## 本地运行
 

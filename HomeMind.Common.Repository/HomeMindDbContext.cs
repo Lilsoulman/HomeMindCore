@@ -92,6 +92,8 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<ConfirmationBatchRecord> ConfirmationBatchRecords => Set<ConfirmationBatchRecord>();
     public DbSet<PersonalFavorite> PersonalFavorites => Set<PersonalFavorite>();
     public DbSet<TravelAttraction> TravelAttractions => Set<TravelAttraction>();
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -147,6 +149,8 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<ConfirmationBatchRecord>().HasIndex(x => new { x.HomeId, x.IdempotencyKey }).IsUnique();
         modelBuilder.Entity<ConfirmationBatchRecord>().Property(x => x.ConfirmationIdsJson).HasColumnType("json");
         modelBuilder.Entity<ConfirmationBatchRecord>().Property(x => x.ResultJson).HasColumnType("json");
+        modelBuilder.Entity<ConversationMessage>().HasIndex(x => new { x.ConversationId, x.RunId }).IsUnique();
+        modelBuilder.Entity<ConversationMessage>().HasIndex(x => new { x.ConversationId, x.Id });
     }
 
     private static void ConfigureStoreGeneratedTimestamps(ModelBuilder modelBuilder)
@@ -174,5 +178,8 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<AiSkill>().Property(x => x.UpdatedAt).ValueGeneratedOnAddOrUpdate();
         modelBuilder.Entity<AgentRun>().Property(x => x.CreatedAt).ValueGeneratedOnAdd();
         modelBuilder.Entity<RunEvent>().Property(x => x.CreatedAt).ValueGeneratedOnAdd();
+        modelBuilder.Entity<Conversation>().Property(x => x.CreatedAt).ValueGeneratedOnAdd();
+        modelBuilder.Entity<Conversation>().Property(x => x.UpdatedAt).ValueGeneratedOnAddOrUpdate();
+        modelBuilder.Entity<ConversationMessage>().Property(x => x.CreatedAt).ValueGeneratedOnAdd();
     }
 }

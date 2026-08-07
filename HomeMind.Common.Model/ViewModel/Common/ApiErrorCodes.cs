@@ -48,6 +48,8 @@ public static class ApiErrorCodes
     public const int TenantInvitationIdentityNotMatched = 30001;
     /// <summary>V2.4 B19：Web 导航偏好提交了未发布 route_key（HTTP 422）。</summary>
     public const int WebNavigationRouteKeyNotPublished = 42203;
+    /// <summary>V2.4 B20/B21：个人资源（专家会话/自建专家）乐观锁冲突（HTTP 409）。</summary>
+    public const int OptimisticLockConflict = 40903;
 
     /// <summary>将 HTTP 状态码映射为应用层业务错误码。</summary>
     /// <param name="statusCode">HTTP 状态码。</param>

@@ -25,6 +25,8 @@ using HomeMind.Business.IServices.Steward;
 using HomeMind.Business.Services.Steward;
 using HomeMind.Business.IServices.Identity;
 using HomeMind.Business.Services.Identity;
+using HomeMind.Business.IServices.Conversation;
+using HomeMind.Business.Services.Conversation;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace HomeMind.Business.Services;
@@ -76,6 +78,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITenantMemberServices, TenantMemberServices>();
         services.AddScoped<ITenantMemberInvitationServices, TenantMemberInvitationServices>();
         services.AddScoped<IWebNavigationPreferencesServices, WebNavigationPreferencesServices>();
+        services.AddScoped<IConversationServices, ConversationServices>();
         return services;
     }
 }

@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using HomeMind.Business.IServices.Agent;
 using HomeMind.Business.IServices.AI;
+using HomeMind.Business.IServices.Conversation;
 using HomeMind.Business.IServices.Expert;
 using HomeMind.Common.Infrastructure;
 using HomeMind.Common.Model.Agent;
@@ -28,8 +29,9 @@ public sealed class AgentRunProcessor : IAgentRunProcessor
     private readonly IPptxBuilder _pptx;
     private readonly IExpertFileServices _files;
     private readonly IAiConfigServices _config;
+    private readonly IConversationServices _conversations;
 
-    public AgentRunProcessor(HomeMindDbContext db, ILLMClient llm, SecretProtector secretProtector, IPptxBuilder pptx, IExpertFileServices files, IAiConfigServices config)
+    public AgentRunProcessor(HomeMindDbContext db, ILLMClient llm, SecretProtector secretProtector, IPptxBuilder pptx, IExpertFileServices files, IAiConfigServices config, IConversationServices conversations)
     {
         _db = db;
         _llm = llm;
@@ -37,6 +39,7 @@ public sealed class AgentRunProcessor : IAgentRunProcessor
         _pptx = pptx;
         _files = files;
         _config = config;
+        _conversations = conversations;
     }
 
     public async Task<int> ProcessNextAsync(CancellationToken cancellationToken = default)
@@ -156,6 +159,7 @@ public sealed class AgentRunProcessor : IAgentRunProcessor
             AddEvent(run, AgentRunStatus.Failed, message, DateTime.UtcNow);
         }
         await _db.SaveChangesAsync(cancellationToken);
+        await AppendAssistantMessageAsync(run, message, cancellationToken);
         return 1;
     }
 
@@ -175,7 +179,18 @@ public sealed class AgentRunProcessor : IAgentRunProcessor
         run.FinishedAt = DateTime.UtcNow;
         AddEvent(run, AgentRunStatus.Completed, "建议已生成。", DateTime.UtcNow);
         await _db.SaveChangesAsync(cancellationToken);
+        await AppendAssistantMessageAsync(run, run.ResultSummary ?? "建议已生成。", cancellationToken);
         return 1;
+    }
+
+    /// <summary>
+    /// 会话运行的终态后处理：向所属会话追加一条 assistant 消息（展示用摘要，不含 Prompt 或思考链）。
+    /// 取消态不追加——取消结果由运行状态呈现，客户端经 runId 轮询可见。
+    /// </summary>
+    private async Task AppendAssistantMessageAsync(AgentRun run, string content, CancellationToken cancellationToken)
+    {
+        if (run.ConversationId is null) return;
+        await _conversations.AppendAssistantMessageAsync(run.TenantId, run.ConversationId.Value, run.Id, content, cancellationToken);
     }
 
     private async Task<string> BuildSystemPromptAsync(ExpertVersion version, CancellationToken cancellationToken)
