@@ -286,6 +286,7 @@ public sealed class ConversationServices : IConversationServices
         var expert = await _db.Experts.SingleOrDefaultAsync(
             x => x.Id == expertId
                  && x.Status == "active"
+                 && x.DeletedAt == null
                  && (x.TenantId == 1 || x.TenantId == tenantId)
                  && (x.OwnerUserId == null || x.OwnerUserId == userId), cancellationToken);
         if (expert is null) return null;

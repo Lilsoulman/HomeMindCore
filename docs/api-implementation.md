@@ -25,7 +25,7 @@ JSON 输入中的这些值。
 | 日历 | `GET/POST /api/v1/calendar/events`、`PUT/DELETE /api/v1/calendar/events/{id}`；`GET/POST /api/v1/calendar/subscriptions`、`PUT/DELETE /api/v1/calendar/subscriptions/{id}`；`POST /api/v1/calendar/ical/fetch`（未实现） |
 | 技能 | `GET/POST /api/v1/skills`；`PUT/DELETE /api/v1/skills/{id}` |
 | AI 配置 | `GET/PUT /api/v1/ai/config`（B18 新增 `enabled` 字段，默认 `true`，切换开关不传 `apiKey` 即可保留密文）；`POST /api/v1/ai/{generate,chat,stream}`（B18 占位，启用 → 501，未启用 → 422 + `Code=42200`） |
-| 专家目录 | `GET /api/v1/experts`、`GET /api/v1/experts/{id}` |
+| 专家目录 | `GET /api/v1/experts?scope=basic\|mine\|all`（B21 起支持来源过滤，默认 basic 向后兼容；列表项含 `Source` 字段，不暴露他人 owner）、`GET /api/v1/experts/{id}`（他人自建/已软删 404）；自建专家（B21）：`POST /api/v1/experts`、`PUT/DELETE /api/v1/experts/{id}`（`expert.mine.write`，PUT 携带 RowVersion 乐观锁 409/40903，更新生成 version+1 已发布版本） |
 | 智能体运行时 / 专家运行 | `POST /api/v1/expert-runs`、`GET /api/v1/expert-runs/{id}`、`/events`、`/actions`、`/actions/{actionId}/confirm`、`/cancel`、`/retry`；`POST /api/v1/expert-runs/{id}/actions` 创建动作。路由名称为兼容性保留，但领域资源为 `AgentRun`。 |
 | 专家文件（V1） | `POST/GET /api/v1/expert-files`、`POST /api/v1/expert-files/{fileId}/objects`、`DELETE /api/v1/expert-files/{fileId}`、`POST /api/v1/expert-files/{fileId}/read-token`、`POST /api/v1/experts/{expertId}/files`、`POST /api/v1/expert-runs/{runId}/files` |
 | 团队运行（V1） | `POST /api/v1/team-runs`；`GET /api/v1/team-runs/{id}`、`/events`、`/members`、`/synthesis`；`POST /api/v1/team-runs/{id}/cancel`、`/retry` |
@@ -136,8 +136,8 @@ HTTP `401` 并附带 `Code: 20001`。`POST /api/v1/auth/logout`
 | `expert_file.read` / `expert_file.write` | 专家文件读/写 | owner / admin / member / viewer（仅 owner/admin/member 写） |
 | `team_run.read` / `team_run.write` | 团队运行读/写 | owner / admin / member（写）、全员（读） |
 | `team.manage` | 团队管理预留策略（保留） | — |
-| `conversation.read` / `conversation.write` | 专家会话与消息读/写（B20，仅本人会话，`expert.mine.read/write` 与自建专家共用同角色矩阵） | owner / admin / member / viewer（仅 owner/admin/member 写） |
-| `expert.mine.read` / `expert.mine.write` | 用户自建专家读/写（B20 预注册，B21 起消费；仅本人自建专家） | owner / admin / member / viewer（仅 owner/admin/member 写） |
+| `conversation.read` / `conversation.write` | 专家会话与消息读/写（B20，仅本人会话） | owner / admin / member / viewer（仅 owner/admin/member 写） |
+| `expert.mine.read` / `expert.mine.write` | 用户自建专家读/写（B20 预注册，B21 起消费；`scope=mine` 与自建专家 CRUD 仅作用于本人资源） | owner / admin / member / viewer（仅 owner/admin/member 写） |
 
 `member` 角色的 `ConnectorWrite` 需 `owner` 或 `admin` 才能创建或
 修改连接器；当前实现通过控制器分支 `user.Role is "owner" or "admin"`
@@ -566,6 +566,22 @@ Skill 声明 `favorite.recommend`/`trip.plan`/`favorite.create`）：
 上下文拼接：发送时取最近 20 条历史消息（升序），字符预算 12000 从最旧丢弃，
 产出 `{"messages":[{"role":"user"|"assistant","content":"..."}]}` 作为
 `expert_runs.input_json`（AgentRunProcessor 原样作为 LLM UserMessage）。
+
+## V2.4 自建专家（已发布，B21）
+
+`experts.owner_user_id` 为空表示平台基础专家（全家可见），非空表示用户自建专家
+（仅创建者本人可见可维护，跨用户/跨租户/已软删一律 404）。`experts.deleted_at` 软删除
+后专家从目录、运行解析（`ResolveSourceAsync`）与会话发送（`ResolveExpertAsync`）全链路消失。
+
+| 端点 | 权限 | 契约要点 |
+| --- | --- | --- |
+| `GET /api/v1/experts?query=&category=&type=&scope=` | `ai.read` | `scope`：`basic`（默认，平台基础）/ `mine`（本人自建）/ `all`（两者）；列表项为 `ExpertCatalogItemView`（`Id/CatalogType/Source/Code/Name/Category/Description/EstimatedCredits`），不暴露他人 owner |
+| `GET /api/v1/experts/{id}` | `ai.read` | 返回 `ExpertDetailView`（含最新已发布版本快照与 `Source`）；他人自建/已软删 404 |
+| `POST /api/v1/experts` | `expert.mine.write` | 请求 `{ name, category, persona, promptTemplate, description?, methodology?, toolPolicyJson?, estimatedCredits? }`；缺必填 422/10001、toolPolicyJson 非法 JSON 422；成功 201 + `ExpertDetailView`（code=`custom-` 前缀、`Source=mine`、v1 published） |
+| `PUT /api/v1/experts/{id}` | `expert.mine.write` | 全量替换头部字段并生成 `version+1` 已发布版本（版本不可变不变量）；携带 `RowVersion`，不符 409/40903 |
+| `DELETE /api/v1/experts/{id}` | `expert.mine.write` | 软删除（`deleted_at`）；重复删除 404 |
+
+自建专家不写 `family_audit_logs`（设计 §13.1 仅要求会话审计）。
 
 ## 本地运行
 

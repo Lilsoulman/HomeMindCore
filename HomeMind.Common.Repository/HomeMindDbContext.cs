@@ -176,6 +176,8 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<CalendarSubscription>().Property(x => x.UpdatedAt).ValueGeneratedOnAddOrUpdate();
         modelBuilder.Entity<AiSkill>().Property(x => x.CreatedAt).ValueGeneratedOnAdd();
         modelBuilder.Entity<AiSkill>().Property(x => x.UpdatedAt).ValueGeneratedOnAddOrUpdate();
+        modelBuilder.Entity<Expert>().Property(x => x.CreatedAt).ValueGeneratedOnAdd();
+        modelBuilder.Entity<Expert>().Property(x => x.UpdatedAt).ValueGeneratedOnAddOrUpdate();
         modelBuilder.Entity<AgentRun>().Property(x => x.CreatedAt).ValueGeneratedOnAdd();
         modelBuilder.Entity<RunEvent>().Property(x => x.CreatedAt).ValueGeneratedOnAdd();
         modelBuilder.Entity<Conversation>().Property(x => x.CreatedAt).ValueGeneratedOnAdd();

@@ -19,27 +19,59 @@ namespace HomeMind.Api.Controllers.AI;
 public sealed class ExpertsController : ApiControllerBase
 {
     private readonly IExpertCatalogServices _experts;
+    private readonly IExpertSelfServeServices _selfServe;
     private readonly IAgentRunServices _agentRuns;
 
     /// <summary>构造专家与运行控制器。</summary>
     /// <param name="experts">专家目录业务服务。</param>
+    /// <param name="selfServe">自建专家业务服务。</param>
     /// <param name="agentRuns">AgentRun 业务服务。</param>
-    public ExpertsController(IExpertCatalogServices experts, IAgentRunServices agentRuns)
+    public ExpertsController(IExpertCatalogServices experts, IExpertSelfServeServices selfServe, IAgentRunServices agentRuns)
     {
         _experts = experts;
+        _selfServe = selfServe;
         _agentRuns = agentRuns;
     }
 
     /// <summary>列出当前租户内可见的专家目录。</summary>
-    /// <remarks>权限：<c>ai.read</c>。支持按名称、分类、类型筛选。</remarks>
+    /// <remarks>权限：<c>ai.read</c>。支持按名称、分类、类型筛选；B21 起支持 <c>scope</c> 区分平台基础专家与本人自建专家。</remarks>
     /// <param name="query">名称模糊查询字符串，可空。</param>
     /// <param name="category">分类，可空。</param>
     /// <param name="type">类型，可空。</param>
+    /// <param name="scope">来源过滤：<c>basic</c>（默认，平台基础）/ <c>mine</c>（本人自建）/ <c>all</c>（两者）。</param>
     /// <returns>专家列表的统一响应。</returns>
     [Authorize(Policy = PermissionNames.AiRead)]
     [HttpGet("experts")]
-    public async Task<ActionResult<ApiResponse<object>>> ListExperts(string query, string category, string type) =>
-        ToResponse(await WithUserAsync((user, token) => _experts.ListAsync(user.UserId, user.TenantId, query, category, type, token)));
+    public async Task<ActionResult<ApiResponse<object>>> ListExperts(string query, string category, string type, string? scope = "basic") =>
+        ToResponse(await WithUserAsync((user, token) => _experts.ListAsync(user.UserId, user.TenantId, query, category, type, scope, token)));
+
+    /// <summary>创建用户自建专家（PC 用户端「我的专家」）。</summary>
+    /// <remarks>权限：<c>expert.mine.write</c>。创建自动生成 <c>custom-</c> 前缀编码与 v1 已发布版本，仅创建者本人可见可维护。</remarks>
+    /// <param name="request">自建专家创建请求体。</param>
+    /// <returns>已创建自建专家的统一响应。</returns>
+    [Authorize(Policy = PermissionNames.ExpertMineWrite)]
+    [HttpPost("experts")]
+    public async Task<ActionResult<ApiResponse<object>>> CreateExpert(ExpertCreateRequest request) =>
+        ToResponse(await WithUserAsync((user, token) => _selfServe.CreateAsync(user.UserId, user.TenantId, request, token)));
+
+    /// <summary>更新本人自建专家；生成 version+1 已发布版本。</summary>
+    /// <remarks>权限：<c>expert.mine.write</c>。携带 RowVersion 乐观锁，冲突返回 409/40903。</remarks>
+    /// <param name="id">自建专家主键。</param>
+    /// <param name="request">自建专家更新请求体。</param>
+    /// <returns>更新后自建专家的统一响应。</returns>
+    [Authorize(Policy = PermissionNames.ExpertMineWrite)]
+    [HttpPut("experts/{id:long}")]
+    public async Task<ActionResult<ApiResponse<object>>> UpdateExpert(long id, ExpertUpdateRequest request) =>
+        ToResponse(await WithUserAsync((user, token) => _selfServe.UpdateAsync(user.UserId, user.TenantId, id, request, token)));
+
+    /// <summary>软删除本人自建专家；已删专家从目录、运行解析与会话发送全部消失。</summary>
+    /// <remarks>权限：<c>expert.mine.write</c>。重复删除返回 404。</remarks>
+    /// <param name="id">自建专家主键。</param>
+    /// <returns>删除结果的统一响应。</returns>
+    [Authorize(Policy = PermissionNames.ExpertMineWrite)]
+    [HttpDelete("experts/{id:long}")]
+    public async Task<ActionResult<ApiResponse<object>>> DeleteExpert(long id) =>
+        ToResponse(await WithUserAsync((user, token) => _selfServe.DeleteAsync(user.UserId, user.TenantId, id, token)));
 
     /// <summary>按主键获取单个专家或专家组的详情。</summary>
     /// <remarks>权限：<c>ai.read</c>。<c>type=expert_group</c> 时查询专家组；其他取值视为专家。</remarks>

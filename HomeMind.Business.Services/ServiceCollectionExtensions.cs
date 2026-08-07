@@ -79,6 +79,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ITenantMemberInvitationServices, TenantMemberInvitationServices>();
         services.AddScoped<IWebNavigationPreferencesServices, WebNavigationPreferencesServices>();
         services.AddScoped<IConversationServices, ConversationServices>();
+        services.AddScoped<IExpertSelfServeServices, ExpertSelfServeServices>();
         return services;
     }
 }

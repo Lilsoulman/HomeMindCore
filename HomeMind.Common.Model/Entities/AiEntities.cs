@@ -79,6 +79,14 @@ public sealed class Expert
     [Column("description")] public string? Description { get; set; }
     /// <summary>专家可见的隐私范围 JSON 字符串，由智能体运行时解析。</summary>
     [Column("privacy_scope_json")] public string? PrivacyScope { get; set; }
+    /// <summary>创建时间（UTC）。</summary>
+    [Column("created_at", TypeName = "datetime(3)")] public DateTime CreatedAt { get; set; }
+    /// <summary>最近更新时间（UTC）。</summary>
+    [Column("updated_at", TypeName = "datetime(3)")] public DateTime UpdatedAt { get; set; }
+    /// <summary>软删除时间（UTC），非空表示已删除；已删专家从目录、运行解析与会话发送全部消失。</summary>
+    [Column("deleted_at", TypeName = "datetime(3)")] public DateTime? DeletedAt { get; set; }
+    /// <summary>行版本号，乐观锁比较字段，更新时递增。</summary>
+    [ConcurrencyCheck, Column("row_version")] public long RowVersion { get; set; } = 1;
 }
 
 /// <summary>专家版本快照，发布后不可变；运行期引用具体版本。</summary>

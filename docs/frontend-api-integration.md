@@ -437,46 +437,55 @@ draft | queued | planning | running | completed | failed | cancelled
 ### 8.1 `GET /api/v1/experts`
 
 权限：`ai.read`。可选查询参数：`query`、`category`、`type`
-（`expert` | `group`）。
-
-```json
-[
-  {
-    "CatalogType": "expert",
-    "id": 1,
-    "code": "writing-coach",
-    "name": "Writing coach",
-    "category": "writing",
-    "description": "...",
-    "EstimatedCredits": 1
-  },
-  {
-    "CatalogType": "group",
-    "id": 2,
-    "code": "research-team",
-    "name": "Research team",
-    "category": "research",
-    "description": "...",
-    "EstimatedCredits": 3
-  }
-]
-```
-
-### 8.2 `GET /api/v1/experts/{id}?type=expert|group`
-
-权限：`ai.read`。
+（`expert` | `group`）、`scope`（B21 起：`basic` 默认/`mine`/`all`）。
+B21 起列表项为类型化 `ExpertCatalogItemView`，新增 `Source` 字段
+（`basic`=平台基础、`mine`=本人自建）；移动端保持 `scope` 缺省（basic），
+选择专家时以 `scope=all` 分组展示基础/自建来源。
 
 ```json
 {
-  "id": 1,
-  "code": "writing-coach",
-  "name": "Writing coach",
-  "category": "writing",
-  "description": "...",
+  "Code": 0, "Msg": "查询成功。", "Data": [
+    {
+      "Id": 1, "CatalogType": "expert", "Source": "basic",
+      "Code": "writing-coach", "Name": "Writing coach",
+      "Category": "writing", "Description": "...", "EstimatedCredits": 1
+    },
+    {
+      "Id": 3, "CatalogType": "expert", "Source": "mine",
+      "Code": "custom-a1b2c3d4", "Name": "我的助手",
+      "Category": "travel", "Description": "...", "EstimatedCredits": 1
+    },
+    {
+      "Id": 2, "CatalogType": "group", "Source": "basic",
+      "Code": "research-team", "Name": "Research team",
+      "Category": "research", "Description": "...", "EstimatedCredits": 3
+    }
+  ]
+}
+```
+
+- `scope=mine` 仅返回 `OwnerUserId=本人` 的自建专家，不泄露他人；`scope=all` 为基础 + 本人自建。
+- 跨用户自建专家不会出现在任何列表（前端不应预留他人自建专家的展示分支）。
+
+### 8.2 `GET /api/v1/experts/{id}?type=expert|group`
+
+权限：`ai.read`。B21 起返回类型化 `ExpertDetailView`（新增 `Source` 字段）；
+他人自建专家与已软删专家返回 `404`。
+
+```json
+{
+  "Id": 1,
+  "Code": "writing-coach",
+  "Name": "Writing coach",
+  "Category": "writing",
+  "Description": "...",
+  "PrivacyScope": null,
+  "Source": "basic",
   "VersionId": 4,
-  "version": 4,
-  "persona": "...",
-  "methodology": "...",
+  "Version": 4,
+  "Persona": "...",
+  "Methodology": "...",
+  "PromptTemplate": "...",
   "ToolPolicy": "{\"tools\":[\"web.search\"]}",
   "OutputSchema": "{\"type\":\"object\"}",
   "EstimatedCredits": 1
@@ -1461,12 +1470,34 @@ UI 据此渲染"我的连接"列表：`Status` 为连接运行健康，`AuthStat
   （内容为展示安全的结果摘要，`Role=assistant`、`RunId` 可追溯），无需客户端主动写入；
 - 重复 `idempotencyKey` 用于其他会话返回 `409`。
 
+### 8.28 自建专家（B21，已发布）
+
+PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护，跨用户/跨租户/已软删一律 404。
+权限：`expert.mine.read`（读）/ `expert.mine.write`（写，owner/admin/member）。
+
+`POST /api/v1/experts`（创建，请求
+`{ "name": "我的助手", "category": "travel", "description": "...",
+"persona": "你是我的旅行助手…", "methodology": "…", "promptTemplate": "…",
+"toolPolicyJson": "{\"skills\":[]}", "estimatedCredits": 1 }`）：
+- `name/category/persona/promptTemplate` 必填，缺失返回 `422 + 10001`；
+- `toolPolicyJson` 非法 JSON 返回 `422`；
+- 成功 `201`，`Data` 为 `ExpertDetailView`：`Code` 以 `custom-` 前缀自动生成，
+  `Source="mine"`、`Version=1`（v1 已发布版本），列表选择时以 `scope=mine`/`all` 可见。
+
+`PUT /api/v1/experts/{id}`（更新）：
+- 请求结构同创建 + `rowVersion`；`RowVersion` 与服务端不一致返回 `409 + 40903`；
+- 更新后自动生成 `version+1` 已发布版本（已固定版本的会话/运行不受影响）。
+
+`DELETE /api/v1/experts/{id}`：软删除（`200`）；删除后该专家从目录
+（`scope=mine`/`all`）、运行创建与会话发送全部消失；重复删除 `404`。
+
 ## 9. 权限汇总
 
 | 接口组 | 策略 |
 | --- | --- |
 | `GET /api/v1/auth/me`、`POST /api/v1/auth/logout` | `identity.read` |
-| `GET /api/v1/experts[...]` | `ai.read` |
+| `GET /api/v1/experts[...]`（含 `scope=mine` 过滤） | `ai.read` |
+| `POST /api/v1/experts`、`PUT/DELETE /api/v1/experts/{id}` | `expert.mine.write`（B21） |
 | `POST /api/v1/expert-runs[...]` | `ai.run` |
 | `GET /api/v1/skills`、`POST /api/v1/skills`、`PUT/DELETE /api/v1/skills/{id}` | `ai.skills.read` / `ai.skills.write` |
 | `GET /api/v1/ai/config` | `ai.config.read` |
@@ -1513,6 +1544,7 @@ UI 据此渲染"我的连接"列表：`Status` 为连接运行健康，`AuthStat
 | `Todo.repeatRule` | iCalendar RRULE 字符串 |
 | `AiConfig.enabled`（B18 起） | 布尔值；`false` 时 AI 生成能力（`/ai/{generate,chat,stream}` 与专家运行）整体不可用 |
 | `ExpertCatalog.catalogType` | `expert` \| `group` |
+| `ExpertCatalog.Source`（B21 起） | `basic`（平台基础）\| `mine`（本人自建） |
 | `AgentRun.sourceType` | `expert` \| `group` |
 | `AgentRun.conversationId`（B20 起） | 专家会话主键，可空 |
 | `ConversationMessage.role` | `user` \| `assistant` |

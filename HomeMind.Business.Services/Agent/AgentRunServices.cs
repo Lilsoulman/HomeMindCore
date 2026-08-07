@@ -184,7 +184,7 @@ public sealed class AgentRunServices : IAgentRunServices
         {
             return await (from version in _db.ExpertVersions
                           join expert in _db.Experts on version.ExpertId equals expert.Id
-                          where expert.Id == sourceId && expert.Status == "active" && version.Status == "published" && (expert.TenantId == 1 || expert.TenantId == tenantId)
+                          where expert.Id == sourceId && expert.Status == "active" && expert.DeletedAt == null && version.Status == "published" && (expert.TenantId == 1 || expert.TenantId == tenantId)
                           orderby version.Version descending
                           select new ResolvedSource(version.Id, null, version.EstimatedCredits)).FirstOrDefaultAsync(cancellationToken);
         }
