@@ -200,6 +200,7 @@ MQTT 内部主题统一为 `nexusmind/home/{homeId}/device/{deviceId}/state` 和
 | 第四阶段 | Expert Files 与多专家团队编排 | 上传、扫描、附件、读取令牌；版本化 `sequential`/`parallel`/`synthesis` 团队；成员权限交集；不绕过既有 Action 边界 |
 | 第五阶段 | V2.3 个人生活专家（B15-B17） | `personal_favorites` 迁移、CRUD 与审计；`personal-life-expert` 注册与翻牌/行程 Run 链路；日历同步确认与联调验收 |
 | 第六阶段 | 专家会话与自建专家（B20+B21，已全部发布） | `conversations`/`conversation_messages` 迁移与实体、`experts.owner_user_id` 扩展与 `deleted_at`、`expert_runs.conversation_id`、`IConversationService`（会话 CRUD/消息/上下文拼接）、会话与消息 API、`GET /experts?scope=basic\|mine\|all` 过滤与自建专家 CRUD；验收：归属隔离、上下文拼接、消息追溯（run_id）、scope 过滤与跨用户 404 |
+| 第七阶段 | 场景工作流（B22，已全部发布） | `scenario_templates`/`scenario_instances` 迁移与实体、Device Resolver 实例化（type+room+capability、缺设备容忍）、场景运行单 Action metadata 承载步骤、确认后逐步执行与 success/partial/failed 汇总、旧场景路由兼容代理；验收：实例化与缺设备容忍、状态计算规则、确认幂等重放、旧 sceneKey 懒启用不中断 |
 
 阶段 8（Expert Files 与多专家团队编排）新增 8 张表 `expert_files`、`expert_file_objects`、`expert_file_attachments`、`team_run_templates`、`team_run_template_versions`、`team_runs`、`team_run_members`、`team_run_audits`，全部按 `tenant_id` 隔离并使用 UTC `DATETIME(3)`、乐观 `row_version`、状态/模式检查约束。文件二进制不进入数据库；对象存储由 `IExpertFileStorage` 抽象隔离，`LocalExpertFileStorage` 作为受控本地实现，`ExpertFiles:Storage:Enabled=false` 时返回可读 `503`。扫描走 `IExpertFileScanner`，默认仅做扩展名、MIME、大小、SHA-256 校验；状态固定为 `pending_upload | scanning | ready | rejected | deleted`，仅 `ready` 文件可被附加或被运行时读取。
 
@@ -467,3 +468,56 @@ API：`GET/POST /conversations`、`GET/PUT/DELETE /conversations/{id}`（软删�
 - `dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b19-verify` 通过（0 errors / 0 CS1591）；
 - `dotnet test` 全绿 114/114（B19 新增 20 项，覆盖：拒置 owner、乐观锁、最后一名 owner 守恒、转让同事务、suspended 受让方、邀请哈希/唯一/过期/撤销/接受验证、导航白名单/偏好覆盖、个人连接隔离）；
 - 真实 MySQL 025 顺序迁移已在本机执行验证；Web 前端接入仍按部署环境验证。
+
+## 15. V2.4 场景工作流（B22）
+
+场景工作流是「场景 = Run 的一种特殊输入」的落地：平台模板 → 家庭实例 → Run 执行。执行引擎保持硬编码（复用 AgentRun / ExpertRunAction / ActionExecutionAudits 确认、幂等、审计与撤销链路），内容配置化（模板与实例存库），第一阶段不新增 Step 表、不新增独立引擎、不改动作状态机。
+
+### 15.1 迁移与实体
+
+`database/028_scenario_workflow.mysql.sql`（`-- Apply after 027`）新增：
+
+- `scenario_templates`：平台级模板（`tenant_id` 固定 1，与平台专家同惯例）、`code` 唯一业务键、`trigger_keywords_json`（语音入口关键词，本阶段仅快照不消费）、`steps_json`（未解析步骤：id/name/device_type/room/capability/value/optional，`room="*"` 不限房间）、状态/软删除/sync_version。
+- `scenario_instances`：家庭启用实例，`template_code`、关键词快照、`steps_json`（解析后附加 `device_id`/`step_status`（`ready`/`unavailable`）/`reason`）、`status`（`enabled`/`disabled`）、`created_by_user_id`、`row_version` 乐观锁、软删除。
+- 种子：`goodnight`（晚安）/`arrive_home`（回家）/`leave_home`（离家）三个模板，步骤语义对齐既有管家意图；`ON DUPLICATE KEY UPDATE` 幂等重放。
+
+实体 `ScenarioTemplate`/`ScenarioInstance` 位于 `HomeMind.Common.Model/Entities/SmartHome/ScenarioEntities.cs`；`HomeMindDbContext` 注册两个 DbSet，JSON 列 `HasColumnType("json")`。EF 迁移 `AddScenarioWorkflow` 仅建两表（无 CHECK、不更新快照），遵循 Surgical Changes 约定。**既有表零改动**：`expert_runs`/`expert_run_actions` 不加列——`RequestJson` 即定稿的 metadata，`result_json` 承载 Run Result。
+
+### 15.2 服务与执行链路
+
+`IScenarioWorkflowServices`/`ScenarioWorkflowServices`（`HomeMind.Business.IServices|Services/SmartHome/`）：
+
+- **Enable**：Device Resolver 按 `device_type + room + capability` 匹配家庭设备（空间按 `space_type` 匹配，多台取 Id 最小），能力需 `is_writable`；无匹配 → 步骤 `unavailable` + 原因（`no matching device`/`no matching capability`），**启用仍成功**（Enable-time tolerant）；重复启用返回既有实例。
+- **Run**：幂等键检查（复用 B17 模式）→ 创建 `AgentRun`（SourceType=`scenario`、Mode=steward、AutoConfirmPolicy=L3Only、权限快照）→ 创建**单个** `ExpertRunAction`（ActionType=`scenario`，RequestJson=`{scenario_id, scenario_name, steps:[...]}`，unavailable 步骤 status=`skipped`）→ `pending_actions`。场景风险 = MAX(步骤风险)，静态基线：lock/camera/security_alarm 或 lock 能力 → L3，其余 L1。
+- **Confirm**：复用 B17 骨架（UUID 幂等键、ActionExecutionAudits 重放、权限快照复验、pending→executing）→ 逐步经 `CommandRelayService.ExecuteAsync` 下发设备命令（逐步复验设备在线/能力/连接器可用/用户授权/Provider 支持），**required 步骤失败后继续后续步骤**；执行期跳过 `skipped` 步骤。
+
+### 15.3 状态计算规则
+
+```
+skipped（含 unavailable）步骤不参与成功/失败计数
+required_failed = required 步骤中 status ∈ {failed, timeout} 的数量
+无任何成功步骤                       → Run 结果 failed,   Action = failed
+required_failed > 0 且存在成功步骤   → Run 结果 partial,  Action = executed
+required_failed == 0（optional 失败不影响）→ Run 结果 success,  Action = executed
+```
+
+`AgentRun.Status` 保持生命周期语义（`pending_actions` → `completed`）；`success/partial/failed` 写入 `run.result_json`（`{scenario, status, summary, success_count, failed_count, failed_steps:[{name, reason}]}`），`result_summary` 为中文摘要。**消费方契约**：Push 读 `summary`、Dashboard 读 `status`、反馈读 `failed_steps`；消费方禁止解析 steps 明细 JSON。
+
+### 15.4 API 与权限
+
+`ScenarioController`（`api/v1/smart-home/scenarios`，Swagger Tag `智能家居 / 场景工作流`）：
+
+| 路由 | 权限 |
+| --- | --- |
+| `GET /scenarios/templates`、`GET /scenarios/instances` | `smart_home.read`（owner/admin/member/viewer） |
+| `POST /scenarios/templates/{templateCode}/enable` | `smart_home.write`（新增，owner/admin/member） |
+| `POST /scenarios/instances/{instanceId}/run` | `ai.run` |
+| `POST /scenarios/runs/{runId}/actions/{actionId}/confirm` | `ai.run` |
+
+旧场景路由兼容代理：`SmartHomeSceneServices.RunAsync(sceneKey)` 经 `SmartHomeSceneDefinitions.TryGetIntent` 校验后**懒启用**对应模板实例（sceneKey 即模板 code）并转调场景运行链路；`HandleSceneCompletedAsync` 发布保留，`automation_rules` 的 sceneKey 动作引用零改动；`scenes`/`scene_actions` 读模型保留（前端已接入契约与 Dashboard `Scenes` 模块不变）。
+
+### 15.5 演进门槛（YAGNI）
+
+`scenario_steps` 表仅在出现运营（哪一步失败最多）/用户（为什么场景常失败）/step SLA 与重试分析需求时新增；拖拽编排仅在出现「用户想自己创建场景」而非「启用场景」需求时启动；语音入口（Expert → Scenario Match → Run）在真实意图消费者接入时复用同一 `RunAsync` 执行器，不做重复实现。
+
+**B22 实施状态（2026-08-07）**：迁移 `028_scenario_workflow.mysql.sql` 与 EF 迁移 `AddScenarioWorkflow` 已落地；`ScenarioTemplate`/`ScenarioInstance` 实体、`IScenarioWorkflowServices`/`ScenarioWorkflowServices`（模板/实例列表、Enable Device Resolver 容忍缺设备、Run 单 Action metadata、Confirm 逐步执行与状态汇总）与 `ScenarioController` 5 条路由已发布；权限 `smart_home.write` 注册（owner/admin/member）；`SmartHomeSceneServices` 兼容代理（懒启用 + scene_completed 发布保留）已发布；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 153/153（新增 ScenarioWorkflowServicesTests 12 项）；真实 MySQL 028 顺序迁移已在本机执行验证（3 模板种子落库）；真实设备执行仍按部署环境验证。

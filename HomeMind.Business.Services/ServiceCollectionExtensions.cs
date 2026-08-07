@@ -49,6 +49,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IHousekeeperRunServices, HousekeeperRunServices>();
         services.AddScoped<ISmartHomeReadServices, SmartHomeReadServices>();
         services.AddScoped<ISmartHomeSceneServices, SmartHomeSceneServices>();
+        services.AddScoped<IScenarioWorkflowServices, ScenarioWorkflowServices>();
         services.AddScoped<IDashboardServices, DashboardServices>();
         services.AddScoped<IConnectorServices, ConnectorServices>();
         services.AddScoped<IConnectorAuthorizationServices, ConnectorAuthorizationServices>();

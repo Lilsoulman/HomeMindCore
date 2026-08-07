@@ -123,6 +123,7 @@ namespace HomeMind.Api
                         "Skills" => "智能能力 / 技能",
                         "AiConfig" => "智能能力 / AI 配置",
                         "SmartHome" => "智能家居 / 家庭空间",
+                        "Scenario" => "智能家居 / 场景工作流",
                         "Connectors" => "智能家居 / 连接器管理",
                         "Family" => "家庭上下文 / 成员与知识",
                         "Steward" => "家庭上下文 / 管家协同",

@@ -310,6 +310,7 @@ Connector Domain 服务全部外部生态：`Connector Provider` 与 `Workspace 
 | Device Capability | 设备可读/写的标准能力 | `device_id`、`capability`、`value_schema`、`permission`；例如 `power:boolean`、`brightness:number` |
 | Device State | 设备最近一次标准化状态快照 | `device_id`、`state_json`、`updated_at`；必须标记采样时间，不将过期数据描述为实时 |
 | Scene / Scene Action | 用户可理解的多个设备动作组合 | Scene 归属家庭；Action 记录 `scene_id`、目标设备、Capability 与目标值 |
+| Scenario Template / Scenario Instance（B22 起） | 场景工作流的两级配置化载体：平台模板定义能力步骤，家庭启用后生成解析到具体设备的实例；执行、确认、幂等与审计全部复用 Run Action 链路，不新增执行引擎 | Template：`code` 唯一、`trigger_keywords`、`steps`（`device_type`/`room`/`capability`/`value`/`optional`，`room="*"` 不限房间）；Instance：归属家庭、`template_code`、解析后步骤（`device_id`/`step_status`=ready\|unavailable/`reason`）、`row_version`；缺设备不阻塞启用（Enable-time tolerant），执行时跳过 unavailable 步骤；场景风险 = MAX(步骤风险)，门锁/安防类 L3 其余 L1 |
 | Automation Rule | 经授权的长期自动化 | `trigger`、`conditions`、`actions`、`approval_policy`、`enabled`；复用 Skill、Connector、Run、Action 模型 |
 
 Connector Provider 与 Workspace Connector 必须分离：前者描述“可接入的产品”，后者描述“当前家庭已授权的实例”。`binding_scope=household` 的实例由 owner/admin 配置并通过 Permission Grant 授予成员；`binding_scope=personal` 的实例必须由当前成员授权，`owner_user_id` 必须是同一家庭的 active `tenant_member`，只允许该成员读取、调用和撤销。个人实例产生的可共享业务结果必须经另一个显式领域动作写入，不能因连接本身自动共享。`status` 描述连接运行健康，`auth_status` 描述授权生命周期（如 `not_connected`、`pending`、`authorized`、`expired`、`revoked`、`failed`），两者不可混用。`config` 是通过 Provider Schema 校验的非敏感配置（如服务地址、区域、同步选项）；访问令牌、客户端密钥和刷新令牌仅由 `credential_ref` 指向 Secret Vault，数据库和 API 不得保存或回传明文。
@@ -485,6 +486,7 @@ Skill 是 AI 的“手脚”，定义稳定的输入、输出、权限和失败�
 
 | 日期 | 主题 | 本文变更 | 前端同步 | 后端同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-07 | V2.4 B22 场景工作流 | 落地「场景 = Run 的一种特殊输入」决策：`ScenarioTemplate`/`ScenarioInstance` 两级模型（平台模板 → 家庭实例），执行引擎硬编码（复用 Run Action 确认/幂等/审计链路）、内容配置化（实例化 Device Resolver 容忍缺设备）、步骤上下文承载于运行动作 metadata、不新增 Step 表与独立引擎；场景风险取步骤 MAX；旧场景路由保留为兼容代理；拖拽编排与步骤表按演进门槛（运营/用户/step SLA 需求）触发 | 待同步前端总设计（场景 Tab 模板化「一键启用」入口） | 已同步后端总设计（§15）与开发计划（B22） | 已同步 |
 | 2026-08-07 | V2.4 B19 Web 治理 API | 落地 `tenant_member_invitations`（手机号哈希邀请、owner 转让）与 `web_navigation_preferences`（角色粒度菜单偏好）+ 成员/角色受控管理 + 邀请流程 + 我的个人连接汇总；固定 4 角色不变；菜单偏好仅接受已发布 `route_key` 显隐/排序 | 待同步前端总设计 | 已同步后端总设计 | 已同步 |
 | 2026-08-07 | V2.4 B20 专家会话 | 会话/消息迁移 `026`、`IConversationServices`（CRUD/游标分页/上下文拼接/幂等）、`conversation.read/write` 权限、`expert-runs` 携带 `conversationId`、终态自动追加 assistant 消息、会话 7 端点发布；`expert.mine.read/write` 权限预注册（B21 消费） | 已同步前端总设计（会话列表/新建对话框/纯对话/轮询追加） | 已同步后端总设计（§13.1 实施状态） | 已同步 |
 | 2026-08-07 | V2.4 B21 自建专家 | `experts.deleted_at` 软删除（`027`）、`GET /experts?scope=basic\|mine\|all` 来源过滤与类型化目录视图、自建专家 CRUD（创建自动生成 `custom-` 编码与 v1 版本、更新生成 version+1、软删除全链路消失）、`expert.mine.read/write` 权限消费；第六阶段「专家会话与自建专家」全部落地 | 已同步前端总设计（选专家基础/自建分组展示并标识来源） | 已同步后端总设计（§13.1 实施状态、阶段表） | 已同步 |

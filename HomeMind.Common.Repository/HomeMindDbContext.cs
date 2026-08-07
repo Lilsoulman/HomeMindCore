@@ -73,6 +73,8 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<DeviceState> DeviceStates => Set<DeviceState>();
     public DbSet<Scene> Scenes => Set<Scene>();
     public DbSet<SceneAction> SceneActions => Set<SceneAction>();
+    public DbSet<ScenarioTemplate> ScenarioTemplates => Set<ScenarioTemplate>();
+    public DbSet<ScenarioInstance> ScenarioInstances => Set<ScenarioInstance>();
     public DbSet<AutomationRule> AutomationRules => Set<AutomationRule>();
     public DbSet<ConnectorSyncJob> ConnectorSyncJobs => Set<ConnectorSyncJob>();
     public DbSet<ExpertFile> ExpertFiles => Set<ExpertFile>();
@@ -129,6 +131,10 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<DeviceCapability>().Property(x => x.ValueSchema).HasColumnType("json");
         modelBuilder.Entity<DeviceState>().Property(x => x.State).HasColumnType("json");
         modelBuilder.Entity<SceneAction>().Property(x => x.TargetValue).HasColumnType("json");
+        modelBuilder.Entity<ScenarioTemplate>().Property(x => x.TriggerKeywords).HasColumnType("json");
+        modelBuilder.Entity<ScenarioTemplate>().Property(x => x.Steps).HasColumnType("json");
+        modelBuilder.Entity<ScenarioInstance>().Property(x => x.TriggerKeywords).HasColumnType("json");
+        modelBuilder.Entity<ScenarioInstance>().Property(x => x.Steps).HasColumnType("json");
         modelBuilder.Entity<AutomationRule>().Property(x => x.TriggerConfig).HasColumnType("json");
         modelBuilder.Entity<AutomationRule>().Property(x => x.Conditions).HasColumnType("json");
         modelBuilder.Entity<AutomationRule>().Property(x => x.Actions).HasColumnType("json");

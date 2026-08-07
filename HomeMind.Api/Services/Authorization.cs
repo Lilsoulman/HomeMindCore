@@ -39,6 +39,7 @@ public static class PermissionNames
     public const string TodoRead = "todo.read";
     public const string TodoWrite = "todo.write";
     public const string SmartHomeRead = "smart_home.read";
+    public const string SmartHomeWrite = "smart_home.write";
     public const string ConnectorRead = "connector.read";
     public const string ConnectorWrite = "connector.write";
     public const string ConnectorAuthorize = "connector.authorize";
@@ -77,6 +78,7 @@ public static class PermissionNames
         TodoRead,
         TodoWrite,
         SmartHomeRead,
+        SmartHomeWrite,
         ConnectorRead,
         ConnectorWrite,
         ConnectorAuthorize
@@ -125,6 +127,7 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         PermissionNames.TodoRead,
         PermissionNames.TodoWrite,
         PermissionNames.SmartHomeRead,
+        PermissionNames.SmartHomeWrite,
         PermissionNames.ConnectorRead,
         PermissionNames.ConnectorAuthorize
         ,PermissionNames.AutomationRead

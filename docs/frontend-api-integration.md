@@ -786,9 +786,83 @@ V2.2 家庭成员卡片将 `memberStatus` 渲染为 `active`、`away`、
 ```
 
 支持的键为 `arrive_home`、`leave_home` 和 `sleep`（别名 `arrive` 和
-`away` 也可接受）。该接口创建与 `POST /api/v1/housekeeper-runs`
-相同的安全 Housekeeper Run 视图：操作保持 `pending` 状态，直到通过
-现有的 Action API 逐一确认。它绝不直接下发设备命令。
+`away` 也可接受）。B22 起该路由为兼容代理：服务端懒启用对应场景
+模板实例并转调场景运行链路，请求与响应契约不变；操作保持
+`pending` 状态，直到通过确认接口执行。它绝不直接下发设备命令。
+
+### 8.13.1 场景工作流（B22，`/api/v1/smart-home/scenarios`）
+
+平台模板 → 家庭实例 → 单场景运行动作；确认/幂等/审计复用既有
+Run Action 链路。
+
+**模板与实例（`smart_home.read`）**
+
+`GET /api/v1/smart-home/scenarios/templates` 返回平台模板列表：
+
+```json
+{
+  "Code": 0,
+  "Msg": "查询成功。",
+  "Data": [
+    {
+      "Id": 1, "Code": "goodnight", "Name": "晚安", "Summary": "关闭卧室照明并将空调调至睡眠温度。",
+      "Status": "active",
+      "Steps": [
+        { "Id": "step_1", "Name": "关闭卧室灯", "DeviceType": "light", "Room": "bedroom", "Capability": "power", "Value": false, "Optional": false }
+      ]
+    }
+  ]
+}
+```
+
+`GET /api/v1/smart-home/scenarios/instances` 返回家庭实例；步骤已
+解析到 `DeviceId`，缺设备步骤 `StepStatus=unavailable` 并携带
+`Reason`（如 `no matching device`），执行时跳过、不阻塞启用。
+
+**启用（`smart_home.write`）**
+
+`POST /api/v1/smart-home/scenarios/templates/{templateCode}/enable`
+按 `device_type + room + capability` 匹配家庭设备生成实例；同一模板
+重复启用返回既有实例（200）。`templateCode` 支持 `goodnight`/
+`arrive_home`/`leave_home`。
+
+**运行（`ai.run`）**
+
+`POST /api/v1/smart-home/scenarios/instances/{instanceId}/run`：
+
+```json
+{ "idempotencyKey": "9c1f9a71-6d38-4e6a-b1c2-7ef6cf16d6d3" }
+```
+
+响应 `Data` 为 `ScenarioRunView`（`Id`/`Status`=`pending_actions`/
+`ResultSummary`/`Events`/`Actions`）。`Actions[0]` 为单个 `scenario`
+类型动作（`Title`=场景名、`Description` 含步骤数与风险等级、
+`RiskLevel` 取步骤风险最大值）。
+
+**确认执行（`ai.run`）**
+
+`POST /api/v1/smart-home/scenarios/runs/{runId}/actions/{actionId}/confirm`：
+
+```json
+{ "idempotencyKey": "9c1f9a71-6d38-4e6a-b1c2-7ef6cf16d6d3" }
+```
+
+确认后逐步下发设备命令；required 步骤失败后继续执行后续步骤。
+`run.Result` 输出汇总（消费方只读以下字段，**禁止解析 steps 明细
+JSON**）：
+
+```json
+{
+  "scenario": "晚安", "status": "partial", "summary": "场景「晚安」执行完成：1 项成功，1 项失败（关闭卧室灯（模拟执行失败））。",
+  "success_count": 1, "failed_count": 1,
+  "failed_steps": [{ "name": "关闭卧室灯", "reason": "模拟执行失败。" }]
+}
+```
+
+`status` 规则：全部失败 → `failed`；required 有失败且存在成功 →
+`partial`；仅 optional 失败或全部成功 → `success`。同一幂等键重复
+确认重放首次结果，不重复执行设备命令；非法幂等键 422、动作不存在
+404、已终态 409。
 
 ### 8.14 连接器管理（`/api/v1`）
 
@@ -1507,7 +1581,9 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `POST/PUT/DELETE /api/v1/calendar/...` | `calendar.write` |
 | `GET /api/v1/todos`、`.../subtasks`（读取） | `todo.read` |
 | `POST/PUT/DELETE /api/v1/todos[...]` | `todo.write` |
-| `GET /api/v1/smart-home/spaces`、`/devices`、`/scenes` | `smart_home.read` |
+| `GET /api/v1/smart-home/spaces`、`/devices`、`/scenes`、`/devices/health`、`/devices/{id}/health`、`/scenarios/templates`、`/scenarios/instances` | `smart_home.read` |
+| `POST /api/v1/smart-home/scenarios/templates/{templateCode}/enable` | `smart_home.write`（B22） |
+| `POST /api/v1/smart-home/scenes/{sceneKey}/run`、`POST /api/v1/smart-home/scenarios/instances/{instanceId}/run`、`POST /api/v1/smart-home/scenarios/runs/{runId}/actions/{actionId}/confirm` | `ai.run` |
 | `GET /api/v1/connector-providers`、`GET /api/v1/connectors`、`GET /api/v1/connectors/{id}/authorization` | `connector.read` |
 | `POST /api/v1/connectors`、`/connectors/{id}/test`、`/connectors/{id}/discovery`、`/connectors/{id}/sync`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}` | `connector.write` |
 | `POST /api/v1/connector-providers/{providerCode}/authorizations`、`GET/DELETE /api/v1/connector-authorizations/{id}`（B18 个人授权）、`GET /api/v1/connector-authorizations/my`（B19 我的个人连接） | `connector.authorize` |
