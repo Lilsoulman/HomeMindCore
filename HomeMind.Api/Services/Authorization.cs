@@ -56,6 +56,8 @@ public static class PermissionNames
     public const string ConfirmationWrite = "confirmation.write";
     public const string LifeFavoriteRead = "life.favorite.read";
     public const string LifeFavoriteWrite = "life.favorite.write";
+    public const string TenantRead = "tenant.read";
+    public const string TenantMemberManage = "tenant.member.manage";
 
     public static IReadOnlyCollection<string> All { get; } = new[]
     {
@@ -88,6 +90,8 @@ public static class PermissionNames
         ,ConfirmationWrite
         ,LifeFavoriteRead
         ,LifeFavoriteWrite
+        ,TenantRead
+        ,TenantMemberManage
     };
 }
 
@@ -125,6 +129,8 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         ,PermissionNames.ConfirmationWrite
         ,PermissionNames.LifeFavoriteRead
         ,PermissionNames.LifeFavoriteWrite
+        ,PermissionNames.TenantRead
+        ,PermissionNames.TenantMemberManage
     };
 
     private static readonly HashSet<string> ViewerPermissions = new(StringComparer.Ordinal)
@@ -142,11 +148,23 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         ,PermissionNames.StewardActivityRead
         ,PermissionNames.ConfirmationRead
         ,PermissionNames.LifeFavoriteRead
+        ,PermissionNames.TenantRead
+    };
+
+    /// <summary>V2.4 B19 发布：owner/admin 专享权限，<c>member</c>/<c>viewer</c> 不得调用。</summary>
+    public static readonly IReadOnlyCollection<string> OwnerAdminOnly = new[]
+    {
+        PermissionNames.TenantMemberManage
     };
 
     protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PermissionRequirement requirement)
     {
         var role = context.User.FindFirstValue(ClaimTypes.Role);
+        if (OwnerAdminOnly.Contains(requirement.Permission))
+        {
+            if (role is "owner" or "admin") context.Succeed(requirement);
+            return Task.CompletedTask;
+        }
         if (role is "owner" or "admin" || role == "member" && MemberPermissions.Contains(requirement.Permission) || role == "viewer" && ViewerPermissions.Contains(requirement.Permission))
         {
             context.Succeed(requirement);

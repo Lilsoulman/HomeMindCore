@@ -1258,6 +1258,155 @@ UI 展示建议卡时呈现理由与标签，不渲染任何提示或思考链�
 返回 `409`。UI 行程页应在确认前展示影响范围（N 天 → N 个日历事件）
 与确认要求；提交中禁用按钮并使用新的幂等键。
 
+### 8.23 成员与角色受控管理（B19，`/api/v1/homes/{homeId}/members`）
+
+家庭归属由 JWT 推导，`{homeId}` 必须等于当前 JWT tenant_id；跨家庭一律 `404 + 30000`。
+读接口 `tenant.read`（全员），写接口 `tenant.member.manage`（owner/admin）。
+
+`GET /api/v1/homes/{homeId}/members`：
+
+```json
+{
+  "Code": 0,
+  "Msg": "查询成功。",
+  "Data": [
+    {
+      "UserId": 12,
+      "DisplayName": "Alex",
+      "AvatarUrl": null,
+      "Role": "owner",
+      "Status": "active",
+      "JoinedAt": "2026-08-01T03:11:22.123Z",
+      "Timezone": "Asia/Shanghai",
+      "Locale": "zh-CN",
+      "IsCurrentUserOwner": true,
+      "HasPendingInvitation": false,
+      "RowVersion": 1
+    }
+  ]
+}
+```
+
+`PUT /api/v1/homes/{homeId}/members/{memberUserId}/role`（`tenant.member.manage`）：
+
+```json
+{ "NewRole": "admin", "RowVersion": 3 }
+```
+
+- `NewRole` 仅 `admin`/`member`/`viewer`；直接置 `owner` 返回 `422 + 42202`，必须走 owner-transfer。
+- `RowVersion` 与服务端不一致返回 `409 + 40901`（并发保护，UI 需刷新后重试）。
+
+`PUT /api/v1/homes/{homeId}/members/{memberUserId}/status`（`tenant.member.manage`）：
+
+```json
+{ "NewStatus": "suspended", "Reason": "长期未使用", "RowVersion": 3 }
+```
+
+- `NewStatus` 仅 `active`/`suspended`；停用时 `Reason` 必填（1-512 字符）。
+- 不能停用最后一名 active owner（返回 `422`）。UI 应对 owner 停用操作二次确认。
+
+`POST /api/v1/homes/{homeId}/owner-transfer`（`tenant.member.manage`）：
+
+```json
+{ "NewOwnerUserId": 22, "RowVersion": 1 }
+```
+
+- 仅当前 active owner 可发起（非 owner 返回 `403`）；新 owner 必须为 active 成员（suspended/away 返回 `422 + 42201`）。
+- 成功后原 owner 自动降为 `admin`，新 owner 升为 `owner`，`tenants.owner_user_id` 同步更新；响应为新 owner 摘要。
+- UI 在转让成功后可切换到新 owner 视角；转让与成员列表刷新使用新的 `RowVersion`。
+
+### 8.24 邀请流程（B19，`/api/v1/homes/{homeId}/invitations`）
+
+`POST /api/v1/homes/{homeId}/invitations`（`tenant.member.manage`）：
+
+```json
+{ "Phone": "+8613800138000", "ProposedRole": "member" }
+```
+
+- `Phone` 需为 E.164 格式（`+` 开头 8-15 位数字）；`ProposedRole` 仅 `admin`/`member`/`viewer`（不得为 owner）。
+- 同手机号在当前家庭已存在未结邀请返回 `409 + 40902`；成功返回 `201`，邀请 7 天过期。
+
+`GET /api/v1/homes/{homeId}/invitations?status=pending`（`tenant.read`）：
+返回 `{ "Items": [...], "Cursor": null }`；`status` 可选 `pending`/`accepted`/`expired`/`revoked`。
+每条含 `Id`/`InvitedByUserId`/`SubjectKind`/`SubjectHashHex`（十六进制摘要，不回传手机号明文）/
+`ProposedRole`/`Status`/`ExpiresAt`/`AcceptedUserId`/`AcceptedAt`/`RevokedAt`/`CreatedAt`/`RowVersion`。
+
+`DELETE /api/v1/homes/{homeId}/invitations/{invitationId}`（`tenant.member.manage`）：
+撤销 pending 邀请；已终态（accepted/expired/revoked）返回 `409`。UI 撤销前二次确认。
+
+`POST /api/v1/invitations/accept`（`tenant.read`，受邀人本人调用，无 homeId 路径参数）：
+
+```json
+{ "InvitationId": 101, "Phone": "+8613800138000" }
+```
+
+- 服务端重新计算手机号 SHA-256 并与当前账户已验证的 `user_identities` 匹配；未匹配/未验证/已吊销统一返回 `404 + 30001`。
+- 成功以 `proposed_role` 创建 active `tenant_members` 并返回 `{ "TenantId": ..., "Role": "member" }`。
+- UI 应引导受邀人先完成登录/手机号验证再调用；接受成功后跳到该家庭视角。
+
+### 8.25 Web 导航偏好（B19，`/api/v1/web/navigation`）
+
+`GET /api/v1/web/navigation`（`tenant.read`）：返回当前家庭当前角色的导航（8 个已发布 route_key 白名单 + 持久化偏好合并）。
+
+```json
+{
+  "Code": 0,
+  "Msg": "查询成功。",
+  "Data": {
+    "Role": "member",
+    "Routes": [
+      { "RouteKey": "tenant.dashboard", "Enabled": true, "SortOrder": 100, "IsCustomized": false },
+      { "RouteKey": "tenant.life", "Enabled": false, "SortOrder": 3, "IsCustomized": true }
+    ],
+    "UpdatedAt": "2026-08-07T09:00:00Z"
+  }
+}
+```
+
+`PUT /api/v1/web/navigation`（`tenant.member.manage`，owner/admin）：
+
+```json
+{
+  "TargetRole": "member",
+  "Items": [
+    { "RouteKey": "tenant.life", "Enabled": false, "SortOrder": 3 }
+  ]
+}
+```
+
+- `RouteKey` 必须命中后端已发布白名单（`tenant.dashboard`/`tenant.confirmations`/`tenant.steward`/`tenant.knowledge`/`tenant.family`/`tenant.life`/`tenant.connectors`/`tenant.connector.authorize`），未发布返回 `422 + 42203`。
+- UI 只做显隐/排序，不存 URL、权限表达式或脚本；`Enabled=false` 仅隐藏菜单项，不删除数据。
+
+### 8.26 我的个人连接汇总（B19，`/api/v1/connector-authorizations/my`）
+
+`GET /api/v1/connector-authorizations/my`（`connector.authorize`）：仅返回当前用户作为 owner 的 personal 实例 + 最近一次授权会话状态，不返回凭据引用或 owner 标识。
+
+```json
+{
+  "Code": 0,
+  "Msg": "查询成功。",
+  "Data": [
+    {
+      "ConnectorId": 8,
+      "ProviderId": 1,
+      "ProviderCode": "mock_oauth",
+      "ProviderName": "Mock OAuth（开发验证）",
+      "Name": "我的日历",
+      "Status": "connected",
+      "AuthStatus": "connected",
+      "LastSyncAt": null,
+      "LastHealthAt": "2026-08-07T09:00:00Z",
+      "LastSessionId": 101,
+      "LastSessionStatus": "completed",
+      "LastSessionExpiresAt": "2026-08-07T10:00:00Z"
+    }
+  ]
+}
+```
+
+UI 据此渲染"我的连接"列表：`Status` 为连接运行健康，`AuthStatus` 为授权生命周期；
+`LastSessionStatus=pending` 且未过期时展示"等待完成授权"；`revoked` 展示重新授权入口。
+
 ## 9. 权限汇总
 
 | 接口组 | 策略 |
@@ -1276,7 +1425,9 @@ UI 展示建议卡时呈现理由与标签，不渲染任何提示或思考链�
 | `GET /api/v1/smart-home/spaces`、`/devices`、`/scenes` | `smart_home.read` |
 | `GET /api/v1/connector-providers`、`GET /api/v1/connectors`、`GET /api/v1/connectors/{id}/authorization` | `connector.read` |
 | `POST /api/v1/connectors`、`/connectors/{id}/test`、`/connectors/{id}/discovery`、`/connectors/{id}/sync`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}` | `connector.write` |
-| `POST /api/v1/connector-providers/{providerCode}/authorizations`、`GET/DELETE /api/v1/connector-authorizations/{id}`（B18 个人授权） | `connector.authorize` |
+| `POST /api/v1/connector-providers/{providerCode}/authorizations`、`GET/DELETE /api/v1/connector-authorizations/{id}`（B18 个人授权）、`GET /api/v1/connector-authorizations/my`（B19 我的个人连接） | `connector.authorize` |
+| `GET /api/v1/homes/{homeId}/members`、`GET /api/v1/homes/{homeId}/invitations`、`GET/PUT /api/v1/web/navigation`（读取） | `tenant.read`（B19） |
+| `PUT /api/v1/homes/{homeId}/members/{id}/role`、`PUT .../{id}/status`、`POST /api/v1/homes/{homeId}/owner-transfer`、`POST/DELETE /api/v1/homes/{homeId}/invitations`、`PUT /api/v1/web/navigation`（写入） | `tenant.member.manage`（B19，owner/admin） |
 | `GET /api/v1/automation-rules` | `automation.read` |
 | `POST/PATCH /api/v1/automation-rules[...]` | `automation.write` |
 | `GET /api/v1/expert-files`、`POST /api/v1/expert-files/{fileId}/read-token` | `expert_file.read` |
@@ -1320,9 +1471,16 @@ UI 展示建议卡时呈现理由与标签，不渲染任何提示或思考链�
 | `AutomationRule.approvalPolicy` | `manual_confirmation` \| `auto_execute` |
 | `ConnectorSyncJob.status` | `queued` \| `running` \| `completed` \| `failed` |
 | `Subscription.platform`（认证） | `h5` \| `android` \| `ios` |
+| `TenantMemberSummaryView.role`（B19） | `owner` \| `admin` \| `member` \| `viewer`（固定枚举，不可编辑） |
+| `TenantMemberSummaryView.status`（B19） | `active` \| `suspended` |
+| `TenantMemberInvitationView.status`（B19） | `pending` \| `accepted` \| `expired` \| `revoked` |
+| `TenantMemberInvitationView.subjectKind`（B19） | `phone` |
+| `TenantMemberInvitationCreateRequest.proposedRole`（B19） | `admin` \| `member` \| `viewer`（不得为 owner） |
+| `WebNavigationRouteView.routeKey`（B19） | `tenant.dashboard` \| `tenant.confirmations` \| `tenant.steward` \| `tenant.knowledge` \| `tenant.family` \| `tenant.life` \| `tenant.connectors` \| `tenant.connector.authorize`（后端静态白名单） |
+| `WebNavigationPreferenceUpdateItem.sortOrder`（B19） | 0-1000 整数；值越小越靠前 |
 
-## 10. V2.4 Connector Scope 与个人授权（待发布）
+## 10. V2.4 Connector Scope 与个人授权
 
-家庭/个人 Connector 的产品模型已确认，但 B18/B19 API 尚未发布。发布后，客户端以 `bindingScope` 区分 `household` 与 `personal`：家庭实例只显示当前成员授权状态；个人实例只向 owner 显示本人归属和 OAuth 状态。客户端不得接收、存储或记录 OAuth code、access token、refresh token、`credentialRef` 或 Provider 原始回调。
+家庭/个人 Connector 与 Web 治理 API 已发布：客户端以 `bindingScope` 区分 `household` 与 `personal`；家庭实例只显示当前成员授权状态；个人实例只向 owner 显示本人归属和 OAuth 状态（B18）。B19 新增 `GET /connector-authorizations/my` 个人连接汇总、`web/navigation` 导航偏好、成员/邀请/owner 转让受控管理。客户端不得接收、存储或记录 OAuth code、access token、refresh token、`credentialRef` 或 Provider 原始回调。
 
-预期个人授权流程为：创建授权会话 -> 跳转 Provider -> 服务端 callback -> 查询脱敏状态 -> 本人撤销。Flutter 和 Web 在字段、错误、重试、过期和撤销契约写入本文件前，不得实现 HTTP Repository。角色使用现有 `tenant_members.role` 固定值 `owner/admin/member/viewer`；Web 路由由前端发布并按服务端权限守卫，不存在客户端维护 API 路由或可编辑角色的接口。
+个人授权流程（B18）：创建授权会话 -> 跳转 Provider -> 服务端 callback -> 查询脱敏状态 -> 本人撤销。角色使用现有 `tenant_members.role` 固定值 `owner/admin/member/viewer`；Web 路由随前端版本发布并按服务端权限码 + 已发布 `route_key` 白名单守卫，不存在客户端维护 API 路由或可编辑角色的接口（B19 导航偏好仅接受已发布 route_key 的显隐/排序）。

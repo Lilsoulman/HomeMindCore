@@ -405,3 +405,61 @@ Web 路由由前端版本发布，服务端权限码始终为唯一授权依据�
 会话化将专家交互从「单次运行」扩展为「会话（对话框）」：移动端纯对话、遍历询问，PC 端承载维护与运行细节。新增迁移 `conversations`、`conversation_messages`，并扩展 `experts.owner_user_id` 与 `expert_runs.conversation_id`（可空）。`experts.owner_user_id` 为空表示平台基础专家（开发端维护、全家可见），非空表示用户自建专家（PC 用户端维护、仅创建者本人可见）。会话发送消息复用既有 `IExpertRunService` 创建 Run（携带 `conversation_id`），消息历史即会话上下文（运行时拼接，复用 `input_context` 语义），终态后写入 `assistant` 消息并保留 `run_id`；跨用户/跨租户访问一律 404。
 
 API：`GET/POST /conversations`、`GET/PUT/DELETE /conversations/{id}`（软删除+审计）、`GET /conversations/{id}/messages`（游标分页）、`POST /conversations/{id}/messages`（发送）；`GET /experts?scope=basic|mine|all` 区分平台基础专家与本人自建专家。权限：`conversation.read/write`（仅本人会话）与 `expert.mine.read/write`（仅本人自建专家）。验收：迁移、归属隔离、上下文拼接、消息追溯（run_id）、scope 过滤与跨用户 404；字段级契约同步 `frontend-api-integration.md` 与 `api-implementation.md`。
+
+## 14. V2.4 B19 Web 治理 API
+
+### 14.1 迁移与实体
+
+`database/025_v2.4_web_governance.mysql.sql`（`-- Apply after 024`）新增：
+
+- `tenant_member_invitations`：`subject_kind`（固定 `phone`）+ `subject_hash`（BINARY(32)，与 `user_identities.subject_hash` 同口径 SHA-256、无 pepper）、`proposed_role`（CHECK `admin`/`member`/`viewer`，不得为 `owner`）、`status`（`pending`/`accepted`/`expired`/`revoked`）、`expires_at`（默认 7 天）、`accepted_user_id`/`accepted_at`/`revoked_at`、`row_version`；`UNIQUE(tenant_id, subject_hash)` 保证同手机号在同一家庭仅一条 pending 邀请。
+- `web_navigation_preferences`：`role`（CHECK 四角色）+ `route_key`（`UNIQUE(tenant_id, role, route_key)`）+ `enabled`/`sort_order`/`updated_by_user_id`；`route_key` 白名单由应用层 `NexusWebNavigationKeys` 强制，数据库不做枚举。
+- `family_audit_logs` 两 CHECK 扩展：action 增加 `tenant_member_role_changed`/`tenant_member_status_changed`/`tenant_invitation_created`/`tenant_invitation_revoked`/`tenant_invitation_accepted`/`tenant_owner_transferred`/`web_navigation_preference_updated`；target_type 增加 `tenant_member`/`tenant_invitation`/`web_navigation_preference`。
+
+实体 `TenantMemberInvitation`/`WebNavigationPreference` 位于 `HomeMind.Common.Model/Entities/IdentityEntities.cs`；`TenantMember` 增加 `RowVersion`（`[ConcurrencyCheck]`）支撑角色/状态变更乐观锁；`HomeMindDbContext` 注册两个 DbSet。EF 迁移 `AddWebGovernanceTables` 仅新增两表，不触碰已发布 schema。
+
+### 14.2 静态白名单
+
+`HomeMind.Common.Infrastructure/Constants/WebNavigationKeys.cs` 定义 `NexusWebNavigationKeys`：8 个已发布 route_key（`tenant.dashboard`/`tenant.confirmations`/`tenant.steward`/`tenant.knowledge`/`tenant.family`/`tenant.life`/`tenant.connectors`/`tenant.connector.authorize`），`All` 为显示顺序单一真相源，`DefaultSortOrder` 提供默认排序，`IsKnownRouteKey` 供偏好写入校验。白名单是编译期常量，不随 appsettings 变化。
+
+### 14.3 权限
+
+- `PermissionNames.TenantRead = "tenant.read"`：owner/admin/member/viewer 均可读成员/邀请/导航。
+- `PermissionNames.TenantMemberManage = "tenant.member.manage"`：owner/admin 专享；`PermissionAuthorizationHandler` 新增 `OwnerAdminOnly` 分支，`member`/`viewer` 直接拒绝。
+- 写操作（角色变更、状态停启、邀请创建/撤销、owner 转让、导航偏好）一律写 `family_audit_logs`，actor 为 JWT 当前用户。
+
+### 14.4 业务服务与契约
+
+| 服务 | 位置 | 关键规则 |
+| --- | --- | --- |
+| `ITenantMemberServices` | `HomeMind.Business.IServices/Identity/` | 角色变更拒绝直接置 owner（422/42202）；状态停启不得停用最后一名 active owner（422）；owner 转让仅 active owner 可发起（403），同事务更新 `tenants.owner_user_id` + 旧 owner 降 `admin` + 新 owner 升 `owner`（422/42201 拒 suspended 受让方）；全部写操作 `row_version` 乐观锁（409/40901） |
+| `ITenantMemberInvitationServices` | 同上 | 创建（手机号 E.164 规范化后 SHA-256，7 天过期，同标识 pending 409/40902）；列表按状态过滤、过期按计算语义不写回填；撤销仅 pending（非终态 409）；接受：手机号哈希须匹配当前账户已验证 `user_identities`（未匹配/未验证/吊销统一 404/30001），成功创建 active `tenant_members` 并写 `tenant_invitation_accepted` 审计 |
+| `IWebNavigationPreferencesServices` | 同上 | GET 合并白名单 + 当前角色偏好（未持久化默认 enabled=true + 默认 sort_order）；PUT 仅接受 `NexusWebNavigationKeys` 内 route_key（422/42203），upsert 后写 `web_navigation_preference_updated` 审计 |
+| `IConnectorServices.ListMyPersonalConnectionsAsync` | `HomeMind.Business.Services/SmartHome/ConnectorServices.cs` | 仅当前用户作为 owner 的 personal 实例 + 最近一次 `ConnectorAuthorizationSession` 状态，不返回凭据引用 |
+
+### 14.5 路由与权限矩阵
+
+| 路由 | 权限 | 说明 |
+| --- | --- | --- |
+| `GET /api/v1/homes/{homeId}/members` | `tenant.read` | 成员列表（账户资料 + 角色/状态/行版本） |
+| `PUT /api/v1/homes/{homeId}/members/{memberUserId}/role` | `tenant.member.manage` | 角色变更；拒置 owner |
+| `PUT /api/v1/homes/{homeId}/members/{memberUserId}/status` | `tenant.member.manage` | 停启；最后一名 owner 守恒 |
+| `POST /api/v1/homes/{homeId}/owner-transfer` | `tenant.member.manage` | owner 转让（同事务） |
+| `GET /api/v1/homes/{homeId}/invitations?status=` | `tenant.read` | 邀请列表 |
+| `POST /api/v1/homes/{homeId}/invitations` | `tenant.member.manage` | 创建邀请 |
+| `DELETE /api/v1/homes/{homeId}/invitations/{invitationId}` | `tenant.member.manage` | 撤销邀请 |
+| `POST /api/v1/invitations/accept` | `tenant.read` | 受邀人接受（家庭由邀请记录推导，不套 homeId） |
+| `GET/PUT /api/v1/web/navigation` | `tenant.read` / `tenant.member.manage` | Web 导航偏好读取/写入 |
+| `GET /api/v1/connector-authorizations/my` | `connector.authorize` | 我的个人连接汇总 |
+
+`{homeId}` 一律经 `RequireHomeOwner` 校验等于 JWT tenant_id，跨家庭 404+30000；接受路由不依赖 homeId，跨家庭邀请按哈希不匹配 404。
+
+### 14.6 Swagger Tag
+
+新控制器归属：`TenantMembers`/`TenantMemberInvitations`/`TenantMemberInvitationAccept` → `家庭上下文 / 成员受控管理`/`成员邀请`；`WebNavigation` → `Web / 导航偏好`。
+
+### 14.7 验收
+
+- `dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b19-verify` 通过（0 errors / 0 CS1591）；
+- `dotnet test` 全绿 114/114（B19 新增 20 项，覆盖：拒置 owner、乐观锁、最后一名 owner 守恒、转让同事务、suspended 受让方、邀请哈希/唯一/过期/撤销/接受验证、导航白名单/偏好覆盖、个人连接隔离）；
+- 真实 MySQL 025 顺序迁移与 Web 前端接入按部署环境验证。

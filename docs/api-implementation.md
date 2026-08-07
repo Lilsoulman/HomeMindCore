@@ -36,6 +36,10 @@ JSON 输入中的这些值。
 | 仪表板 | `GET /api/v1/dashboard` 聚合可独立降级的家、待确认事项、管家动态、场景、今日计划和最新建议模块；`homeSummary` 对应 `Home` 模块，`quickActions` 为前端静态入口 |
 | 连接器 | 家庭级：`GET /api/v1/connector-providers`，`GET/POST /api/v1/connectors`（`bindingScope` 支持 household/personal），`POST /api/v1/connectors/{id}/test`、`/discovery`、`/sync`，`GET /api/v1/connectors/sync-jobs/{jobId}`，`GET /api/v1/connectors/{id}/authorization`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}`；个人 OAuth（B18）：`POST /api/v1/connector-providers/{providerCode}/authorizations`、`GET/DELETE /api/v1/connector-authorizations/{id}`、服务端 callback `GET /api/v1/connector-providers/{providerCode}/callback`、Mock 授权页 `GET /api/v1/connector-providers/{providerCode}/authorize`（匿名） |
 | 自动化 | `GET/POST/PATCH /api/v1/automation-rules` 管理租户隔离的、已授权的长期运行规则 |
+| 成员受控管理（B19） | `GET /api/v1/homes/{homeId}/members`（`tenant.read`）；`PUT /api/v1/homes/{homeId}/members/{memberUserId}/role`、`PUT .../{memberUserId}/status`、`POST /api/v1/homes/{homeId}/owner-transfer`（`tenant.member.manage`，owner/admin） |
+| 成员邀请（B19） | `GET /api/v1/homes/{homeId}/invitations?status=`（`tenant.read`）；`POST /api/v1/homes/{homeId}/invitations`、`DELETE /api/v1/homes/{homeId}/invitations/{invitationId}`（`tenant.member.manage`）；`POST /api/v1/invitations/accept`（`tenant.read`，受邀人接受，家庭由邀请记录推导） |
+| Web 导航偏好（B19） | `GET /api/v1/web/navigation`（`tenant.read`，白名单合并当前角色偏好）；`PUT /api/v1/web/navigation`（`tenant.member.manage`，仅接受已发布 route_key） |
+| 我的个人连接（B19） | `GET /api/v1/connector-authorizations/my`（`connector.authorize`，仅本人 personal 实例 + 最近授权会话状态） |
 
 ## 响应与错误码
 
@@ -69,6 +73,12 @@ JSON 输入中的这些值。
 | `50001` | 所需依赖不可用 | `503` |
 | `50002` | 上游依赖失败或超时 | `502`、`504` |
 | `90000` | 未预期的服务器错误 | `500` |
+| `30001` | 家庭成员邀请的受邀手机号不匹配当前账户已验证标识（B19） | `404` |
+| `42201` | 家庭 owner 转让目标处于 suspended/away（B19） | `422` |
+| `42202` | 家庭成员角色变更直接置 owner 已被拒（B19），请使用 owner-transfer | `422` |
+| `42203` | Web 导航偏好提交了未发布的 route_key（B19） | `422` |
+| `40901` | 家庭租户级乐观锁冲突（成员/邀请行版本不匹配，B19） | `409` |
+| `40902` | 家庭成员邀请的受邀标识在当前家庭已存在未结邀请（B19） | `409` |
 
 当手机号和密码不匹配时，`POST /api/v1/auth/login` 返回 HTTP `400`
 并附带 `Code: 20000`。这是交互式凭据错误，而非访问令牌过期，
@@ -116,7 +126,9 @@ HTTP `401` 并附带 `Code: 20001`。`POST /api/v1/auth/logout`
 | `life.favorite.read` / `life.favorite.write` | 个人偏好收藏读/写（B14 预注册，B15 起消费） | owner / admin / member / viewer（仅 owner/admin/member 写） |
 | `connector.read` | 连接器目录、实例与同步任务 | owner / admin / member / viewer |
 | `connector.write` | 创建连接器、连通性测试、发现、同步、成员授权 | owner / admin / member |
-| `connector.authorize` | 个人 OAuth 授权发起 / 状态查询 / 撤销（B18） | owner / admin / member |
+| `connector.authorize` | 个人 OAuth 授权发起 / 状态查询 / 撤销（B18）；本人个人连接汇总（B19） | owner / admin / member |
+| `tenant.read` | 家庭成员列表、邀请列表、Web 导航偏好读取（B19） | owner / admin / member / viewer |
+| `tenant.member.manage` | 成员角色变更 / 状态停启 / owner 转让 / 邀请创建与撤销 / Web 导航偏好写入（B19，owner/admin 专享） | owner / admin |
 | `automation.read` | 自动化规则查询 | owner / admin / member / viewer |
 | `automation.write` | 自动化规则创建与修改 | owner / admin / member |
 | `expert_file.read` / `expert_file.write` | 专家文件读/写 | owner / admin / member / viewer（仅 owner/admin/member 写） |

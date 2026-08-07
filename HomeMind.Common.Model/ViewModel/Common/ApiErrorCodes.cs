@@ -36,6 +36,19 @@ public static class ApiErrorCodes
     /// <summary>未预期的服务器错误（HTTP 500）。</summary>
     public const int InternalError = 90000;
 
+    /// <summary>V2.4 B19：家庭 owner 转让目标处于 suspended/away（HTTP 422）。</summary>
+    public const int OwnerTransferInvalidReceiver = 42201;
+    /// <summary>V2.4 B19：家庭成员角色变更直接置 owner 已被拒（HTTP 422），请使用 owner-transfer。</summary>
+    public const int TenantRoleOwnerDirectForbidden = 42202;
+    /// <summary>V2.4 B19：家庭租户级乐观锁冲突（HTTP 409）。</summary>
+    public const int TenantOptimisticLockConflict = 40901;
+    /// <summary>V2.4 B19：家庭成员邀请的受邀标识在当前家庭已存在未结邀请（HTTP 409）。</summary>
+    public const int TenantInvitationConflict = 40902;
+    /// <summary>V2.4 B19：家庭成员邀请的受邀标识在当前家庭不匹配已验证账户（HTTP 404）。</summary>
+    public const int TenantInvitationIdentityNotMatched = 30001;
+    /// <summary>V2.4 B19：Web 导航偏好提交了未发布 route_key（HTTP 422）。</summary>
+    public const int WebNavigationRouteKeyNotPublished = 42203;
+
     /// <summary>将 HTTP 状态码映射为应用层业务错误码。</summary>
     /// <param name="statusCode">HTTP 状态码。</param>
     /// <returns>对应的应用层业务错误码，未匹配时返回 <see cref="InternalError"/>。</returns>

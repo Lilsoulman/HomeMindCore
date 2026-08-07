@@ -167,6 +167,66 @@ public sealed class TenantMember
     [Column("created_at")] public DateTime CreatedAt { get; set; }
     /// <summary>更新时间（UTC）。</summary>
     [Column("updated_at")] public DateTime UpdatedAt { get; set; }
+    /// <summary>乐观锁版本号；B19 启用，由 EF <c>IsConcurrencyToken</c> 强制。</summary>
+    [ConcurrencyCheck, Column("row_version")] public long RowVersion { get; set; } = 1;
+}
+
+/// <summary>家庭成员邀请记录；以手机号 SHA-256 摘要匹配已验证账户，仅允许已 verified 账户接受。</summary>
+[Table("tenant_member_invitations")]
+public sealed class TenantMemberInvitation
+{
+    /// <summary>邀请主键。</summary>
+    [Key, Column("id")] public long Id { get; set; }
+    /// <summary>所属家庭（租户）主键。</summary>
+    [Column("tenant_id")] public long TenantId { get; set; }
+    /// <summary>邀请发起人用户主键。</summary>
+    [Column("invited_by_user_id")] public long InvitedByUserId { get; set; }
+    /// <summary>受邀标识类型，固定为 <c>phone</c>，与 <c>user_identities.subject_kind</c> 对齐。</summary>
+    [Column("subject_kind")] public string SubjectKind { get; set; } = "phone";
+    /// <summary>手机号 SHA-256 摘要，与 <c>user_identities.subject_hash</c> 同口径（无 pepper）。</summary>
+    [Column("subject_hash")] public byte[] SubjectHash { get; set; } = null!;
+    /// <summary>接受后授予的角色，固定为 <c>admin</c>/<c>member</c>/<c>viewer</c>，不得为 <c>owner</c>。</summary>
+    [Column("proposed_role")] public string ProposedRole { get; set; } = null!;
+    /// <summary>状态机：<c>pending</c> / <c>accepted</c> / <c>expired</c> / <c>revoked</c>。</summary>
+    [Column("status")] public string Status { get; set; } = "pending";
+    /// <summary>邀请过期时间（UTC），默认 7 天；过期按计算语义不写回填。</summary>
+    [Column("expires_at")] public DateTime ExpiresAt { get; set; }
+    /// <summary>接受该邀请的用户主键，<c>pending</c> 时为空。</summary>
+    [Column("accepted_user_id")] public long? AcceptedUserId { get; set; }
+    /// <summary>接受时间（UTC），<c>pending</c> 时为空。</summary>
+    [Column("accepted_at")] public DateTime? AcceptedAt { get; set; }
+    /// <summary>撤销时间（UTC），<c>pending</c> 时为空。</summary>
+    [Column("revoked_at")] public DateTime? RevokedAt { get; set; }
+    /// <summary>创建时间（UTC）。</summary>
+    [Column("created_at")] public DateTime CreatedAt { get; set; }
+    /// <summary>更新时间（UTC）。</summary>
+    [Column("updated_at")] public DateTime UpdatedAt { get; set; }
+    /// <summary>乐观锁版本号。</summary>
+    [ConcurrencyCheck, Column("row_version")] public long RowVersion { get; set; } = 1;
+}
+
+/// <summary>Web 导航偏好：角色粒度的 route_key 显隐与排序，route_key 须命中后端静态白名单。</summary>
+[Table("web_navigation_preferences")]
+public sealed class WebNavigationPreference
+{
+    /// <summary>偏好主键。</summary>
+    [Key, Column("id")] public long Id { get; set; }
+    /// <summary>所属家庭（租户）主键。</summary>
+    [Column("tenant_id")] public long TenantId { get; set; }
+    /// <summary>适用角色：owner / admin / member / viewer，固定枚举。</summary>
+    [Column("role")] public string Role { get; set; } = null!;
+    /// <summary>已发布的 route_key，由 <c>NexusWebNavigationKeys.All</c> 校验。</summary>
+    [Column("route_key")] public string RouteKey { get; set; } = null!;
+    /// <summary>是否在菜单中显示。</summary>
+    [Column("enabled")] public bool Enabled { get; set; } = true;
+    /// <summary>显示顺序；值越小越靠前。</summary>
+    [Column("sort_order")] public int SortOrder { get; set; }
+    /// <summary>最近一次写入者用户主键。</summary>
+    [Column("updated_by_user_id")] public long UpdatedByUserId { get; set; }
+    /// <summary>创建时间（UTC）。</summary>
+    [Column("created_at")] public DateTime CreatedAt { get; set; }
+    /// <summary>更新时间（UTC）。</summary>
+    [Column("updated_at")] public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>访问令牌撤销表，存储主动登出或风控触发的 JTI 黑名单。</summary>

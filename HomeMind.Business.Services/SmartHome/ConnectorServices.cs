@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using HomeMind.Business.IServices.SmartHome;
 using HomeMind.Common.Model.Entities.SmartHome;
 using HomeMind.Common.Model.ViewModel.Common;
+using HomeMind.Common.Model.ViewModel.Data.Connectors;
 using HomeMind.Common.Model.ViewModel.Data.SmartHome;
 using HomeMind.Common.Repository;
 using Microsoft.EntityFrameworkCore;
@@ -184,6 +185,39 @@ public sealed class ConnectorServices : IConnectorServices
     private static WorkspaceConnectorView ToView(WorkspaceConnector connector, ConnectorProvider provider) =>
         new(connector.Id, provider.Id, provider.Code, provider.Name, connector.Name, connector.Status, connector.LastSyncAt, connector.LastHealthAt, connector.CreatedAt, connector.UpdatedAt,
             connector.BindingScope, connector.BindingScope == "personal" && connector.OwnerUserId is not null);
+
+    /// <inheritdoc />
+    public async Task<ServiceResult> ListMyPersonalConnectionsAsync(long userId, long tenantId, CancellationToken cancellationToken = default)
+    {
+        var connectors = await _db.WorkspaceConnectors
+            .Where(x => x.TenantId == tenantId && x.BindingScope == "personal" && x.OwnerUserId == userId && x.DeletedAt == null)
+            .Join(_db.ConnectorProviders.Where(x => x.DeletedAt == null), c => c.ConnectorProviderId, p => p.Id, (c, p) => new { c, p })
+            .OrderBy(x => x.c.Name)
+            .ToListAsync(cancellationToken);
+
+        var summaries = new List<PersonalConnectionSummaryView>(connectors.Count);
+        foreach (var pair in connectors)
+        {
+            var lastSession = await _db.ConnectorAuthorizationSessions
+                .Where(x => x.TenantId == tenantId && x.InitiatorUserId == userId && x.ConnectorProviderId == pair.p.Id)
+                .OrderByDescending(x => x.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            summaries.Add(new PersonalConnectionSummaryView(
+                pair.c.Id,
+                pair.p.Id,
+                pair.p.Code,
+                pair.p.Name,
+                pair.c.Name,
+                pair.c.Status,
+                pair.c.AuthStatus,
+                pair.c.LastSyncAt,
+                pair.c.LastHealthAt,
+                lastSession?.Id,
+                lastSession?.Status,
+                lastSession?.ExpiresAt));
+        }
+        return new ServiceResult(200, "查询成功。", summaries);
+    }
 }
 
 public sealed class ConfigurationConnectorSecretReferenceValidator : IConnectorSecretReferenceValidator

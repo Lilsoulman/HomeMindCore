@@ -256,7 +256,7 @@ User ── joins through ── TenantMember ── belongs to ── Workspace
 | User / `users` | 每人独立的 NexusMind 账户 | `id`、`display_name`、`status`、`timezone`、`locale`；登录标识与密码凭据分表保存，不把手机号/邮箱明文扩散到业务表 |
 | User Identity / `user_identities` | 手机号、邮箱或认证提供方的登录标识 | `user_id`、`provider`、`issuer`、`subject_kind`、`subject_hash`、可选密文、`verified_at`、`revoked_at`；同一提供方主体唯一 |
 | Tenant Member / `tenant_members` | 用户加入家庭后的资格、固定角色和启停状态 | `tenant_id`、`user_id`、`role`、`status`、`joined_at`；同一用户在同一家庭唯一，角色仅 `owner`/`admin`/`member`/`viewer`，每个 active 家庭至少一名 owner |
-| Tenant Member Invitation / `tenant_member_invitations` | 可撤销的家庭邀请，不预先创建账户 | `id`、`tenant_id`、`invited_by_user_id`、受邀标识哈希/密文、`proposed_role`（不得为 owner）、`status=pending|accepted|expired|revoked`、`expires_at`、`accepted_user_id`；只接受标识匹配的已验证账户 |
+| Tenant Member Invitation / `tenant_member_invitations` | 可撤销的家庭邀请，不预先创建账户（V2.4 B19 已发布） | `id`、`tenant_id`、`invited_by_user_id`、受邀标识哈希/密文、`proposed_role`（不得为 owner）、`status=pending|accepted|expired|revoked`、`expires_at`、`accepted_user_id`；只接受标识匹配的已验证账户；同 `(tenant_id, subject_hash)` 仅一条 pending 邀请 |
 | Family Member / `family_members` | 家庭生活上下文和生命周期 | 保留既有字段，可选 `linked_user_id` 仅建立档案到登录账户的关联，不能反向赋予权限 |
 
 用户自己维护账户资料和登录设备/会话；owner/admin 维护当前家庭的邀请、成员资格、固定角色与停用状态，但不能修改他人密码、登录标识或个人 Connector 凭据。owner 转交必须验证目标为 active 成员，在同一事务中更新 `tenants.owner_user_id` 和成员角色；不得停用或移除最后一个 active owner。成员资格、邀请、owner 转交和 Connector 授权均写家庭审计。
@@ -330,7 +330,7 @@ Connector Provider 与 Workspace Connector 必须分离：前者描述“可接�
 2. **确认策略：** Permission Grant 或 Tool 定义可以指定 `never`、`always`、`high_risk_only`。发送消息、控制灯等低风险写入至少需要授权；门锁、安防和创建长期自动化必须 `always` 确认，不能由成员或 Expert 覆盖为自动执行。
 3. **Expert Skill 授权：** Expert Version 只能调用已声明的 Skill，并受调用次数、风险和确认策略限制；Skill 只能委派给已启用且已授权的 Connector Tool。
 4. **Run 权限快照：** 创建 Run 时解析成员、家庭、Connector、Tool、设备能力和 Expert 权限，形成不可变快照。确认与执行前再次校验实时权限、Tool 可用性与资源版本。
-5. **固定家庭角色与 Web 路由：** V1 固定 `owner`、`admin`、`member`、`viewer` 四角色，角色含义由服务端策略代码定义，Web 只消费权限结果。用户维护以账户资料、`tenant_members` 成员管理和邀请流程为边界；不提供可任意创建角色或编辑 API 路由的后台。Web 路由随前端版本发布，通过权限码显示/隐藏；若以后确需家庭级菜单个性化，新增独立 `web_navigation_preferences`（`tenant_id`、`role`、`route_key`、`enabled`、`sort_order`、`updated_by`）表，限制为已发布 `route_key` 的显示偏好，绝不存 API URL、权限规则或可执行脚本。
+5. **固定家庭角色与 Web 路由：** V1 固定 `owner`、`admin`、`member`、`viewer` 四角色，角色含义由服务端策略代码定义，Web 只消费权限结果。用户维护以账户资料、`tenant_members` 成员管理和邀请流程为边界；不提供可任意创建角色或编辑 API 路由的后台。Web 路由随前端版本发布，通过权限码显示/隐藏；若确需家庭级菜单个性化，已发布独立 `web_navigation_preferences`（`tenant_id`、`role`、`route_key`、`enabled`、`sort_order`、`updated_by`）表（V2.4 B19），限制为已发布 `route_key`（`NexusWebNavigationKeys` 静态白名单）的显示偏好，绝不存 API URL、权限规则或可执行脚本；成员角色受控管理（`tenant.member.manage`）、邀请流程与 owner 转让（同事务更新 `tenants.owner_user_id` + 双方角色，最后一名 active owner 守恒）亦随 B19 发布。
 
 高风险能力（门锁、安防、自动化创建等）必须 `require_confirm=true`；低风险只读 Skill 不需要用户逐项确认，但仍需要审计。所有写操作使用 `idempotency_key`，重复确认只能返回既有结果。
 
@@ -485,6 +485,7 @@ Skill 是 AI 的“手脚”，定义稳定的输入、输出、权限和失败�
 
 | 日期 | 主题 | 本文变更 | 前端同步 | 后端同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-07 | V2.4 B19 Web 治理 API | 落地 `tenant_member_invitations`（手机号哈希邀请、owner 转让）与 `web_navigation_preferences`（角色粒度菜单偏好）+ 成员/角色受控管理 + 邀请流程 + 我的个人连接汇总；固定 4 角色不变；菜单偏好仅接受已发布 `route_key` 显隐/排序 | 待同步前端总设计 | 已同步后端总设计 | 已同步 |
 | 2026-08-07 | 专家会话化：移动端纯对话 + PC 端维护 + 用户自建专家 | 专家交互新增「会话（对话框）」形态：移动端纯对话（历史对话框列表 + 新建对话框、选专家/连接器、多轮上下文由后端承载），附件/Action 确认/时间线/下载移 PC 端；PC 用户端新增「我的专家」（自建/维护，仅本人可见）；新增 Conversation/Message 领域模型与 `experts.owner_user_id`、`expert_runs.conversation_id`；会话/消息 API 与 `scope=basic\|mine\|all` 契约；飞书/钉钉等 Connector 仍属暂不纳入范围，连接器可用性受 Provider 发布节奏约束 | 已同步前端总设计与 Web 端文档 | 已同步后端总设计 | 已同步 |
 | 2026-08-06 | AI 配置启用开关与移动端交互 | 新增「设置：AI 配置」产品决策：单一模型 + 单一 Key、Key 仅服务端加密保存、三态交互（新增/只读/编辑）、只读态启用/禁用开关；`AiConfig` 增加 `enabled` 字段，禁用时 AI 生成能力整体不可用 | 已同步前端 AI 配置页三态改造 | 已同步后端开发计划 B18 | 已同步 |
 | 2026-08-06 | V2.3 个人生活专家前置 | 修订 V2.3 版本语义：新增产品能力“个人生活专家”（探店翻牌、行程规划）；新增 `personal_favorites` 领域模型与 `life` 专家分类；OCR 截图识别与短视频生成暂不纳入 V1 | 已同步前端总设计与前端开发计划表（life 分类、翻牌/行程/收藏页面与 P5b/P5c 交付项） | 已同步后端开发设计与后端开发计划（B15-B17 已完成） | 已同步 |
@@ -683,8 +684,8 @@ V2.4 固化“每个成员独立登录、家庭共享、个人授权隔离”，
 | 账户与成员 | 复用 `users`、`user_identities`、`tenants`、`tenant_members`；提供当前成员资料、成员/角色查看与 owner/admin 受控管理。邀请/加入流程需先发布 API。 |
 | 家庭级 Connector | Web 开发端创建、测试、发现、同步、健康查看和成员 Permission Grant；移动端/Web 用户端仅显示已授权状态与能力。 |
 | 个人级 Connector | 增加 `binding_scope`、`owner_user_id`、OAuth 授权会话和服务端回调；首批从已确认的邮箱、日历或内容发布 Provider 中选择，成员仅管理本人授权。 |
-| Web | Vue 2 + Element UI 的用户端和开发端，共用 API/JWT；路由和菜单按权限显示，开发端仅 owner/admin。 |
-| 角色/路由治理 | 固定四角色，不新建可编辑 RBAC 或 API 路由表；可选菜单偏好仅管理已发布 Web `route_key` 的显隐与排序。 |
+| Web | Vue 2 + Element UI 的用户端和开发端，共用 API/JWT；路由和菜单按服务端权限码 + 已发布 `route_key` 显隐/排序，开发端仅 owner/admin；成员/邀请/owner 转让/Web 导航偏好随 B19 已发布。 |
+| 角色/路由治理 | 固定四角色，不新建可编辑 RBAC 或 API 路由表；菜单偏好已发布（`web_navigation_preferences`，角色粒度），仅管理已发布 Web `route_key`（`NexusWebNavigationKeys` 8 个）的显隐与排序，owner/admin 写入。 |
 
 ### 12.1 跨端 API 规则
 
@@ -697,5 +698,5 @@ V2.4 固化“每个成员独立登录、家庭共享、个人授权隔离”，
 1. 先完成产品、迁移、实体、服务、权限快照、OAuth 安全审计与 API 文档，再实现 Flutter 或 Vue HTTP Repository；
 2. 迁移验证 `personal` 实例 owner 属于同一 active `tenant_member`，`household` 实例 owner 为空，跨家庭或跨成员访问统一返回 404；
 3. 个人 OAuth 断开后立即撤销 `credential_ref` 可用性、取消刷新任务并写审计；历史业务数据按 Provider 的数据保留策略处理；
-4. Web 与移动端测试覆盖 owner/admin/member/viewer、个人与家庭实例隔离、授权过期/撤销、路由权限、L1/L2/L3 确认和凭据不泄露；
+4. Web 与移动端测试覆盖 owner/admin/member/viewer、个人与家庭实例隔离、授权过期/撤销、路由权限、L1/L2/L3 确认和凭据不泄露；成员/邀请/owner 转让（B19）测试覆盖最后一名 active owner 守恒、跨家庭 404、乐观锁 409、导航偏好白名单拒绝；
 5. `HomeMind.CreatorMcp` 始终独立于产品 Connector 目录和 App/Web 数据流。

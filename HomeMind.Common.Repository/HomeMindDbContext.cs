@@ -19,6 +19,8 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<AuthRefreshToken> AuthRefreshTokens => Set<AuthRefreshToken>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantMember> TenantMembers => Set<TenantMember>();
+    public DbSet<TenantMemberInvitation> TenantMemberInvitations => Set<TenantMemberInvitation>();
+    public DbSet<WebNavigationPreference> WebNavigationPreferences => Set<WebNavigationPreference>();
     public DbSet<AccessTokenRevocation> AccessTokenRevocations => Set<AccessTokenRevocation>();
     public DbSet<AuthVerificationChallenge> AuthVerificationChallenges => Set<AuthVerificationChallenge>();
     public DbSet<AuthAuditLog> AuthAuditLogs => Set<AuthAuditLog>();

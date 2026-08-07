@@ -142,6 +142,14 @@ public sealed class ConnectorsController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<object>>> RevokeAuthorization(long id) =>
         ToResponse(await WithUserAsync((user, token) => _authorizations.RevokeAuthorizationAsync(user.UserId, user.TenantId, id, token)));
 
+    /// <summary>汇总本人个人连接及最近一次授权会话状态。</summary>
+    /// <remarks>权限：<c>connector.authorize</c>。仅返回当前用户作为 owner 的 personal 实例，不返回凭据引用。</remarks>
+    /// <returns>个人连接汇总列表统一响应。</returns>
+    [Authorize(Policy = PermissionNames.ConnectorAuthorize)]
+    [HttpGet("connector-authorizations/my")]
+    public async Task<ActionResult<ApiResponse<object>>> ListMyPersonalConnections() =>
+        ToResponse(await WithUserAsync((user, token) => _connectors.ListMyPersonalConnectionsAsync(user.UserId, user.TenantId, token)));
+
     /// <summary>在用户上下文就绪时执行给定的业务回调，否则返回 401。</summary>
     /// <param name="action">执行业务逻辑的回调。</param>
     /// <returns>业务执行结果 <see cref="ServiceResult"/>。</returns>

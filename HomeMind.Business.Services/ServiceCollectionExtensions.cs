@@ -23,6 +23,8 @@ using HomeMind.Business.IServices.Travel;
 using HomeMind.Business.Services.Travel;
 using HomeMind.Business.IServices.Steward;
 using HomeMind.Business.Services.Steward;
+using HomeMind.Business.IServices.Identity;
+using HomeMind.Business.Services.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace HomeMind.Business.Services;
@@ -71,6 +73,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IFavoriteService, FavoriteService>();
         services.AddScoped<ITravelRecommendationServices, TravelRecommendationServices>();
         services.AddScoped<ILifeExpertRunServices, LifeExpertRunServices>();
+        services.AddScoped<ITenantMemberServices, TenantMemberServices>();
+        services.AddScoped<ITenantMemberInvitationServices, TenantMemberInvitationServices>();
+        services.AddScoped<IWebNavigationPreferencesServices, WebNavigationPreferencesServices>();
         return services;
     }
 }

@@ -169,6 +169,20 @@ public static class FamilyAuditActions
     public const string ConnectorAuthorizeCompleted = "connector_authorize_completed";
     /// <summary>个人连接器授权被撤销，凭据可用性失效；由连接器授权服务写入。</summary>
     public const string ConnectorAuthorizeRevoked = "connector_authorize_revoked";
+    /// <summary>家庭成员角色被 owner/admin 受控变更；由租户成员服务写入。</summary>
+    public const string TenantMemberRoleChanged = "tenant_member_role_changed";
+    /// <summary>家庭成员启用/停用状态被 owner/admin 受控变更；由租户成员服务写入。</summary>
+    public const string TenantMemberStatusChanged = "tenant_member_status_changed";
+    /// <summary>家庭成员邀请被创建；由邀请服务写入。</summary>
+    public const string TenantInvitationCreated = "tenant_invitation_created";
+    /// <summary>家庭成员邀请被撤销；由邀请服务写入。</summary>
+    public const string TenantInvitationRevoked = "tenant_invitation_revoked";
+    /// <summary>家庭成员邀请被已验证账户接受；由邀请服务写入。</summary>
+    public const string TenantInvitationAccepted = "tenant_invitation_accepted";
+    /// <summary>家庭 owner 角色被转让给同一家庭内 active 成员；由租户成员服务写入。</summary>
+    public const string TenantOwnerTransferred = "tenant_owner_transferred";
+    /// <summary>Web 导航偏好被 owner/admin 写入；由导航偏好服务写入。</summary>
+    public const string WebNavigationPreferenceUpdated = "web_navigation_preference_updated";
 }
 
 /// <summary>家庭上下文审计目标类型集合，决定 <see cref="FamilyAuditLog.TargetType"/> 的合法取值。</summary>
@@ -188,6 +202,12 @@ public static class FamilyAuditTargetTypes
     public const string PersonalFavorite = "personal_favorite";
     /// <summary>目标为 <see cref="Entities.SmartHome.ConnectorAuthorizationSession"/>。</summary>
     public const string ConnectorAuthorization = "connector_authorization";
+    /// <summary>目标为 <see cref="HomeMind.Common.Model.Entities.TenantMember"/> 的角色/状态/owner 转让操作。</summary>
+    public const string TenantMember = "tenant_member";
+    /// <summary>目标为 <see cref="HomeMind.Common.Model.Entities.TenantMemberInvitation"/>。</summary>
+    public const string TenantInvitation = "tenant_invitation";
+    /// <summary>目标为 <see cref="HomeMind.Common.Model.Entities.WebNavigationPreference"/>。</summary>
+    public const string WebNavigationPreference = "web_navigation_preference";
 }
 
 /// <summary>家庭域审计记录实体；与管家动态、运行事件分离，专门承载 Family 域可审计动作。</summary>
