@@ -641,6 +641,27 @@ SourceType=skill 的 AgentRun（不绑定 Expert，`expert_id` 为空），复�
 复用既有 `expert-runs` 契约（`GET /api/v1/expert-runs/{id}`、`/events`、`/cancel`、`/retry`），
 B24/B25 不新建轮询端点。剪辑 MCP 端到端（真实 jianying-mcp 写入素材/剪映草稿目录）按部署环境验证。
 
+## V2.6 小红书个人级 Connector（已发布，B26）
+
+小红书个人级 Connector：`030` 迁移注册 `xhs` Provider（provider=`xhs_mcp`、connector_type=`social`），
+经本地 stdio MCP（xhs-mcp，Puppeteer 扫码登录）调用；搜索/详情只读 L1，发布 L2（B27 发布）。
+凭据（cookie/登录态）由本机 MCP 进程管理，`credential_ref` 仅存 `local://xhs-sessions/{uuid}` 会话标识，
+不落库、不返回、不记录 cookie 明文。
+
+| 端点 | 权限 | 契约要点 |
+| --- | --- | --- |
+| `POST /api/v1/connector-providers/xhs/authorizations` | `connector.authorize` | 发起扫码登录：跳过回调白名单与 Vault 检查，触发本地 MCP `xhs_auth_login`；成功 201 返回 `AuthorizationSessionView`（新增 `qrContent` 字段，含二维码内容/登录链接，其余 Provider 为 null）；会话 `redirectUri` 占位 `xhs://local-polling`、pkce 为空、10 分钟过期。写 `connector_authorize_started` 审计。本地 MCP 不可用 503 |
+| `POST /api/v1/connector-authorizations/{id}/poll` | `connector.authorize` | 轮询扫码登录状态（调 `xhs_auth_status`）：未登录 202 + 会话视图；登录成功 200，创建/更新 personal 连接器（`auth_status=connected`、`credential_ref=local://xhs-sessions/{uuid}`）并写 `connector_authorize_completed` 审计；会话已结束 409；非本人/跨租户 404 |
+| `GET /api/v1/connector-authorizations/{id}` | `connector.authorize` | 既有：脱敏会话状态，非本人 404 |
+| `DELETE /api/v1/connector-authorizations/{id}` | `connector.authorize` | 既有：撤销；xhs 分支额外调用 `xhs_auth_logout`（本地 MCP 不可用不阻塞状态流转），重复撤销幂等 |
+| `GET /api/v1/connector-providers/xhs/notes/search?query=&limit=` | `connector.read` | 只读 L1。`query` 必填（空 422），`limit` 1-50 默认 10。连接器未授权（无 personal 已连接 xhs 实例）404。成功返回 `XhsNoteSummaryView[]`（`NoteId/Title/CoverUrl/AuthorName/Link`） |
+| `GET /api/v1/connector-providers/xhs/notes/detail?url=` | `connector.read` | 只读 L1。`url` 必填（空 422），连接器未授权 404。成功返回 `XhsNoteDetailView`（`NoteId/Title/Content/Images/Link`） |
+| `GET /api/v1/connector-providers/xhs/auth-status` | `connector.read` | 连接器未授权 404；成功返回 `XhsAuthStatusView`（`LoggedIn/Message`） |
+
+配置：`Mcp:Clients:Xhs`（`Enabled` 默认 false 走 `MockXhsMcpClient` 确定性 Mock，true 时经本地
+stdio xhs-mcp 真实调用；`CommandFileName`/`Arguments`/`TimeoutSeconds`）。审计动作新增
+`xhs_note_published`（目标 `xhs_note`，B27 发布消费）。响应不含 cookie、登录态明文、凭据引用或 MCP 内部路径。
+
 ## 本地运行
 
 代码更改后，端口 `5280` 上的当前进程必须重启。运行：

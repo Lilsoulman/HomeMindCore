@@ -19,6 +19,7 @@ public sealed class StartAuthorizationRequest
 /// <param name="ExpiresAt">会话过期时间（UTC），过期后回调拒绝。</param>
 /// <param name="AuthorizationUrl">浏览器跳转的授权地址，仅创建响应时返回。</param>
 /// <param name="RedirectUri">会话回调跳转地址；回调完成或查询时返回，供客户端回跳。</param>
+/// <param name="QrContent">扫码登录类 Provider（如 xhs）的二维码内容或登录链接；仅创建响应时返回，其余为 null。</param>
 public sealed record AuthorizationSessionView(
     long SessionId,
     string ProviderCode,
@@ -26,4 +27,5 @@ public sealed record AuthorizationSessionView(
     string Status,
     DateTime ExpiresAt,
     string? AuthorizationUrl = null,
-    string? RedirectUri = null);
+    string? RedirectUri = null,
+    string? QrContent = null);

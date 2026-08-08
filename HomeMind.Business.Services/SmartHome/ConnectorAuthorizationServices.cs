@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using HomeMind.Business.IServices.Connector;
 using HomeMind.Business.IServices.Family;
 using HomeMind.Business.IServices.SmartHome;
 using HomeMind.Common.Infrastructure;
@@ -14,13 +15,16 @@ using Microsoft.Extensions.Configuration;
 namespace HomeMind.Business.Services.SmartHome;
 
 /// <summary>
-/// 连接器个人授权服务：创建一次性 OAuth 授权会话（state 仅存哈希、PKCE 校验器仅存密文引用），
-/// 处理服务端回调完成 Token 交换并写入凭据引用，提供本人会话状态查询与撤销。
+/// 连接器个人授权服务：OAuth Provider 创建一次性授权会话（state 仅存哈希、PKCE 校验器仅存密文引用）、
+/// 处理服务端回调完成 Token 交换并写入凭据引用；扫码登录类 Provider（xhs）复用同一会话表承载本地
+/// 状态轮询——凭据由本地 MCP 进程管理，credential_ref 仅存 local:// 会话标识，不落 cookie 明文。
 /// 授权 code、访问令牌与刷新令牌不出现在任何 DTO、日志或数据库列。
 /// </summary>
 public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServices
 {
     private const string EncryptedPkcePrefix = "enc:";
+    private const string XhsProviderCode = "xhs";
+    private const string XhsPollingRedirectUri = "xhs://local-polling";
     private static readonly TimeSpan SessionLifetime = TimeSpan.FromMinutes(10);
 
     private readonly HomeMindDbContext _db;
@@ -28,6 +32,7 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
     private readonly IFamilyAuditLogger _audit;
     private readonly SecretProtector _protector;
     private readonly IConfiguration _configuration;
+    private readonly IXhsMcpClient _xhs;
 
     /// <summary>构造连接器个人授权服务。</summary>
     /// <param name="db">数据库上下文。</param>
@@ -35,18 +40,21 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
     /// <param name="audit">家庭审计日志写入器。</param>
     /// <param name="protector">字段加密器，用于 PKCE 校验器密文引用。</param>
     /// <param name="configuration">应用配置（回调白名单与基础地址）。</param>
+    /// <param name="xhs">小红书 MCP 客户端（扫码登录/登出），OAuth Provider 场景不触发。</param>
     public ConnectorAuthorizationServices(
         HomeMindDbContext db,
         IConnectorSecretReferenceValidator secretReferences,
         IFamilyAuditLogger audit,
         SecretProtector protector,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IXhsMcpClient xhs)
     {
         _db = db;
         _secretReferences = secretReferences;
         _audit = audit;
         _protector = protector;
         _configuration = configuration;
+        _xhs = xhs;
     }
 
     /// <inheritdoc />
@@ -56,14 +64,31 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
             x => x.Code == providerCode && x.Status == "active" && x.DeletedAt == null, cancellationToken);
         if (provider is null) return new ServiceResult(404, "请求的连接器提供方不存在或已停用。");
 
-        if (string.IsNullOrWhiteSpace(request.RedirectUri) || !IsAllowedRedirectUri(request.RedirectUri))
+        // 扫码登录类 Provider（xhs）无回调地址与 Vault 凭据落库：凭据由本地 MCP 进程管理。
+        var isXhs = provider.Code == XhsProviderCode;
+        if (!isXhs && (string.IsNullOrWhiteSpace(request.RedirectUri) || !IsAllowedRedirectUri(request.RedirectUri)))
             return new ServiceResult(422, "回调跳转地址不在 Provider 预注册白名单内。");
 
-        var vaultCheck = await _secretReferences.ValidateAsync(tenantId, $"vault://tenants/{tenantId}/connector-oauth-check", cancellationToken);
-        if (!vaultCheck.IsVaultAvailable) return new ServiceResult(503, "Secret Vault 未配置或暂时不可用，无法发起授权。");
+        if (!isXhs)
+        {
+            var vaultCheck = await _secretReferences.ValidateAsync(tenantId, $"vault://tenants/{tenantId}/connector-oauth-check", cancellationToken);
+            if (!vaultCheck.IsVaultAvailable) return new ServiceResult(503, "Secret Vault 未配置或暂时不可用，无法发起授权。");
+        }
+
+        XhsLoginHint? loginHint = null;
+        if (isXhs)
+        {
+            try
+            {
+                loginHint = await _xhs.TriggerLoginAsync(cancellationToken);
+            }
+            catch (McpClientException)
+            {
+                return new ServiceResult(503, "本地小红书 MCP 不可用，无法发起登录。");
+            }
+        }
 
         var state = GenerateRandomHex();
-        var verifier = GeneratePkceVerifier();
         var now = DateTime.UtcNow;
         var session = new ConnectorAuthorizationSession
         {
@@ -72,8 +97,8 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
             BindingScope = "personal",
             InitiatorUserId = userId,
             StateHash = HashSha256(state),
-            PkceVerifierRef = EncryptedPkcePrefix + Convert.ToBase64String(_protector.Encrypt(verifier)),
-            RedirectUri = request.RedirectUri.Trim(),
+            PkceVerifierRef = isXhs ? null : EncryptedPkcePrefix + Convert.ToBase64String(_protector.Encrypt(GeneratePkceVerifier())),
+            RedirectUri = isXhs ? XhsPollingRedirectUri : request.RedirectUri.Trim(),
             Status = ConnectorAuthorizationSessionStatus.Pending,
             ExpiresAt = now.Add(SessionLifetime),
             CreatedAt = now,
@@ -87,7 +112,82 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
 
         return new ServiceResult(201, "授权会话已创建。", new AuthorizationSessionView(
             session.Id, provider.Code, provider.Name, session.Status, session.ExpiresAt,
-            BuildAuthorizationUrl(provider.Code, state)));
+            isXhs ? null : BuildAuthorizationUrl(provider.Code, state),
+            RedirectUri: null,
+            QrContent: loginHint?.QrContent));
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult> PollAuthorizationAsync(long userId, long tenantId, long sessionId, CancellationToken cancellationToken = default)
+    {
+        var session = await _db.ConnectorAuthorizationSessions.SingleOrDefaultAsync(
+            x => x.Id == sessionId && x.TenantId == tenantId && x.InitiatorUserId == userId, cancellationToken);
+        if (session is null) return new ServiceResult(404, "请求的授权会话不存在。");
+
+        var provider = await _db.ConnectorProviders.SingleAsync(x => x.Id == session.ConnectorProviderId, cancellationToken);
+        if (session.Status == ConnectorAuthorizationSessionStatus.Completed)
+            return new ServiceResult(200, "授权已完成。", ToView(session, provider));
+        if (session.Status is ConnectorAuthorizationSessionStatus.Revoked or ConnectorAuthorizationSessionStatus.Expired or ConnectorAuthorizationSessionStatus.Used)
+            return new ServiceResult(409, "授权会话已结束，请重新发起。", ToView(session, provider));
+        if (session.ExpiresAt < DateTime.UtcNow)
+        {
+            session.Status = ConnectorAuthorizationSessionStatus.Expired;
+            session.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(cancellationToken);
+            return new ServiceResult(409, "授权会话已过期，请重新发起。", ToView(session, provider));
+        }
+
+        XhsAuthStatus auth;
+        try
+        {
+            auth = await _xhs.GetAuthStatusAsync(cancellationToken);
+        }
+        catch (McpClientException)
+        {
+            return new ServiceResult(503, "本地小红书 MCP 不可用，请稍后重试。", ToView(session, provider));
+        }
+        if (!auth.LoggedIn) return new ServiceResult(202, "等待扫码登录…", ToView(session, provider));
+
+        var now = DateTime.UtcNow;
+        var credentialRef = $"local://xhs-sessions/{session.Id}-{GenerateRandomHex(8)}";
+        var connector = await _db.WorkspaceConnectors.SingleOrDefaultAsync(x =>
+            x.TenantId == session.TenantId && x.ConnectorProviderId == provider.Id &&
+            x.BindingScope == "personal" && x.OwnerUserId == session.InitiatorUserId && x.DeletedAt == null, cancellationToken);
+        if (connector is null)
+        {
+            connector = new WorkspaceConnector
+            {
+                TenantId = session.TenantId,
+                ConnectorProviderId = provider.Id,
+                BindingScope = "personal",
+                OwnerUserId = session.InitiatorUserId,
+                Name = provider.Name,
+                CredentialRef = credentialRef,
+                Status = "connected",
+                AuthStatus = WorkspaceConnectorAuthStatus.Connected,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            _db.WorkspaceConnectors.Add(connector);
+        }
+        else
+        {
+            connector.CredentialRef = credentialRef;
+            connector.Status = "connected";
+            connector.AuthStatus = WorkspaceConnectorAuthStatus.Connected;
+            connector.UpdatedAt = now;
+        }
+
+        session.Status = ConnectorAuthorizationSessionStatus.Completed;
+        session.CompletedAt = now;
+        session.UpdatedAt = now;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        await _audit.LogAsync(tenantId, userId, FamilyAuditActions.ConnectorAuthorizeCompleted, FamilyAuditTargetTypes.ConnectorAuthorization, session.Id,
+            before: null, after: new { providerCode = provider.Code, connectorId = connector.Id }, reason: "本地扫码登录完成，连接器已绑定。", relatedRunId: null, cancellationToken);
+
+        return new ServiceResult(200, "授权完成。", new AuthorizationSessionView(
+            session.Id, provider.Code, provider.Name, session.Status, session.ExpiresAt, RedirectUri: session.RedirectUri));
     }
 
     /// <inheritdoc />
@@ -178,6 +278,19 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
         var now = DateTime.UtcNow;
         if (session.Status == ConnectorAuthorizationSessionStatus.Revoked)
             return new ServiceResult(200, "授权已撤销，重复撤销返回既有结果。", ToView(session, provider));
+
+        // 扫码登录类 Provider（xhs）：登出本机 MCP 会话（cookie 由 MCP 进程管理），失败不阻塞状态流转。
+        if (provider.Code == XhsProviderCode)
+        {
+            try
+            {
+                await _xhs.LogoutAsync(cancellationToken);
+            }
+            catch (McpClientException)
+            {
+                // 本地 MCP 不可用时不阻断撤销状态流转。
+            }
+        }
 
         var connector = await _db.WorkspaceConnectors.SingleOrDefaultAsync(x =>
             x.TenantId == tenantId && x.ConnectorProviderId == provider.Id &&

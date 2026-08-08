@@ -10,14 +10,22 @@ namespace HomeMind.Business.IServices.SmartHome;
 /// </summary>
 public interface IConnectorAuthorizationServices
 {
-    /// <summary>发起一次个人连接器 OAuth 授权会话并返回浏览器跳转地址。</summary>
+    /// <summary>发起一次个人连接器授权会话并返回浏览器跳转地址或扫码登录提示；OAuth Provider 走 state/PKCE 会话，扫码登录类（xhs）触发本地 MCP 登录。</summary>
     /// <param name="userId">当前用户主键（会话发起人）。</param>
     /// <param name="tenantId">当前租户标识，来自 JWT，禁止客户端覆盖。</param>
     /// <param name="providerCode">连接器提供方编码。</param>
     /// <param name="request">授权请求体，含回调跳转白名单地址。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>成功返回会话脱敏视图（含授权地址）；提供方不存在返回 404，Vault 不可用返回 503。</returns>
+    /// <returns>成功返回会话脱敏视图（含授权地址或二维码内容）；提供方不存在返回 404，Vault 不可用返回 503。</returns>
     Task<ServiceResult> StartAuthorizationAsync(long userId, long tenantId, string providerCode, StartAuthorizationRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>轮询扫码登录类 Provider（xhs）的登录状态：登录成功后创建/更新个人连接器实例并完成会话，供客户端在扫码后轮询。</summary>
+    /// <param name="userId">当前用户主键（会话发起人）。</param>
+    /// <param name="tenantId">当前租户标识。</param>
+    /// <param name="sessionId">会话主键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>未登录返回 202 与脱敏会话视图；登录完成返回 200 与会话视图；非本人或跨租户统一返回 404。</returns>
+    Task<ServiceResult> PollAuthorizationAsync(long userId, long tenantId, long sessionId, CancellationToken cancellationToken = default);
 
     /// <summary>处理 Provider 的服务端回调：校验一次性 state、会话未过期且未使用，模拟 Token 交换并写入凭据引用。</summary>
     /// <param name="providerCode">连接器提供方编码。</param>

@@ -1626,7 +1626,8 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `POST /api/v1/smart-home/scenes/{sceneKey}/run`、`POST /api/v1/smart-home/scenarios/instances/{instanceId}/run`、`POST /api/v1/smart-home/scenarios/runs/{runId}/actions/{actionId}/confirm` | `ai.run` |
 | `GET /api/v1/connector-providers`、`GET /api/v1/connectors`、`GET /api/v1/connectors/{id}/authorization` | `connector.read` |
 | `POST /api/v1/connectors`、`/connectors/{id}/test`、`/connectors/{id}/discovery`、`/connectors/{id}/sync`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}` | `connector.write` |
-| `POST /api/v1/connector-providers/{providerCode}/authorizations`、`GET/DELETE /api/v1/connector-authorizations/{id}`（B18 个人授权）、`GET /api/v1/connector-authorizations/my`（B19 我的个人连接） | `connector.authorize` |
+| `POST /api/v1/connector-providers/{providerCode}/authorizations`、`GET/DELETE /api/v1/connector-authorizations/{id}`（B18 个人授权）、`GET /api/v1/connector-authorizations/my`（B19 我的个人连接）、`POST /api/v1/connector-authorizations/{id}/poll`（B26 小红书扫码轮询） | `connector.authorize` |
+| `GET /api/v1/connector-providers/xhs/notes/search`、`/notes/detail`、`/auth-status`（B26 小红书搜索/详情/登录状态） | `connector.read` |
 | `GET /api/v1/homes/{homeId}/members`、`GET /api/v1/homes/{homeId}/invitations`、`GET/PUT /api/v1/web/navigation`（读取） | `tenant.read`（B19） |
 | `PUT /api/v1/homes/{homeId}/members/{id}/role`、`PUT .../{id}/status`、`POST /api/v1/homes/{homeId}/owner-transfer`、`POST/DELETE /api/v1/homes/{homeId}/invitations`、`PUT /api/v1/web/navigation`（写入） | `tenant.member.manage`（B19，owner/admin） |
 | `GET /api/v1/automation-rules` | `automation.read` |
@@ -1685,6 +1686,9 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `TenantMemberInvitationView.subjectKind`（B19） | `phone` |
 | `TenantMemberInvitationCreateRequest.proposedRole`（B19） | `admin` \| `member` \| `viewer`（不得为 owner） |
 | `WebNavigationRouteView.routeKey`（B19） | `tenant.dashboard` \| `tenant.confirmations` \| `tenant.steward` \| `tenant.knowledge` \| `tenant.family` \| `tenant.life` \| `tenant.connectors` \| `tenant.connector.authorize`（后端静态白名单） |
+| `AuthorizationSessionView.qrContent`（B26） | 仅扫码登录类 Provider（xhs）创建响应时返回二维码内容/登录链接，其余为 null |
+| `XhsNoteSummaryView`（B26） | `{ noteId, title, coverUrl, authorName, link }` |
+| `XhsNoteDetailView`（B26） | `{ noteId, title, content, images[], link }` |
 | `WebNavigationPreferenceUpdateItem.sortOrder`（B19） | 0-1000 整数；值越小越靠前 |
 | `SkillRunActionView.actionType`（B24） | `draft_generate`（快速剪辑方案，L1） |
 | `AgentRun.status`（B25 SkillRun 确认后） | 确认成功 → `completed`；草稿生成/登记失败 → `failed` |
@@ -1694,3 +1698,20 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 家庭/个人 Connector 与 Web 治理 API 已发布：客户端以 `bindingScope` 区分 `household` 与 `personal`；家庭实例只显示当前成员授权状态；个人实例只向 owner 显示本人归属和 OAuth 状态（B18）。B19 新增 `GET /connector-authorizations/my` 个人连接汇总、`web/navigation` 导航偏好、成员/邀请/owner 转让受控管理。客户端不得接收、存储或记录 OAuth code、access token、refresh token、`credentialRef` 或 Provider 原始回调。
 
 个人授权流程（B18）：创建授权会话 -> 跳转 Provider -> 服务端 callback -> 查询脱敏状态 -> 本人撤销。角色使用现有 `tenant_members.role` 固定值 `owner/admin/member/viewer`；Web 路由随前端版本发布并按服务端权限码 + 已发布 `route_key` 白名单守卫，不存在客户端维护 API 路由或可编辑角色的接口（B19 导航偏好仅接受已发布 route_key 的显隐/排序）。
+
+### 10.1 V2.6 小红书个人级 Connector（B26 扫码授权与搜索）
+
+小红书为扫码登录类个人 Connector（经本地 stdio MCP xhs-mcp 调用，Puppeteer 扫码，凭据由本机 MCP 进程管理，不落库 cookie 明文）。与 OAuth Provider 的差异：**无浏览器跳转与服务端 callback**，改为「发起扫码 → 客户端轮询 → 登录完成」流程。
+
+授权流程（B26）：
+1. `POST /api/v1/connector-providers/xhs/authorizations`（`connector.authorize`，请求体 `{ redirectUri? }` 可空）：成功 201 返回 `AuthorizationSessionView`，其中 **`qrContent`** 为二维码内容/登录链接（仅 xhs 返回，其余 Provider 为 null）；后端已触发本地 MCP 生成二维码，客户端需向用户展示 `qrContent`。
+2. 轮询 `POST /api/v1/connector-authorizations/{id}/poll`（`connector.authorize`）：未登录返回 **202** + 会话视图（继续轮询）；登录成功返回 **200**（personal 连接器已绑定，可进入搜索/发布）；已结束 409；非本人 404。建议轮询间隔 ≥3 秒，会话 10 分钟过期。
+3. 撤销 `DELETE /api/v1/connector-authorizations/{id}`：撤销并登出本机 MCP 会话（`xhs_auth_logout`），重复撤销幂等。
+4. 状态查询 `GET /api/v1/connector-authorizations/{id}`：脱敏会话状态。
+
+搜索（只读 L1）：
+- `GET /api/v1/connector-providers/xhs/notes/search?query=&limit=`（`connector.read`）：`query` 必填（空 422），`limit` 1-50 默认 10；连接器未授权 404；响应 `XhsNoteSummaryView[]`：`{ noteId, title, coverUrl, authorName, link }`。
+- `GET /api/v1/connector-providers/xhs/notes/detail?url=`（`connector.read`）：`url` 必填（空 422）；未授权 404；响应 `XhsNoteDetailView`：`{ noteId, title, content, images[], link }`。
+- `GET /api/v1/connector-providers/xhs/auth-status`（`connector.read`）：未授权 404；响应 `{ loggedIn, message }`。
+
+客户端约束：不得记录 `qrContent` 之外的登录态信息；响应不含 cookie、凭据引用或 MCP 内部路径。搜索端点依赖本机 xhs-mcp 部署（开发环境 `Mcp:Clients:Xhs:Enabled=false` 时返回 Mock 数据，仅用于联调）。发布契约（L2 确认）随 B27 发布。

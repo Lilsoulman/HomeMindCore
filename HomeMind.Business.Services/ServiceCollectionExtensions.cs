@@ -26,7 +26,10 @@ using HomeMind.Business.Services.Steward;
 using HomeMind.Business.IServices.Identity;
 using HomeMind.Business.Services.Identity;
 using HomeMind.Business.IServices.Conversation;
+using HomeMind.Business.Services.Connectors;
 using HomeMind.Business.Services.Conversation;
+using HomeMind.Business.Services.Connectors.Mcp;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace HomeMind.Business.Services;
@@ -83,6 +86,22 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IExpertSelfServeServices, ExpertSelfServeServices>();
         services.AddScoped<ISkillRunServices, SkillRunServices>();
         services.AddScoped<IClippingMcpClient, MockClippingMcpClient>();
+        services.AddScoped<IXhsConnectorServices, XhsConnectorServices>();
+        // 本地 stdio MCP 进程客户端：进程级共享（单例），进程内懒启动；命令与超时来自配置。
+        services.AddSingleton<IMcpProcessClient>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var options = config.GetSection("Mcp:Clients:Xhs").Get<McpProcessOptions>() ?? new McpProcessOptions();
+            return new StdioMcpProcessClient(options);
+        });
+        // 小红书 MCP 客户端：默认 Mock（无本地 xhs-mcp 环境回退）；Mcp:Clients:Xhs:Enabled=true 时切换真实实现。
+        services.AddScoped<IXhsMcpClient>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            return config.GetValue<bool>("Mcp:Clients:Xhs:Enabled")
+                ? new XhsMcpClient(sp.GetRequiredService<IMcpProcessClient>())
+                : new MockXhsMcpClient();
+        });
         return services;
     }
 }

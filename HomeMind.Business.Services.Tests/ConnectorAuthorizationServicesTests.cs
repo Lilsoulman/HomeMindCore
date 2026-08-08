@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using HomeMind.Business.IServices.Connector;
 using HomeMind.Business.IServices.Family;
 using HomeMind.Business.IServices.Productivity;
 using HomeMind.Business.IServices.SmartHome;
@@ -297,8 +298,8 @@ public class ConnectorAuthorizationServicesTests
         Assert.Equal("executed", db.ExpertRunActions.Single().Status);
     }
 
-    private static ConnectorAuthorizationServices CreateServices(HomeMindDbContext db, FakeAuditLogger audit, bool vaultAvailable = true) =>
-        new(db, new FakeSecretReferenceValidator(vaultAvailable), audit, new SecretProtector(BuildConfig()), BuildConfig());
+    private static ConnectorAuthorizationServices CreateServices(HomeMindDbContext db, FakeAuditLogger audit, bool vaultAvailable = true, IXhsMcpClient xhs = null!) =>
+        new(db, new FakeSecretReferenceValidator(vaultAvailable), audit, new SecretProtector(BuildConfig()), BuildConfig(), xhs ?? new FakeXhsClient());
 
     private static HomeMindDbContext NewDb(string name) =>
         new(new DbContextOptionsBuilder<HomeMindDbContext>()
@@ -330,6 +331,125 @@ public class ConnectorAuthorizationServicesTests
             UpdatedAt = DateTime.UtcNow
         });
         db.SaveChanges();
+    }
+
+    private static void SeedXhsProvider(HomeMindDbContext db)
+    {
+        db.ConnectorProviders.Add(new ConnectorProvider
+        {
+            Id = 2,
+            Code = "xhs",
+            Name = "小红书",
+            Provider = "xhs_mcp",
+            ConnectorType = "social",
+            Status = "active",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        db.SaveChanges();
+    }
+
+    /// <summary>扫码登录类 Provider（xhs）发起授权：跳过回调白名单与 Vault 检查，返回二维码内容，会话以本地轮询占位落库。</summary>
+    [Fact]
+    public async Task Xhs_Start_Returns_Qr_And_Skips_OAuth_Checks()
+    {
+        await using var db = NewDb("xhs-start");
+        var audit = new FakeAuditLogger();
+        SeedXhsProvider(db);
+        var services = CreateServices(db, audit, vaultAvailable: false);
+
+        var result = await services.StartAuthorizationAsync(10, 1, "xhs", new StartAuthorizationRequest { RedirectUri = "" }, default);
+
+        Assert.Equal(201, result.StatusCode);
+        var view = ReadData<AuthorizationSessionView>(result);
+        Assert.Equal("mock-qr://xhs-login", view.QrContent);
+        Assert.Null(view.AuthorizationUrl);
+        var session = db.ConnectorAuthorizationSessions.Single();
+        Assert.Equal("xhs://local-polling", session.RedirectUri);
+        Assert.Null(session.PkceVerifierRef);
+        Assert.Equal(FamilyAuditActions.ConnectorAuthorizeStarted, audit.LastAction);
+    }
+
+    /// <summary>扫码登录未完成时轮询返回 202，不落库连接器。</summary>
+    [Fact]
+    public async Task Xhs_Poll_Returns_202_While_Not_Logged_In()
+    {
+        await using var db = NewDb("xhs-poll-pending");
+        SeedXhsProvider(db);
+        var xhs = new FakeXhsClient(loggedIn: false);
+        var services = CreateServices(db, new FakeAuditLogger(), xhs: xhs);
+        var start = await services.StartAuthorizationAsync(10, 1, "xhs", new StartAuthorizationRequest { RedirectUri = "" }, default);
+        var sessionId = ReadData<AuthorizationSessionView>(start).SessionId;
+
+        var result = await services.PollAuthorizationAsync(10, 1, sessionId, default);
+
+        Assert.Equal(202, result.StatusCode);
+        Assert.Empty(db.WorkspaceConnectors);
+        Assert.Equal(1, xhs.AuthStatusCalls);
+    }
+
+    /// <summary>扫码登录完成后轮询落库 personal 连接器（credential_ref 仅存 local:// 会话标识）并写完成审计。</summary>
+    [Fact]
+    public async Task Xhs_Poll_Completes_And_Creates_Connector()
+    {
+        await using var db = NewDb("xhs-poll-complete");
+        var audit = new FakeAuditLogger();
+        SeedXhsProvider(db);
+        var xhs = new FakeXhsClient(loggedIn: true);
+        var services = CreateServices(db, audit, xhs: xhs);
+        var start = await services.StartAuthorizationAsync(10, 1, "xhs", new StartAuthorizationRequest { RedirectUri = "" }, default);
+        var sessionId = ReadData<AuthorizationSessionView>(start).SessionId;
+
+        var result = await services.PollAuthorizationAsync(10, 1, sessionId, default);
+
+        Assert.Equal(200, result.StatusCode);
+        var connector = db.WorkspaceConnectors.Single();
+        Assert.Equal("personal", connector.BindingScope);
+        Assert.Equal(10, connector.OwnerUserId);
+        Assert.Equal(WorkspaceConnectorAuthStatus.Connected, connector.AuthStatus);
+        Assert.StartsWith("local://xhs-sessions/", connector.CredentialRef);
+        Assert.Equal(FamilyAuditActions.ConnectorAuthorizeCompleted, audit.LastAction);
+        var session = db.ConnectorAuthorizationSessions.Single();
+        Assert.Equal(ConnectorAuthorizationSessionStatus.Completed, session.Status);
+    }
+
+    /// <summary>扫码轮询非本人会话统一返回 404。</summary>
+    [Fact]
+    public async Task Xhs_Poll_Cross_User_Returns_404()
+    {
+        await using var db = NewDb("xhs-poll-cross");
+        SeedXhsProvider(db);
+        var services = CreateServices(db, new FakeAuditLogger());
+        var start = await services.StartAuthorizationAsync(10, 1, "xhs", new StartAuthorizationRequest { RedirectUri = "" }, default);
+        var sessionId = ReadData<AuthorizationSessionView>(start).SessionId;
+
+        var result = await services.PollAuthorizationAsync(userId: 11, tenantId: 1, sessionId, default);
+
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    /// <summary>撤销 xhs 授权触发本机登出并置 revoked；重复撤销幂等返回既有结果。</summary>
+    [Fact]
+    public async Task Xhs_Revoke_Logs_Out_And_Is_Idempotent()
+    {
+        await using var db = NewDb("xhs-revoke");
+        var audit = new FakeAuditLogger();
+        SeedXhsProvider(db);
+        var xhs = new FakeXhsClient(loggedIn: true);
+        var services = CreateServices(db, audit, xhs: xhs);
+        var start = await services.StartAuthorizationAsync(10, 1, "xhs", new StartAuthorizationRequest { RedirectUri = "" }, default);
+        var sessionId = ReadData<AuthorizationSessionView>(start).SessionId;
+        await services.PollAuthorizationAsync(10, 1, sessionId, default);
+
+        var result = await services.RevokeAuthorizationAsync(10, 1, sessionId, default);
+
+        Assert.Equal(200, result.StatusCode);
+        Assert.Equal(1, xhs.LogoutCalls);
+        Assert.Equal("revoked", db.WorkspaceConnectors.Single().AuthStatus);
+        var second = await services.RevokeAuthorizationAsync(10, 1, sessionId, default);
+        Assert.Equal(200, second.StatusCode);
+        Assert.Equal(1, xhs.LogoutCalls);
+        Assert.Equal(FamilyAuditActions.ConnectorAuthorizeRevoked, audit.LastAction);
     }
 
     private static void SeedSession(HomeMindDbContext db, long id, long userId, DateTime? expiresAt = null)
@@ -467,5 +587,32 @@ public class ConnectorAuthorizationServicesTests
         public Task<ServiceResult> CreateSubscriptionAsync(long userId, long tenantId, SubscriptionRequest request, CancellationToken token = default) => throw new NotImplementedException();
         public Task<ServiceResult> UpdateSubscriptionAsync(long userId, long tenantId, long id, SubscriptionRequest request, CancellationToken token = default) => throw new NotImplementedException();
         public Task<ServiceResult> DeleteSubscriptionAsync(long userId, long tenantId, long id, CancellationToken token = default) => throw new NotImplementedException();
+    }
+
+    /// <summary>小红书 MCP 的可变测试替身：登录状态可切换，记录登出与状态查询调用次数。</summary>
+    private sealed class FakeXhsClient(bool loggedIn = false) : IXhsMcpClient
+    {
+        public bool LoggedIn { get; set; } = loggedIn;
+        public int AuthStatusCalls { get; private set; }
+        public int LogoutCalls { get; private set; }
+
+        public Task<XhsAuthStatus> GetAuthStatusAsync(CancellationToken cancellationToken = default)
+        {
+            AuthStatusCalls++;
+            return Task.FromResult(LoggedIn ? new XhsAuthStatus(true, "已登录") : new XhsAuthStatus(false, "未登录"));
+        }
+
+        public Task<XhsLoginHint> TriggerLoginAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new XhsLoginHint("请扫码登录", "mock-qr://xhs-login"));
+
+        public Task LogoutAsync(CancellationToken cancellationToken = default)
+        {
+            LogoutCalls++;
+            return Task.CompletedTask;
+        }
+
+        public Task<XhsSearchResult> SearchNotesAsync(string query, int limit, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsNoteDetail> GetNoteDetailAsync(string url, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsPublishResult> PublishAsync(XhsPublishInput input, CancellationToken cancellationToken = default) => throw new NotImplementedException();
     }
 }

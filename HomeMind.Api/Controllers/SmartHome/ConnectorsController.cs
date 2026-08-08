@@ -133,6 +133,15 @@ public sealed class ConnectorsController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<object>>> GetAuthorizationStatus(long id) =>
         ToResponse(await WithUserAsync((user, token) => _authorizations.GetAuthorizationStatusAsync(user.UserId, user.TenantId, id, token)));
 
+    /// <summary>轮询扫码登录类 Provider（xhs）的登录状态；登录成功后绑定个人连接器实例并完成会话。</summary>
+    /// <remarks>权限：<c>connector.authorize</c>。未登录返回 202；跨租户或非本人会话统一返回 404。</remarks>
+    /// <param name="id">授权会话主键。</param>
+    /// <returns>授权会话脱敏视图统一响应。</returns>
+    [Authorize(Policy = PermissionNames.ConnectorAuthorize)]
+    [HttpPost("connector-authorizations/{id:long}/poll")]
+    public async Task<ActionResult<ApiResponse<object>>> PollAuthorization(long id) =>
+        ToResponse(await WithUserAsync((user, token) => _authorizations.PollAuthorizationAsync(user.UserId, user.TenantId, id, token)));
+
     /// <summary>撤销本人个人连接器授权：撤销实例凭据可用性并写审计；重复撤销幂等返回既有结果。</summary>
     /// <remarks>权限：<c>connector.authorize</c>。跨租户或非本人会话统一返回 404。</remarks>
     /// <param name="id">授权会话主键。</param>

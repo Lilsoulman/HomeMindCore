@@ -572,3 +572,52 @@ row_version（与既有 Enable/Run 一致）。
 **B24 实施状态（2026-08-08）**：`029` 迁移落地——新建平台级 `skills` 目录表（`tenant_id=1`，同 `scenario_templates` 惯例；key 唯一 / category / input_schema_json / output_schema_json / required_permission / risk_level / status）并种子注册 `quick-edit`（category=`media`、`risk_level=L1`、`required_permission=media.read`），`family_audit_logs` CHECK 扩展 `skill_run_created`/`skill_action_confirmed`/`skill_draft_registered` 动作与 `skill_run`/`skill_draft` 目标（一次到位，B25 无新迁移）；EF 迁移 `AddSkillCatalog`（仅建表、无 CHECK、不更新快照）。`media.read` 权限注册（owner/admin/member，viewer 不含）；`SkillCatalog` 实体（表 `skills`，与 `ai_skills` 用户自定义技能语义分离）；`ISkillRunServices`/`SkillRunServices`（SkillRun 创建：解析平台 Skill → 校验输入（`media_location` 必填）→ 确定性方案生成（指令时长提取 1-600 秒、默认 15 秒、单片段方案，蛇形键承载于动作 RequestJson）→ SourceType=skill 的 AgentRun + `draft_generate` Action（L1）+ `skill_run_created` 审计；幂等重放 200、同键异类型 409；`GetAsync` 跨租户/跨用户 404）；`SkillRunsController` 路由 `POST /api/v1/skills/{skillCode}/runs`（`ai.run` + `media.read` 双策略）；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 165/165（新增 SkillRunServicesTests 7 项：创建/方案时长解析/幂等重放/未知 Skill 422/非法输入 422/跨租户 404/审计/同键异类型 409）；真实 MySQL 029 顺序迁移已在本机执行验证（seed 落库 + CHECK 生效）；剪辑 MCP 选型与部署形态仍为 B25 前置依赖。
 
 **B25 实施状态（2026-08-09）**：`IClippingMcpClient`/`MockClippingMcpClient` 已发布（确定性 Mock：按剪辑方案生成最小剪映草稿 JSON——片段序列/总时长/draft_roaming_id，不访问素材目录、不产生真实文件路径；真实 jianying-mcp / capcut-mate 接入为部署环境验证项）。`ISkillRunServices.ConfirmActionAsync`/`SkillRunServices` 确认执行链路：UUID 幂等键 422 校验 → `ActionExecutionAudits` 同键重放首次结果不重复登记 → 权限快照复验 → 经剪辑 MCP 生成 .draft 内容 → `RegisterGeneratedFileAsync` 登记 `quick_edit_{runId}.draft.json`（application/json，附件到 run，解析 fileId/sizeBytes）→ action `executed`/run `completed`，登记失败 502、action/run `failed`；写 `skill_action_confirmed`（目标 `skill_run`）与 `skill_draft_registered`（目标 `skill_draft`）审计；**无新迁移**。`SkillRunsController` 新增路由 `POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`，非法幂等键 422/动作不存在或非本人 404/已终态换键 409）；下载复用既有 `POST /api/v1/expert-files/{fileId}/read-token`（10 分钟 readToken）。`dotnet build` 0 errors/0 CS1591（唯一警告为存量 ScenarioWorkflowServices 可空性，非本切片引入），`dotnet test` 全绿 170/170（新增 SkillRunServicesTests 5 项：确认执行登记与双审计/幂等重放/422-404-409/登记失败 502 与终态/Mock 草稿结构）；真实 MySQL 无需新迁移；剪辑 MCP 端到端（真实写入素材与剪映草稿目录）按部署环境验证。
+
+## 17. V2.6 小红书个人级 Connector（xhs）
+
+小红书作为个人级 Connector 落地（产品决策：搜索 + 发布；形态匹配产品总设计 §12「内容发布 Provider」方向）。经本地 stdio MCP（xhs-mcp，Puppeteer 驱动）调用，扫码登录、凭据由本机 MCP 进程管理；搜索/详情只读 L1，发布 L2 逐项确认。本地优先部署于开发机，生产按 N97 另行评估。
+
+### 17.1 领域与部署形态
+
+- **Provider**：`xhs`（provider=`xhs_mcp`、connector_type=`social`），`binding_scope=personal` + `owner_user_id`（JWT 推导），成员仅管理本人实例；
+- **MCP 客户端**：`IMcpProcessClient`/`StdioMcpProcessClient` 本地 stdio JSON-RPC 客户端（UTF-8 双管道、懒启动+initialize 握手、按 id 关联、超时、进程重建，进程级单例共享）；`IXhsMcpClient`/`XhsMcpClient` 封装 `xhs_auth_status`/`xhs_auth_login`/`xhs_auth_logout`/`xhs_search_note`/`xhs_get_note_detail`/`xhs_publish_content`，只读解析稳健降级（解析失败返回空结果不抛异常，字段映射以部署的 xhs-mcp 版本契约为准，部署验证时校准）；`MockXhsMcpClient` 确定性 Mock（DI 默认注册，`Mcp:Clients:Xhs:Enabled=true` 切换真实，测试与无 node 环境回退）；
+- **安全约束**：凭据（cookie/登录态）由本地 MCP 进程管理，不落库、不返回、不记录；`credential_ref` 仅存 `local://xhs-sessions/{uuid}` 会话标识；响应绝不包含 MCP 内部路径、登录态明文或 Prompt。
+
+### 17.2 迁移 `030`
+
+- `connector_providers` 注册 `xhs`（ON DUPLICATE KEY UPDATE 同 024 惯例）；
+- `family_audit_logs` CHECK 扩展 `xhs_note_published` 动作与 `xhs_note` 目标（B27 发布消费，一次到位）；
+- **无 EF 迁移**（同 B23/B25 先例：无表结构变更不生成 EF 迁移，种子与 CHECK 由 `database/030` 管理）。
+
+### 17.3 授权适配（扫码登录态 ↔ 现有模型，不改表结构）
+
+- **发起**：`StartAuthorizationAsync` xhs 分支跳过回调白名单与 Vault 检查，调用 `xhs_auth_login` 触发扫码，`redirect_uri` 落库占位 `xhs://local-polling`、pkce 为空、`state_hash` 保存一次性标识；响应携带 `QrContent`（`AuthorizationSessionView` 扩展字段）；
+- **轮询**：新增 `PollAuthorizationAsync`（路由 `POST /api/v1/connector-authorizations/{id}/poll`）：未登录 202；登录成功后创建/更新 personal `WorkspaceConnector`（`auth_status=connected`、`credential_ref=local://xhs-sessions/{uuid}`）并写 `connector_authorize_completed` 审计；过期/已结束 409，跨租户/非本人 404；
+- **撤销**：`RevokeAuthorizationAsync` xhs 分支调用 `xhs_auth_logout`（失败不阻塞状态流转），重复撤销幂等返回既有结果；
+- 授权动作复用既有 `connector_authorize_*` 审计动作与目标，无新增。
+
+### 17.4 工具与服务与 API
+
+- `IXhsConnectorServices`/`XhsConnectorServices`：搜索/详情/登录状态执行前统一校验连接器归属（当前租户 + personal + 本人 owner + `auth_status=connected`），未授权统一 404；
+- 路由与权限：
+
+| 路由 | 方法 | 权限 | 风险 |
+| --- | --- | --- | --- |
+| `/api/v1/connector-providers/xhs/notes/search?query=&limit=` | GET | `connector.read` | L1 只读 |
+| `/api/v1/connector-providers/xhs/notes/detail?url=` | GET | `connector.read` | L1 只读 |
+| `/api/v1/connector-providers/xhs/auth-status` | GET | `connector.read` | L1 只读 |
+| `/api/v1/connector-providers/xhs/authorizations` | POST | `connector.authorize` | 发起扫码 |
+| `/api/v1/connector-authorizations/{id}/poll` | POST | `connector.authorize` | 轮询登录 |
+| `/api/v1/connector-authorizations/{id}` | GET/DELETE | `connector.authorize` | 状态/撤销 |
+
+- 发布（B27）：`xhs_publish_content` 为 L2 对外发布动作，走 ExpertRunAction 确认链路（幂等键 + ActionExecutionAudits 重放 + 权限快照复验），确认后执行并写 `xhs_note_published` 审计；发布参数校验：图文标题≤20 字符、正文≤1000 字、图片≤18，视频恰 1 个文件。
+
+### 17.5 切片与验收
+
+| 切片 | 范围 | 最小验收 |
+| --- | --- | --- |
+| B26 | `030` 迁移（xhs Provider + 审计 CHECK）、stdio MCP 客户端基础设施、扫码授权（发起/轮询/撤销）、搜索/详情/登录状态 API（L1） | `dotnet build` 0 errors / 0 CS1591（无新增警告）；`dotnet test` 全绿（新增 XhsConnectorServicesTests 7 项 + AuthorizationServicesTests xhs 分支 5 项）；真实 MySQL 030 顺序迁移本机验证；真实 xhs-mcp 扫码与搜索端到端按部署环境验证 |
+| B27 | 发布 L2 确认链路 + 真实发布执行 + `xhs_note_published` 审计 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（发布创建/确认/幂等/422-404-409/失败 502）；真实发布按部署环境验证 |
+| B28 | 剪映真实 MCP 接入：`JianyingMcpClient` 实现 `IClippingMcpClient`（create_draft + 片段装配 + 字节流返回），配置可回退 Mock | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（既有 170+ 保留）；本机 jianying-mcp 部署后真实草稿生成端到端按部署环境验证 |
+
+**B26 实施状态（2026-08-09）**：`030` 迁移落地——`connector_providers` 注册 `xhs`（provider=`xhs_mcp`、connector_type=`social`），`family_audit_logs` CHECK 扩展 `xhs_note_published`/`xhs_note`（一次到位，B27 无新迁移）；无 EF 迁移（同 B23/B25 先例）。`IMcpProcessClient`/`StdioMcpProcessClient`/`McpProcessOptions`/`McpClientException` 本地 stdio MCP 客户端发布（JSON-RPC 2.0、UTF-8 双管道、懒启动+握手、超时、进程重建；进程客户端进程级单例共享——Scoped 注册会导致每请求重启 MCP 进程，与「本地助手进程」定位矛盾，故注册为 Singleton，回顾模式记录此偏差）。`IXhsMcpClient`/`XhsMcpClient`/`MockXhsMcpClient` 发布（工具映射见 17.1；DI 默认 Mock，`Mcp:Clients:Xhs:Enabled=true` 切换真实）。扫码授权适配：`StartAuthorizationAsync` xhs 分支（跳过白名单与 Vault、占位 `xhs://local-polling`、pkce 空、返回 `QrContent`）、新增 `PollAuthorizationAsync`（未登录 202/完成落库+审计）、`RevokeAuthorizationAsync` xhs 分支（`xhs_auth_logout` 失败不阻塞、幂等）。`IXhsConnectorServices`/`XhsConnectorServices` 搜索/详情/登录状态（未授权 404、只读 L1）；`XhsController` 三条 GET 路由（`connector.read`）；`ConnectorsController` 新增 poll 路由（`connector.authorize`）。`dotnet build` 0 errors/0 CS1591（21 个警告均为既有存量，无新增），`dotnet test` 全绿 182/182（新增 XhsConnectorServicesTests 7 项 + xhs 授权分支 5 项）；真实 MySQL 030 顺序迁移已在本机执行验证（xhs Provider 落库 + CHECK 接受 `xhs_note_published`/`xhs_note`）；真实 xhs-mcp 扫码授权与搜索端到端按部署环境验证。
