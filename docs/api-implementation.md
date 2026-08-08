@@ -657,10 +657,14 @@ B24/B25 不新建轮询端点。剪辑 MCP 端到端（真实 jianying-mcp 写�
 | `GET /api/v1/connector-providers/xhs/notes/search?query=&limit=` | `connector.read` | 只读 L1。`query` 必填（空 422），`limit` 1-50 默认 10。连接器未授权（无 personal 已连接 xhs 实例）404。成功返回 `XhsNoteSummaryView[]`（`NoteId/Title/CoverUrl/AuthorName/Link`） |
 | `GET /api/v1/connector-providers/xhs/notes/detail?url=` | `connector.read` | 只读 L1。`url` 必填（空 422），连接器未授权 404。成功返回 `XhsNoteDetailView`（`NoteId/Title/Content/Images/Link`） |
 | `GET /api/v1/connector-providers/xhs/auth-status` | `connector.read` | 连接器未授权 404；成功返回 `XhsAuthStatusView`（`LoggedIn/Message`） |
+| `POST /api/v1/connector-providers/xhs/notes/publish` | `ai.run` + `connector.write` | 创建 L2 发布动作。请求 `{ idempotencyKey?, type, title, content, mediaPaths, tags? }`：`type`=image（标题≤20 字符、正文≤1000 字、图片≤18）/video（恰 1 个文件），参数非法 422；连接器未授权 404；同键已用于其他运行类型 409。成功 201 返回 `XhsPublishActionView`（`ActionId/ActionType= xhs_publish/Status=pending/Title/Description/RiskLevel=L2`）；同键重复创建 200 重放既有动作。创建不写审计 |
+| `POST /api/v1/connector-providers/xhs/publish-actions/{actionId}/confirm` | `ai.run` + `connector.write` | 确认并执行发布。请求 `{ idempotencyKey }`（UUID 必填）。非法幂等键 422；动作不存在或非本人 404；已终态换键 409；同键重复确认重放首次结果（不重复发布）。确认后经本地 MCP `xhs_publish_content` 执行 → action `executed`/run `completed` + 写 `xhs_note_published` 审计（目标 `xhs_note`）；成功 200 返回 `{ actionId, status, message, noteId }`，消息「小红书笔记发布成功。」；发布失败 502、action/run `failed` |
 
 配置：`Mcp:Clients:Xhs`（`Enabled` 默认 false 走 `MockXhsMcpClient` 确定性 Mock，true 时经本地
 stdio xhs-mcp 真实调用；`CommandFileName`/`Arguments`/`TimeoutSeconds`）。审计动作新增
-`xhs_note_published`（目标 `xhs_note`，B27 发布消费）。响应不含 cookie、登录态明文、凭据引用或 MCP 内部路径。
+`xhs_note_published`（目标 `xhs_note`）。`031` 迁移重建 `expert_runs.ck_run_source` CHECK：
+原 expert/group 语义不变，追加 `scenario`/`skill`/`xhs`（补 B22/B24 真实库缺口）。响应不含
+cookie、登录态明文、凭据引用或 MCP 内部路径。
 
 ## 本地运行
 

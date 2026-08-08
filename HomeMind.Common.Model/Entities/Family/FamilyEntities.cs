@@ -195,6 +195,8 @@ public static class FamilyAuditActions
     public const string SkillActionConfirmed = "skill_action_confirmed";
     /// <summary>Skill 产物文件登记为生成文件；由 Skill 运行服务写入（B25 消费）。</summary>
     public const string SkillDraftRegistered = "skill_draft_registered";
+    /// <summary>小红书笔记发布完成（L2 确认后执行）；由小红书发布服务写入（B27 消费）。</summary>
+    public const string XhsNotePublished = "xhs_note_published";
 }
 
 /// <summary>家庭上下文审计目标类型集合，决定 <see cref="FamilyAuditLog.TargetType"/> 的合法取值。</summary>
@@ -226,6 +228,8 @@ public static class FamilyAuditTargetTypes
     public const string SkillRun = "skill_run";
     /// <summary>目标为 Skill 产物（剪映 .draft 草稿）文件登记。</summary>
     public const string SkillDraft = "skill_draft";
+    /// <summary>目标为小红书（xhs）笔记发布（L2 确认后执行）。</summary>
+    public const string XhsNote = "xhs_note";
 }
 
 /// <summary>家庭域审计记录实体；与管家动态、运行事件分离，专门承载 Family 域可审计动作。</summary>

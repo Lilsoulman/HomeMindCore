@@ -87,6 +87,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISkillRunServices, SkillRunServices>();
         services.AddScoped<IClippingMcpClient, MockClippingMcpClient>();
         services.AddScoped<IXhsConnectorServices, XhsConnectorServices>();
+        services.AddScoped<IXhsPublishServices, XhsPublishServices>();
         // 本地 stdio MCP 进程客户端：进程级共享（单例），进程内懒启动；命令与超时来自配置。
         services.AddSingleton<IMcpProcessClient>(sp =>
         {

@@ -78,6 +78,10 @@ public sealed class XhsLoginHintView
 /// <summary>小红书图文/视频笔记发布请求体。</summary>
 public sealed class XhsPublishRequest
 {
+    /// <summary>UUID 幂等键（可选）：同一键重复创建返回既有发布动作，不重复生成。</summary>
+    [Description("UUID 幂等键（可选）：同一键重复创建返回既有发布动作，不重复生成。")]
+    public string? IdempotencyKey { get; init; }
+
     /// <summary>发布类型：image（图文）或 video（视频）。</summary>
     [Required, Description("发布类型：image（图文）或 video（视频）。")]
     public string Type { get; init; } = "";
@@ -113,4 +117,40 @@ public sealed class XhsPublishResultView
     /// <summary>面向用户的发布结果描述。</summary>
     [Description("面向用户的发布结果描述。")]
     public string Message { get; init; } = "";
+}
+
+/// <summary>确认小红书发布动作的请求体。</summary>
+public sealed class XhsPublishConfirmRequest
+{
+    /// <summary>UUID 幂等键，同一键仅执行一次发布并重放首次结果。</summary>
+    [Required, Description("UUID 幂等键，同一键仅执行一次发布并重放首次结果。")]
+    public string IdempotencyKey { get; init; } = "";
+}
+
+/// <summary>小红书发布动作视图；用于确认中心的 L2 确认项展示。</summary>
+public sealed class XhsPublishActionView
+{
+    /// <summary>动作主键。</summary>
+    [Description("动作主键。")]
+    public long ActionId { get; init; }
+
+    /// <summary>动作类型（xhs_publish）。</summary>
+    [Description("动作类型（xhs_publish）。")]
+    public string ActionType { get; init; } = "";
+
+    /// <summary>动作状态（pending / executing / executed / failed）。</summary>
+    [Description("动作状态（pending / executing / executed / failed）。")]
+    public string Status { get; init; } = "";
+
+    /// <summary>动作标题。</summary>
+    [Description("动作标题。")]
+    public string Title { get; init; } = "";
+
+    /// <summary>动作描述（内容摘要、配图数量等）。</summary>
+    [Description("动作描述（内容摘要、配图数量等）。")]
+    public string Description { get; init; } = "";
+
+    /// <summary>风险等级（L2）。</summary>
+    [Description("风险等级（L2）。")]
+    public string RiskLevel { get; init; } = "L2";
 }

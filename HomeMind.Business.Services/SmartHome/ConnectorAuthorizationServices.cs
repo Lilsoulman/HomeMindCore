@@ -98,7 +98,7 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
             InitiatorUserId = userId,
             StateHash = HashSha256(state),
             PkceVerifierRef = isXhs ? null : EncryptedPkcePrefix + Convert.ToBase64String(_protector.Encrypt(GeneratePkceVerifier())),
-            RedirectUri = isXhs ? XhsPollingRedirectUri : request.RedirectUri.Trim(),
+            RedirectUri = isXhs ? XhsPollingRedirectUri : request.RedirectUri!.Trim(),
             Status = ConnectorAuthorizationSessionStatus.Pending,
             ExpiresAt = now.Add(SessionLifetime),
             CreatedAt = now,

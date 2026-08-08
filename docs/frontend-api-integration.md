@@ -1628,6 +1628,7 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `POST /api/v1/connectors`、`/connectors/{id}/test`、`/connectors/{id}/discovery`、`/connectors/{id}/sync`、`PUT /api/v1/connectors/{id}/authorizations/{memberUserId}` | `connector.write` |
 | `POST /api/v1/connector-providers/{providerCode}/authorizations`、`GET/DELETE /api/v1/connector-authorizations/{id}`（B18 个人授权）、`GET /api/v1/connector-authorizations/my`（B19 我的个人连接）、`POST /api/v1/connector-authorizations/{id}/poll`（B26 小红书扫码轮询） | `connector.authorize` |
 | `GET /api/v1/connector-providers/xhs/notes/search`、`/notes/detail`、`/auth-status`（B26 小红书搜索/详情/登录状态） | `connector.read` |
+| `POST /api/v1/connector-providers/xhs/notes/publish`、`POST /api/v1/connector-providers/xhs/publish-actions/{actionId}/confirm`（B27 小红书发布 L2 确认） | `ai.run` + `connector.write` |
 | `GET /api/v1/homes/{homeId}/members`、`GET /api/v1/homes/{homeId}/invitations`、`GET/PUT /api/v1/web/navigation`（读取） | `tenant.read`（B19） |
 | `PUT /api/v1/homes/{homeId}/members/{id}/role`、`PUT .../{id}/status`、`POST /api/v1/homes/{homeId}/owner-transfer`、`POST/DELETE /api/v1/homes/{homeId}/invitations`、`PUT /api/v1/web/navigation`（写入） | `tenant.member.manage`（B19，owner/admin） |
 | `GET /api/v1/automation-rules` | `automation.read` |
@@ -1714,4 +1715,8 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 - `GET /api/v1/connector-providers/xhs/notes/detail?url=`（`connector.read`）：`url` 必填（空 422）；未授权 404；响应 `XhsNoteDetailView`：`{ noteId, title, content, images[], link }`。
 - `GET /api/v1/connector-providers/xhs/auth-status`（`connector.read`）：未授权 404；响应 `{ loggedIn, message }`。
 
-客户端约束：不得记录 `qrContent` 之外的登录态信息；响应不含 cookie、凭据引用或 MCP 内部路径。搜索端点依赖本机 xhs-mcp 部署（开发环境 `Mcp:Clients:Xhs:Enabled=false` 时返回 Mock 数据，仅用于联调）。发布契约（L2 确认）随 B27 发布。
+客户端约束：不得记录 `qrContent` 之外的登录态信息；响应不含 cookie、凭据引用或 MCP 内部路径。搜索端点依赖本机 xhs-mcp 部署（开发环境 `Mcp:Clients:Xhs:Enabled=false` 时返回 Mock 数据，仅用于联调）。
+
+发布（B27，L2 逐项确认）：
+- `POST /api/v1/connector-providers/xhs/notes/publish`（`ai.run` + `connector.write`）：请求 `{ idempotencyKey?, type: "image"|"video", title, content, mediaPaths[], tags? }`；参数非法 422、连接器未授权 404、同键异类型 409。成功 201 返回 `XhsPublishActionView`：`{ actionId, actionType: "xhs_publish", status: "pending", title, description, riskLevel: "L2" }`，客户端在确认中心展示「确认发布小红书笔记」L2 确认项（内容摘要/配图数量）；同键重复创建 200 重放既有动作。
+- `POST /api/v1/connector-providers/xhs/publish-actions/{actionId}/confirm`（`ai.run` + `connector.write`）：请求 `{ idempotencyKey }`（UUID 必填）；非法幂等键 422、动作不存在/非本人 404、已终态换键 409、同键重复确认重放首次结果。成功 200 返回 `{ actionId, status, message, noteId }`；发布失败 502。确认后用户可在小红书查看已发布笔记，客户端不得缓存或记录发布内容之外的登录态信息。

@@ -552,6 +552,7 @@ add_video_segment / add_audio_segment 写入 → export_draft()
 | 日期 | 主题 | 本文变更 | 前端同步 | 后端同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | 2026-08-09 | V2.5 B25 剪辑执行与文件登记 | 快速剪辑确认执行链路落地：`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`）确认 `draft_generate` 动作 → 剪辑 MCP 客户端（确定性 Mock `MockClippingMcpClient`，不访问素材目录、不产生真实文件路径）生成 .draft 草稿内容 → `RegisterGeneratedFileAsync` 登记为 Ready 生成文件（附件到 run）→ 下载复用既有 readToken 端点（10 分钟）；`skill_action_confirmed`/`skill_draft_registered` 审计；无新迁移；剪辑 MCP 真实项目选型与部署形态（jianying-mcp/capcut-mate，需可访问素材与剪映草稿目录的主机）转为部署环境验证项，不阻塞 B24/B25 收口 | 待同步 Web 端文档（快速剪辑工作台确认与下载流程接入 7.8 契约） | 已同步后端总设计（§16 B25 实施状态）与开发计划（B25 已完成，V2.5 收口） | 已同步 |
+| 2026-08-09 | V2.6 小红书笔记发布（B27） | 发布 L2 确认链路落地：`031` 迁移重建 `expert_runs.ck_run_source` CHECK（追加 scenario/skill/xhs，补 B22/B24 真实库缺口）；`IXhsPublishServices`/`XhsPublishServices`（参数校验 → SourceType=xhs 的 Run + `xhs_publish` Action L2 → 确认经本地 MCP `xhs_publish_content` 发布 → `xhs_note_published` 审计）；`POST notes/publish` 与 `POST publish-actions/{actionId}/confirm`（`ai.run` + `connector.write`）；幂等重放不重复发布 | 待同步 Web 端文档（发布确认接入 10.1 契约） | 已同步后端总设计（§17 B27 实施状态）与开发计划（B27 已完成，B28 下一步） | 已同步 |
 | 2026-08-09 | V2.6 小红书个人级 Connector（B26 授权与搜索） | 小红书作为个人级 Connector 落地（搜索+发布，经本地 stdio MCP xhs-mcp 调用，Puppeteer 扫码登录、凭据本机管理）：`030` 迁移注册 xhs Provider 与 `xhs_note_published`/`xhs_note` 审计 CHECK；本地 MCP 客户端基础设施（`IMcpProcessClient`/`StdioMcpProcessClient` + `IXhsMcpClient`/`XhsMcpClient`/Mock）；扫码登录态适配现有授权模型（发起扫码/轮询/撤销，不改表结构、不落 cookie 明文、`credential_ref` 仅存 `local://xhs-sessions/{uuid}`）；搜索/详情只读 L1 API 与登录状态；发布（L2）按 B27 排期 | 待同步 Web 端文档（小红书授权扫码/搜索接入 10.1 契约） | 已同步后端总设计（§17 B26 实施状态）与开发计划（B26 已完成，B27 下一步） | 已同步 |
 | 2026-08-08 | V2.5 B24 快速剪辑 Skill 基线 | `029` 迁移新建平台级 `skills` 目录表（key/category/input_schema/output_schema/required_permission/risk_level，tenant_id=1）并注册 `quick-edit`（media/L1/media.read）；`media.read` 权限（owner/admin/member）；`POST /api/v1/skills/{skillCode}/runs` 发布（SourceType=skill、确定性方案生成 + `draft_generate` Action L1、`skill_run_created` 审计）；剪辑 MCP 选型与部署形态仍为 B25 前置依赖 | 待同步 Web 端文档（快速剪辑工作台接入 7.7 契约） | 已同步后端总设计（§16 B24 实施状态）与开发计划（B24 已完成，B25 下一步） | 已同步 |
 | 2026-08-08 | V2.5 快速剪辑跨端修订 | 复杂 Skill（快速剪辑）整体归 Web 端完整流程（工作台表单/方案确认/草稿下载），移动端无入口、仅保留简单 Skill；新增「Skill 跨端分级」（按产物形态判定，不引入 mobile_friendly 元数据）；Skill 独立执行端点 `POST /api/v1/skills/{skillCode}/runs`（SourceType=skill，同场景工作流先例，不绑定专家）与 `media.read` 权限；剪辑 MCP 选型与部署形态为后端 B24/B25 前置依赖 | 已同步前端总设计（移动端无新增、显式边界）与 Web 端文档（快速剪辑工作台页面） | 已同步后端总设计（§16）与开发计划（B24/B25） | 已同步 |
@@ -748,7 +749,7 @@ V2.3 个人生活专家后端切片（B15 收藏基线、B16 注册与翻牌、B
 - 定义年费续费钩子，包括权益、宽限期、到期降级、提醒和支付回调边界；
 - 确定推送聚合策略的具体窗口、摘要频率、成员偏好与 L2/L3 升级规则；
 - 确定个人生活专家的 OCR 截图识别能力进入后续版本的具体排期与第三方依赖（短视频生成已排期 V2.5 快速剪辑，见 §7.1）。
-- 确定可画、飞书、钉钉等 Productivity/Future Connector Provider 的接入排期（影响专家对话框的可选连接器列表）。（小红书已作为首个内容发布类个人级 Connector 排期落地：B26 授权与搜索已完成、B27 发布排期中，见 §12。）
+- 确定可画、飞书、钉钉等 Productivity/Future Connector Provider 的接入排期（影响专家对话框的可选连接器列表）。（小红书已作为首个内容发布类个人级 Connector 落地：B26 授权与搜索、B27 发布已完成，见 §12。）
 
 ## 12. V2.4 家庭与个人连接器、Web 治理
 
