@@ -435,6 +435,19 @@ configured."`（配置 SSRF 白名单规则前，iCal 网络拉取处于禁用�
 - 轮询复用既有 `GET /api/v1/expert-runs/{id}` 等 expert-runs 契约，B24 不新建轮询端点；
 - 响应不包含素材目录内容、MCP 内部路径、草稿绝对路径或 Prompt。
 
+### 7.8 `POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（B25 确认执行）
+
+权限：`ai.run` + `media.read`。确认 `draft_generate` 动作，经剪辑 MCP 生成 .draft 草稿并登记为生成文件。请求体小驼峰：
+
+```json
+{ "idempotencyKey": "3f7c0b2e-..." }   // UUID 必填，重复提交只返回首次结果
+```
+
+- 非法幂等键 → HTTP 422；动作不存在/非本人 → 404；已终态换键 → 409；
+- 成功 HTTP 200：`Data` 为 `{ actionId, status, message, fileId }`，`message="草稿已生成，打开剪映即可编辑。"`；
+- 登记失败 → HTTP 502；
+- **下载流程**（Web 端快速剪辑工作台）：拿到 `fileId` 后调用既有 `POST /api/v1/expert-files/{fileId}/read-token` 获取 10 分钟 readToken，再用 `ReadUrl` 拉取草稿文件。
+
 ## 8. AI 专家与 AgentRun 模块（`/api/v1/...`）
 
 `ExpertsController` 挂载在 `api/v1` 下（而非 `api/v1/experts`），以保留
@@ -1630,7 +1643,7 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `GET/POST/PUT/DELETE /api/v1/life/favorites[...]`、`POST /api/v1/life/favorites/import` | `life.favorite.read` / `life.favorite.write`（B14 预注册，B15 起消费） |
 | `GET /api/v1/conversations`、`GET /api/v1/conversations/{id}`、`GET /api/v1/conversations/{id}/messages` | `conversation.read`（B20，仅本人会话） |
 | `POST /api/v1/conversations`、`PUT/DELETE /api/v1/conversations/{id}`、`POST /api/v1/conversations/{id}/messages` | `conversation.write`（B20，仅本人会话） |
-| `POST /api/v1/skills/{skillCode}/runs`（B24 快速剪辑） | `ai.run` + `media.read`（owner/admin/member） |
+| `POST /api/v1/skills/{skillCode}/runs`、`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（B24/B25 快速剪辑） | `ai.run` + `media.read`（owner/admin/member） |
 
 角色（`owner` / `admin` / `member` / `viewer`）及允许的策略在
 `HomeMind.Api/Services/Authorization.cs` 中定义。新增角色或范围时
@@ -1674,6 +1687,7 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `WebNavigationRouteView.routeKey`（B19） | `tenant.dashboard` \| `tenant.confirmations` \| `tenant.steward` \| `tenant.knowledge` \| `tenant.family` \| `tenant.life` \| `tenant.connectors` \| `tenant.connector.authorize`（后端静态白名单） |
 | `WebNavigationPreferenceUpdateItem.sortOrder`（B19） | 0-1000 整数；值越小越靠前 |
 | `SkillRunActionView.actionType`（B24） | `draft_generate`（快速剪辑方案，L1） |
+| `AgentRun.status`（B25 SkillRun 确认后） | 确认成功 → `completed`；草稿生成/登记失败 → `failed` |
 
 ## 10. V2.4 Connector Scope 与个人授权
 

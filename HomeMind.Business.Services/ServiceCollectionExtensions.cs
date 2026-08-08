@@ -82,6 +82,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConversationServices, ConversationServices>();
         services.AddScoped<IExpertSelfServeServices, ExpertSelfServeServices>();
         services.AddScoped<ISkillRunServices, SkillRunServices>();
+        services.AddScoped<IClippingMcpClient, MockClippingMcpClient>();
         return services;
     }
 }

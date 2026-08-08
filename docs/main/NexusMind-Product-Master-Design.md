@@ -493,6 +493,8 @@ add_video_segment / add_audio_segment 写入 → export_draft()
 
 **B24 实施状态（2026-08-08）**：`029` 迁移新建平台级 `skills` 目录表（tenant_id=1）并注册 `quick-edit`（media / L1 / media.read），`family_audit_logs` CHECK 扩展 `skill_run_created`/`skill_action_confirmed`/`skill_draft_registered` 与 `skill_run`/`skill_draft`；`POST /api/v1/skills/{skillCode}/runs`（`ai.run` + `media.read`）已发布：确定性方案生成（指令时长提取 1-600 秒、默认 15 秒、单片段方案）+ `draft_generate` Action（L1）+ `skill_run_created` 审计；`dotnet build` 0 errors/0 CS1591、`dotnet test` 全绿 165/165、真实 MySQL 029 顺序迁移已在本机验证。剪辑 MCP 选型与部署形态仍为 B25（Action 确认 → 剪辑 MCP 写入草稿 → 生成文件登记 → readToken 下载）前置依赖。
 
+**B25 实施状态（2026-08-09）**：`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`）已发布：确认 `draft_generate` 动作 → 剪辑 MCP 客户端（当前为确定性 Mock `MockClippingMcpClient`，不访问素材目录、不产生真实文件路径）生成 .draft 草稿内容 → `RegisterGeneratedFileAsync` 登记为 Ready 生成文件（附件到 run）→ 下载复用既有 readToken 端点（10 分钟）；写 `skill_action_confirmed`/`skill_draft_registered` 审计；无新迁移；`dotnet build` 0 errors/0 CS1591、`dotnet test` 全绿 170/170（新增确认执行/幂等重放/错误分支/Mock 草稿 5 项测试）。剪辑 MCP 真实项目选型与部署形态（jianying-mcp / capcut-mate，需部署于可访问素材与剪映草稿目录的主机，符合本地优先原则）为部署环境验证项，不阻塞 B24/B25 切片收口。
+
 ## 8. 文档治理与联动
 
 本文件是“为什么做、做什么、跨端如何协作”的总纲，也是控制产品走向的唯一最终产品内容输出。当前产品由一人负责从产品设计、研发设计到落地，因此该维护者同时承担产品决策收敛、跨端拆分和实施状态核对职责；但产品、前端、后端和计划表仍须保持各自明确的内容边界。
@@ -549,6 +551,7 @@ add_video_segment / add_audio_segment 写入 → export_draft()
 
 | 日期 | 主题 | 本文变更 | 前端同步 | 后端同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-09 | V2.5 B25 剪辑执行与文件登记 | 快速剪辑确认执行链路落地：`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`）确认 `draft_generate` 动作 → 剪辑 MCP 客户端（确定性 Mock `MockClippingMcpClient`，不访问素材目录、不产生真实文件路径）生成 .draft 草稿内容 → `RegisterGeneratedFileAsync` 登记为 Ready 生成文件（附件到 run）→ 下载复用既有 readToken 端点（10 分钟）；`skill_action_confirmed`/`skill_draft_registered` 审计；无新迁移；剪辑 MCP 真实项目选型与部署形态（jianying-mcp/capcut-mate，需可访问素材与剪映草稿目录的主机）转为部署环境验证项，不阻塞 B24/B25 收口 | 待同步 Web 端文档（快速剪辑工作台确认与下载流程接入 7.8 契约） | 已同步后端总设计（§16 B25 实施状态）与开发计划（B25 已完成，V2.5 收口） | 已同步 |
 | 2026-08-08 | V2.5 B24 快速剪辑 Skill 基线 | `029` 迁移新建平台级 `skills` 目录表（key/category/input_schema/output_schema/required_permission/risk_level，tenant_id=1）并注册 `quick-edit`（media/L1/media.read）；`media.read` 权限（owner/admin/member）；`POST /api/v1/skills/{skillCode}/runs` 发布（SourceType=skill、确定性方案生成 + `draft_generate` Action L1、`skill_run_created` 审计）；剪辑 MCP 选型与部署形态仍为 B25 前置依赖 | 待同步 Web 端文档（快速剪辑工作台接入 7.7 契约） | 已同步后端总设计（§16 B24 实施状态）与开发计划（B24 已完成，B25 下一步） | 已同步 |
 | 2026-08-08 | V2.5 快速剪辑跨端修订 | 复杂 Skill（快速剪辑）整体归 Web 端完整流程（工作台表单/方案确认/草稿下载），移动端无入口、仅保留简单 Skill；新增「Skill 跨端分级」（按产物形态判定，不引入 mobile_friendly 元数据）；Skill 独立执行端点 `POST /api/v1/skills/{skillCode}/runs`（SourceType=skill，同场景工作流先例，不绑定专家）与 `media.read` 权限；剪辑 MCP 选型与部署形态为后端 B24/B25 前置依赖 | 已同步前端总设计（移动端无新增、显式边界）与 Web 端文档（快速剪辑工作台页面） | 已同步后端总设计（§16）与开发计划（B24/B25） | 已同步 |
 | 2026-08-08 | V2.5 快速剪辑 Skill | 落地「快速剪辑」Skill：素材位置 + 创作目标和指令 → jianying-mcp/capcut-mate 调 FFmpeg 解析 → 生成剪映 .draft 草稿并登记 Expert File；产物可编辑不对外发布、低风险、方案确认后生成；跨端契约：移动端对话、web 端目录/运行/下载复用；§2 短视频生成拆为「快速剪辑已排期 + 一键成片仍不纳入」；剪辑 MCP 独立于 CreatorMcp（遵守 §12.2-5） | 待同步前端总设计（运行详情文件下载复用，无新页面） | 待同步后端总设计（SkillExecutor 实现、剪辑 MCP 客户端、media.read） | 待同步 |

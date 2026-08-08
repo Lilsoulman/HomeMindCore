@@ -1,8 +1,11 @@
 using System.Text.Json;
+using HomeMind.Business.IServices.AI;
+using HomeMind.Business.IServices.Expert;
 using HomeMind.Business.Services.AI;
 using HomeMind.Business.Services.Family;
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Model.Entities.Family;
+using HomeMind.Common.Model.ViewModel.Common;
 using HomeMind.Common.Model.ViewModel.Data.AI;
 using HomeMind.Common.Repository;
 using Microsoft.EntityFrameworkCore;
@@ -172,8 +175,132 @@ public class SkillRunServicesTests
         Assert.Equal(1, await db.AgentRuns.CountAsync());
     }
 
-    private static SkillRunServices NewServices(HomeMindDbContext db) =>
-        new(db, new FamilyAuditLogger(db, NullLogger<FamilyAuditLogger>.Instance));
+    /// <summary>确认执行：经剪辑 MCP 生成草稿并登记为生成文件，action executed、run completed、两条审计落库。</summary>
+    [Fact]
+    public async Task Confirm_Executes_Registers_Draft_And_Audits()
+    {
+        await using var db = NewDb("confirm-execute");
+        SeedQuickEdit(db);
+        var files = new FakeExpertFileServices();
+        var services = NewServices(db, files);
+        var runId = await CreateRunAsync(services, db);
+        var actionId = await db.ExpertRunActions.Where(x => x.ActionType == "draft_generate").Select(x => x.Id).SingleAsync();
+
+        var result = await services.ConfirmActionAsync(10, 1, runId, actionId, new ConfirmSkillRunActionRequest(Guid.NewGuid().ToString()), default);
+
+        Assert.Equal(200, result.StatusCode);
+        var action = await db.ExpertRunActions.SingleAsync();
+        Assert.Equal("executed", action.Status);
+        var run = await db.AgentRuns.SingleAsync();
+        Assert.Equal("completed", run.Status);
+        Assert.Contains("剪映", run.ResultSummary);
+        Assert.Equal(1, files.RegisterCalls);
+        Assert.Equal($"quick_edit_{runId}.draft.json", files.LastName);
+        Assert.Equal("application/json", files.LastMime);
+        Assert.Equal(runId, files.LastRunId);
+        Assert.NotNull(files.LastContent);
+        Assert.True(files.LastContent!.Length > 0);
+
+        Assert.Equal(1, await db.FamilyAuditLogs.CountAsync(x => x.Action == FamilyAuditActions.SkillActionConfirmed));
+        Assert.Equal(1, await db.FamilyAuditLogs.CountAsync(x => x.Action == FamilyAuditActions.SkillDraftRegistered));
+        var draftAudit = await db.FamilyAuditLogs.SingleAsync(x => x.Action == FamilyAuditActions.SkillDraftRegistered);
+        Assert.Equal(FamilyAuditTargetTypes.SkillDraft, draftAudit.TargetType);
+        Assert.NotNull(draftAudit.TargetId);
+    }
+
+    /// <summary>同一幂等键重复确认重放首次结果，不重复登记草稿文件。</summary>
+    [Fact]
+    public async Task Confirm_Replays_Same_Idempotency_Key()
+    {
+        await using var db = NewDb("confirm-replay");
+        SeedQuickEdit(db);
+        var files = new FakeExpertFileServices();
+        var services = NewServices(db, files);
+        var runId = await CreateRunAsync(services, db);
+        var actionId = await db.ExpertRunActions.Where(x => x.ActionType == "draft_generate").Select(x => x.Id).SingleAsync();
+        var key = Guid.NewGuid().ToString();
+
+        var first = await services.ConfirmActionAsync(10, 1, runId, actionId, new ConfirmSkillRunActionRequest(key), default);
+        var second = await services.ConfirmActionAsync(10, 1, runId, actionId, new ConfirmSkillRunActionRequest(key), default);
+
+        Assert.Equal(200, first.StatusCode);
+        Assert.Equal(200, second.StatusCode);
+        Assert.Equal(1, files.RegisterCalls);
+    }
+
+    /// <summary>非法幂等键 422；非本人动作 404；已终态换键 409。</summary>
+    [Fact]
+    public async Task Confirm_Rejects_Invalid_Key_Missing_Action_And_Reprocessing()
+    {
+        await using var db = NewDb("confirm-errors");
+        SeedQuickEdit(db);
+        var services = NewServices(db);
+        var runId = await CreateRunAsync(services, db);
+        var actionId = await db.ExpertRunActions.Where(x => x.ActionType == "draft_generate").Select(x => x.Id).SingleAsync();
+
+        var invalidKey = await services.ConfirmActionAsync(10, 1, runId, actionId, new ConfirmSkillRunActionRequest("not-a-uuid"), default);
+        Assert.Equal(422, invalidKey.StatusCode);
+
+        var missing = await services.ConfirmActionAsync(11, 1, runId, actionId, new ConfirmSkillRunActionRequest(Guid.NewGuid().ToString()), default);
+        Assert.Equal(404, missing.StatusCode);
+
+        var first = await services.ConfirmActionAsync(10, 1, runId, actionId, new ConfirmSkillRunActionRequest(Guid.NewGuid().ToString()), default);
+        Assert.True(first.Succeeded);
+        var reprocessed = await services.ConfirmActionAsync(10, 1, runId, actionId, new ConfirmSkillRunActionRequest(Guid.NewGuid().ToString()), default);
+        Assert.Equal(409, reprocessed.StatusCode);
+    }
+
+    /// <summary>文件登记失败：action failed、run failed、502，不写 skill_draft_registered 审计。</summary>
+    [Fact]
+    public async Task Confirm_Fails_When_Registration_Fails()
+    {
+        await using var db = NewDb("confirm-register-fail");
+        SeedQuickEdit(db);
+        var files = new FakeExpertFileServices { FailRegistration = true };
+        var services = NewServices(db, files);
+        var runId = await CreateRunAsync(services, db);
+        var actionId = await db.ExpertRunActions.Where(x => x.ActionType == "draft_generate").Select(x => x.Id).SingleAsync();
+
+        var result = await services.ConfirmActionAsync(10, 1, runId, actionId, new ConfirmSkillRunActionRequest(Guid.NewGuid().ToString()), default);
+
+        Assert.Equal(502, result.StatusCode);
+        var action = await db.ExpertRunActions.SingleAsync();
+        Assert.Equal("failed", action.Status);
+        var run = await db.AgentRuns.SingleAsync();
+        Assert.Equal("failed", run.Status);
+        Assert.Equal(1, await db.FamilyAuditLogs.CountAsync(x => x.Action == FamilyAuditActions.SkillActionConfirmed));
+        Assert.Equal(0, await db.FamilyAuditLogs.CountAsync(x => x.Action == FamilyAuditActions.SkillDraftRegistered));
+    }
+
+    /// <summary>Mock 剪辑 MCP 生成确定性草稿结构：片段/时长/来源与方案一致。</summary>
+    [Fact]
+    public async Task MockClipping_Generates_Draft_With_Plan_Summary()
+    {
+        var client = new MockClippingMcpClient();
+
+        var content = await client.GenerateDraftAsync("""{"media_location":"/nas/videos/探店.mp4","instruction":"竖屏 30 秒","segments":[{"index":1,"source":"探店.mp4","duration":30}],"total_duration":30}""", default);
+
+        Assert.NotNull(content);
+        Assert.True(content.Length > 0);
+        using var document = JsonDocument.Parse(content);
+        var root = document.RootElement;
+        Assert.True(root.TryGetProperty("mock", out var mock) && mock.GetBoolean());
+        Assert.Equal(1, root.GetProperty("summary").GetProperty("segment_count").GetInt32());
+        Assert.Equal(30, root.GetProperty("summary").GetProperty("total_duration").GetInt32());
+        var video = root.GetProperty("materials").GetProperty("videos")[0];
+        Assert.Equal("探店.mp4", video.GetProperty("source").GetString());
+        Assert.Equal(30, video.GetProperty("duration").GetInt32());
+    }
+
+    private static async Task<long> CreateRunAsync(SkillRunServices services, HomeMindDbContext db)
+    {
+        var created = await services.CreateAsync(10, 1, "quick-edit", new SkillRunCreateRequest(null, """{"media_location":"/nas/videos/探店.mp4","instruction":"竖屏 30 秒"}"""), default);
+        Assert.True(created.Succeeded);
+        return Assert.IsType<SkillRunView>(created.Data).Id;
+    }
+
+    private static SkillRunServices NewServices(HomeMindDbContext db, FakeExpertFileServices? files = null) =>
+        new(db, new FamilyAuditLogger(db, NullLogger<FamilyAuditLogger>.Instance), new MockClippingMcpClient(), files ?? new FakeExpertFileServices());
 
     private static HomeMindDbContext NewDb(string name) =>
         new(new DbContextOptionsBuilder<HomeMindDbContext>()
@@ -199,5 +326,47 @@ public class SkillRunServicesTests
             UpdatedAt = DateTime.UtcNow
         });
         db.SaveChanges();
+    }
+
+    /// <summary>专家文件服务测试替身：仅登记服务端生成文件，记录调用参数并返回固定 fileId。</summary>
+    private sealed class FakeExpertFileServices : IExpertFileServices
+    {
+        /// <summary>是否模拟登记失败（对象存储不可用）。</summary>
+        public bool FailRegistration { get; set; }
+
+        /// <summary>登记调用次数。</summary>
+        public int RegisterCalls { get; private set; }
+
+        /// <summary>最近一次登记的文件名。</summary>
+        public string? LastName { get; private set; }
+
+        /// <summary>最近一次登记的 MIME 类型。</summary>
+        public string? LastMime { get; private set; }
+
+        /// <summary>最近一次登记的文件内容。</summary>
+        public byte[]? LastContent { get; private set; }
+
+        /// <summary>最近一次登记的附件运行主键。</summary>
+        public long? LastRunId { get; private set; }
+
+        public Task<ServiceResult> RegisterGeneratedFileAsync(long userId, long tenantId, string name, string mimeType, byte[] content, long? attachRunId, CancellationToken cancellationToken = default)
+        {
+            RegisterCalls++;
+            LastName = name;
+            LastMime = mimeType;
+            LastContent = content;
+            LastRunId = attachRunId;
+            if (FailRegistration) return Task.FromResult(new ServiceResult(503, "对象存储暂不可用，请稍后重试。"));
+            return Task.FromResult(new ServiceResult(201, "生成文件已就绪。", new { fileId = 100, status = "ready", name, mimeType, sizeBytes = content.Length }));
+        }
+
+        public Task<ServiceResult> CreateUploadAsync(long userId, long tenantId, ExpertFileUploadRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ServiceResult> CommitObjectAsync(long userId, long tenantId, long fileId, ExpertFileObjectRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ServiceResult> ListAsync(long userId, long tenantId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ServiceResult> DeleteAsync(long userId, long tenantId, long fileId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ServiceResult> AttachToExpertAsync(long userId, long tenantId, long expertId, ExpertFileAttachmentRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ServiceResult> AttachToRunAsync(long userId, long tenantId, long runId, ExpertFileAttachmentRequest request, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ServiceResult> GenerateReadTokenAsync(long userId, long tenantId, long fileId, string purpose, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public Task<ServiceResult> GetContentAsync(long userId, long tenantId, long fileId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

@@ -5,6 +5,10 @@ namespace HomeMind.Common.Model.ViewModel.Data.AI;
 /// <param name="InputJson">Skill 输入参数 JSON，如 {"media_location":"...","instruction":"..."}。</param>
 public sealed record SkillRunCreateRequest(string? IdempotencyKey, string InputJson);
 
+/// <summary>确认 Skill 运行动作（draft_generate）的请求体。</summary>
+/// <param name="IdempotencyKey">UUID 幂等键，重复提交只返回首次执行结果，不重复登记草稿文件。</param>
+public sealed record ConfirmSkillRunActionRequest(string IdempotencyKey);
+
 /// <summary>Skill 运行视图（SourceType=skill）；只展示展示安全字段，不包含素材绝对路径、草稿路径或 Prompt。</summary>
 /// <param name="Id">运行主键。</param>
 /// <param name="Status">运行生命周期状态。</param>

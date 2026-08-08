@@ -23,7 +23,7 @@ JSON 输入中的这些值。
 | 认证 | `POST /api/v1/auth/register`、`/login`、`/refresh`、`/logout`、`/wechat/exchange`（未实现）；`GET /api/v1/auth/me` |
 | 待办 | `GET/POST /api/v1/todos`；`PUT/DELETE /api/v1/todos/{id}`；`POST /api/v1/todos/{id}/subtasks`、`PUT/DELETE /api/v1/todos/{id}/subtasks/{subId}` |
 | 日历 | `GET/POST /api/v1/calendar/events`、`PUT/DELETE /api/v1/calendar/events/{id}`；`GET/POST /api/v1/calendar/subscriptions`、`PUT/DELETE /api/v1/calendar/subscriptions/{id}`；`POST /api/v1/calendar/ical/fetch`（未实现） |
-| 技能 | `GET/POST /api/v1/skills`；`PUT/DELETE /api/v1/skills/{id}`；Skill 独立运行（B24）：`POST /api/v1/skills/{skillCode}/runs`（`ai.run` + `media.read`，SourceType=skill，不绑定专家） |
+| 技能 | `GET/POST /api/v1/skills`；`PUT/DELETE /api/v1/skills/{id}`；Skill 独立运行（B24/B25）：`POST /api/v1/skills/{skillCode}/runs`、`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`，SourceType=skill，不绑定专家） |
 | AI 配置 | `GET/PUT /api/v1/ai/config`（B18 新增 `enabled` 字段，默认 `true`，切换开关不传 `apiKey` 即可保留密文）；`POST /api/v1/ai/{generate,chat,stream}`（B18 占位，启用 → 501，未启用 → 422 + `Code=42200`） |
 | 专家目录 | `GET /api/v1/experts?scope=basic\|mine\|all`（B21 起支持来源过滤，默认 basic 向后兼容；列表项含 `Source` 字段，不暴露他人 owner）、`GET /api/v1/experts/{id}`（他人自建/已软删 404）；自建专家（B21）：`POST /api/v1/experts`、`PUT/DELETE /api/v1/experts/{id}`（`expert.mine.write`，PUT 携带 RowVersion 乐观锁 409/40903，更新生成 version+1 已发布版本） |
 | 智能体运行时 / 专家运行 | `POST /api/v1/expert-runs`、`GET /api/v1/expert-runs/{id}`、`/events`、`/actions`、`/actions/{actionId}/confirm`、`/cancel`、`/retry`；`POST /api/v1/expert-runs/{id}/actions` 创建动作。路由名称为兼容性保留，但领域资源为 `AgentRun`。 |
@@ -623,21 +623,23 @@ Skill 声明 `favorite.recommend`/`trip.plan`/`favorite.create`）：
 
 自建专家不写 `family_audit_logs`（设计 §13.1 仅要求会话审计）。
 
-## V2.5 快速剪辑 Skill（已发布，B24）
+## V2.5 快速剪辑 Skill（已发布，B24/B25）
 
 Skill 独立执行（SkillExecutor 首个实现）：`029` 迁移新建平台级 `skills` 目录表
 （`tenant_id=1`，同 `scenario_templates` 惯例）并种子注册 `quick-edit`
 （category=`media`、`risk_level=L1`、`required_permission=media.read`）；运行创建
 SourceType=skill 的 AgentRun（不绑定 Expert，`expert_id` 为空），复用确认/幂等/审计链路，
-不新建运行时。执行与产物写入（剪辑 MCP）在 B25。
+不新建运行时。B25 起确认后经剪辑 MCP 客户端（当前为确定性 Mock 实现 `MockClippingMcpClient`，
+真实 jianying-mcp/capcut-mate 接入为部署环境验证项）生成 .draft 草稿内容并登记为生成文件。
 
 | 端点 | 权限 | 契约要点 |
 | --- | --- | --- |
 | `POST /api/v1/skills/{skillCode}/runs` | `ai.run` + `media.read` | 请求 `{ idempotencyKey?, inputJson }`；`inputJson` 含 `media_location`（必填，素材位置）与 `instruction`（可选，创作目标和指令）。未知/未启用 Skill 422；`media_location` 缺失或 JSON 非法 422。成功 201 返回 `SkillRunView`（`Id/Status/ResultSummary/CreatedAt/FinishedAt/Events/Actions`，动作 `ActionType=draft_generate`、`RiskLevel=L1`）。确定性方案生成：从 `instruction` 提取目标时长（`N秒/N分钟`，1-600 秒，默认 15 秒），单片段方案承载于动作 RequestJson（`media_location`/`instruction`/`segments`/`audio`/`total_duration`）。幂等键重复创建返回既有运行（200）；同键已用于其他运行类型 409。创建写 `skill_run_created` 审计（目标 `skill_run`） |
+| `POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm` | `ai.run` + `media.read` | 请求 `{ idempotencyKey }`（UUID 必填）。非法幂等键 422；动作不存在/非本人 404；已终态换键 409；同键重复确认重放首次结果（不重复登记）。确认后：经剪辑 MCP 生成 .draft 内容 → `RegisterGeneratedFileAsync` 登记为 Ready 生成文件（文件名 `quick_edit_{runId}.draft.json`，`application/json`，附件到 run）→ action `executed`、run `completed`；写 `skill_action_confirmed`（目标 `skill_run`）与 `skill_draft_registered`（目标 `skill_draft`）审计。成功 200 返回 `{ actionId, status, message, fileId }`，消息「草稿已生成，打开剪映即可编辑。」；登记失败 502、action/run `failed`。下载复用既有 `POST /api/v1/expert-files/{fileId}/read-token`（10 分钟 readToken） |
 
 响应不包含素材目录内容、MCP 内部路径、草稿绝对路径或 Prompt。运行轮询/取消/重试
 复用既有 `expert-runs` 契约（`GET /api/v1/expert-runs/{id}`、`/events`、`/cancel`、`/retry`），
-B24 不新建轮询端点。
+B24/B25 不新建轮询端点。剪辑 MCP 端到端（真实 jianying-mcp 写入素材/剪映草稿目录）按部署环境验证。
 
 ## 本地运行
 

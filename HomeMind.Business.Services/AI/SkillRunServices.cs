@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using HomeMind.Business.IServices.AI;
+using HomeMind.Business.IServices.Expert;
 using HomeMind.Business.IServices.Family;
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Model.Entities.Family;
@@ -15,8 +16,10 @@ namespace HomeMind.Business.Services.AI;
 /// <summary>
 /// Skill 独立执行确定性编排（SkillExecutor 首个实现）：按 skillCode 解析平台级 Skill 目录，
 /// 校验输入参数（素材位置必填）后确定性生成剪辑方案（片段序列/音频/时长摘要），产出单个
-/// <c>draft_generate</c> Run Action（L1）等待用户确认。运行复用既有 AgentRun、确认、幂等与
-/// 审计边界，不新建运行时；响应与审计不包含素材目录内容、MCP 内部路径、草稿绝对路径或 Prompt。
+/// <c>draft_generate</c> Run Action（L1）等待用户确认；确认后经剪辑 MCP 客户端生成 .draft
+/// 草稿内容并复用 <c>RegisterGeneratedFileAsync</c> 登记为生成文件。运行复用既有 AgentRun、
+/// 确认、幂等与审计边界，不新建运行时；响应与审计不包含素材目录内容、MCP 内部路径、
+/// 草稿绝对路径或 Prompt。
 /// </summary>
 public sealed class SkillRunServices : ISkillRunServices
 {
@@ -26,14 +29,20 @@ public sealed class SkillRunServices : ISkillRunServices
 
     private readonly HomeMindDbContext _db;
     private readonly IFamilyAuditLogger _audit;
+    private readonly IClippingMcpClient _clippingMcp;
+    private readonly IExpertFileServices _files;
 
     /// <summary>构造 Skill 运行服务。</summary>
     /// <param name="db">数据库上下文。</param>
     /// <param name="audit">家庭域审计日志写入器，SkillRun 创建审计使用。</param>
-    public SkillRunServices(HomeMindDbContext db, IFamilyAuditLogger audit)
+    /// <param name="clippingMcp">剪辑 MCP 客户端，确认后生成 .draft 草稿内容。</param>
+    /// <param name="files">专家文件服务，登记生成的草稿文件。</param>
+    public SkillRunServices(HomeMindDbContext db, IFamilyAuditLogger audit, IClippingMcpClient clippingMcp, IExpertFileServices files)
     {
         _db = db;
         _audit = audit;
+        _clippingMcp = clippingMcp;
+        _files = files;
     }
 
     /// <inheritdoc />
@@ -109,6 +118,132 @@ public sealed class SkillRunServices : ISkillRunServices
             x => x.Id == runId && x.TenantId == tenantId && x.UserId == userId && x.SourceType == "skill", cancellationToken);
         if (run is null) return new ServiceResult(404, "请求的 Skill 运行不存在。");
         return new ServiceResult(200, "查询成功。", await ToViewAsync(run, cancellationToken));
+    }
+
+    /// <inheritdoc />
+    public async Task<ServiceResult> ConfirmActionAsync(long userId, long tenantId, long runId, long actionId, ConfirmSkillRunActionRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(request.IdempotencyKey, out _))
+            return new ServiceResult(422, "确认 Skill 动作时必须提供有效的幂等键。");
+
+        var action = await _db.ExpertRunActions.SingleOrDefaultAsync(x =>
+            x.Id == actionId && x.RunId == runId && x.TenantId == tenantId && x.UserId == userId && x.ActionType == "draft_generate", cancellationToken);
+        if (action is null) return new ServiceResult(404, "请求的 Skill 动作不存在。");
+
+        var run = await _db.AgentRuns.SingleOrDefaultAsync(x => x.Id == runId && x.TenantId == tenantId, cancellationToken);
+        if (run is null) return new ServiceResult(404, "请求的运行不存在。");
+        if (!IsSnapshotAuthorized(run, userId))
+            return new ServiceResult(403, "当前成员无权执行该运行的动作。");
+
+        var idempotencyKey = request.IdempotencyKey;
+        var previous = await _db.ActionExecutionAudits.SingleOrDefaultAsync(
+            x => x.RunActionId == action.Id && x.IdempotencyKey == idempotencyKey, cancellationToken);
+        if (previous is not null) return ReplayActionResult(action, previous);
+        if (action.Status != "pending") return new ServiceResult(409, "该 Skill 动作已经确认或处理完成，不能再次执行。");
+
+        var now = DateTime.UtcNow;
+        action.Status = "executing";
+        action.UpdatedAt = now;
+        var audit = new ActionExecutionAudit
+        {
+            TenantId = tenantId,
+            RunActionId = action.Id,
+            OperatorUserId = userId,
+            IdempotencyKey = idempotencyKey,
+            Status = "executing",
+            Command = JsonSerializer.Serialize(new { action_type = "draft_generate" }),
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _db.ActionExecutionAudits.Add(audit);
+        AddEvent(run, await NextSequenceAsync(runId, cancellationToken), "action_confirmed", "已确认快速剪辑方案。", now);
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(tenantId, userId, FamilyAuditActions.SkillActionConfirmed, FamilyAuditTargetTypes.SkillRun,
+            run.Id, null, new { action_id = action.Id }, null, run.Id, cancellationToken);
+
+        string? failureMessage = null;
+        long? draftFileId = null;
+        string draftFileName = $"quick_edit_{run.Id}.draft.json";
+        long draftSizeBytes = 0;
+        try
+        {
+            var content = await _clippingMcp.GenerateDraftAsync(action.RequestJson, cancellationToken);
+            draftSizeBytes = content.Length;
+            var registered = await _files.RegisterGeneratedFileAsync(userId, tenantId, draftFileName, "application/json", content, run.Id, cancellationToken);
+            if (!registered.Succeeded)
+            {
+                failureMessage = registered.Message;
+            }
+            else
+            {
+                using var document = JsonDocument.Parse(JsonSerializer.Serialize(registered.Data, typeof(object), JsonOptions));
+                if (document.RootElement.TryGetProperty("fileId", out var fileId) && fileId.TryGetInt64(out var parsed)) draftFileId = parsed;
+                if (document.RootElement.TryGetProperty("sizeBytes", out var size) && size.TryGetInt64(out var parsedSize)) draftSizeBytes = parsedSize;
+            }
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            failureMessage = "剪辑草稿生成或登记失败。";
+        }
+
+        var succeeded = draftFileId is not null;
+        now = DateTime.UtcNow;
+        action.Status = succeeded ? "executed" : "failed";
+        action.Result = JsonSerializer.Serialize(succeeded
+            ? (object)new { status = action.Status, draft_file_id = draftFileId, file_name = draftFileName, size_bytes = draftSizeBytes }
+            : new { status = action.Status, error_code = "draft_generation_failed" });
+        action.UpdatedAt = now;
+        audit.Status = action.Status;
+        audit.Result = action.Result;
+        audit.UpdatedAt = now;
+
+        var summary = succeeded
+            ? "草稿已生成，打开剪映即可编辑。"
+            : $"草稿生成失败：{failureMessage ?? "剪辑服务不可用"}。";
+        run.Status = succeeded ? "completed" : "failed";
+        run.FinishedAt = now;
+        run.ResultSummary = summary;
+        run.Result = JsonSerializer.Serialize(succeeded
+            ? (object)new { skill_run = "quick_edit", status = run.Status, draft_file_id = draftFileId, file_name = draftFileName, size_bytes = draftSizeBytes }
+            : new { skill_run = "quick_edit", status = run.Status, error_code = "draft_generation_failed" }, JsonOptions);
+        AddEvent(run, await NextSequenceAsync(runId, cancellationToken), succeeded ? "action_executed" : "action_failed", summary, now);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        if (succeeded)
+        {
+            await _audit.LogAsync(tenantId, userId, FamilyAuditActions.SkillDraftRegistered, FamilyAuditTargetTypes.SkillDraft,
+                draftFileId, null, new { file_id = draftFileId, file_name = draftFileName, size_bytes = draftSizeBytes }, null, run.Id, cancellationToken);
+            return new ServiceResult(200, summary, new { actionId = action.Id, status = action.Status, message = summary, fileId = draftFileId });
+        }
+        return new ServiceResult(502, summary);
+    }
+
+    /// <summary>复验运行权限快照：快照缺失视为存量运行放行；SkillRun 为 household 快照且无连接器授权，仅校验归属。</summary>
+    private static bool IsSnapshotAuthorized(AgentRun run, long userId)
+    {
+        if (string.IsNullOrWhiteSpace(run.PermissionSnapshot)) return true;
+        try
+        {
+            using var document = JsonDocument.Parse(run.PermissionSnapshot);
+            if (document.RootElement.TryGetProperty("bindingScope", out var scope) && scope.GetString() == "personal")
+            {
+                return document.RootElement.TryGetProperty("ownerUserId", out var owner) && owner.TryGetInt64(out var ownerId) && ownerId == userId;
+            }
+            return true;
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>重放既有确认结果：同一幂等键仅返回首次执行结果，不重复生成或登记草稿。</summary>
+    private static ServiceResult ReplayActionResult(ExpertRunAction action, ActionExecutionAudit audit)
+    {
+        var succeeded = audit.Status == "executed";
+        return new ServiceResult(succeeded ? 200 : audit.Status == "executing" ? 202 : 502,
+            succeeded ? "草稿已生成，打开剪映即可编辑。" : "Skill 动作正在处理或已执行失败。",
+            succeeded ? new { actionId = action.Id, status = action.Status, message = "草稿已生成，打开剪映即可编辑。" } : null);
     }
 
     /// <summary>解析 Skill 输入 JSON：media_location 必填非空，instruction 可选；非法或缺字段返回 null。</summary>
@@ -238,6 +373,9 @@ public sealed class SkillRunServices : ISkillRunServices
             Payload = JsonSerializer.Serialize(new { message }),
             CreatedAt = createdAt
         });
+
+    private async Task<int> NextSequenceAsync(long runId, CancellationToken cancellationToken) =>
+        (await _db.RunEvents.Where(x => x.RunId == runId).MaxAsync(x => (int?)x.Sequence, cancellationToken) ?? 0) + 1;
 
     private static string ReadMessage(string payload)
     {

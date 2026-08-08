@@ -34,6 +34,19 @@ public sealed class SkillRunsController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<object>>> Create(string skillCode, SkillRunCreateRequest request) =>
         ToResponse(await WithUserAsync((user, token) => _skillRuns.CreateAsync(user.UserId, user.TenantId, skillCode, request, token)));
 
+    /// <summary>确认并执行 Skill 运行动作：经剪辑 MCP 生成 .draft 草稿并登记为生成文件；同幂等键重放首次结果。</summary>
+    /// <remarks>权限：<c>ai.run</c> + <c>media.read</c>。需要必填的 <c>idempotencyKey</c>；登记后下载复用既有
+    /// <c>POST /api/v1/expert-files/&#123;fileId&#125;/read-token</c>（10 分钟 readToken）。</remarks>
+    /// <param name="runId">运行主键。</param>
+    /// <param name="actionId">动作主键。</param>
+    /// <param name="request">确认请求体，含 UUID 幂等键。</param>
+    /// <returns>执行结果统一响应；非法幂等键返回 422；动作不存在返回 404；已终态返回 409。</returns>
+    [Authorize(Policy = PermissionNames.AiRun)]
+    [Authorize(Policy = PermissionNames.MediaRead)]
+    [HttpPost("runs/{runId:long}/actions/{actionId:long}/confirm")]
+    public async Task<ActionResult<ApiResponse<object>>> ConfirmAction(long runId, long actionId, ConfirmSkillRunActionRequest request) =>
+        ToResponse(await WithUserAsync((user, token) => _skillRuns.ConfirmActionAsync(user.UserId, user.TenantId, runId, actionId, request, token)));
+
     /// <summary>在用户上下文就绪时执行给定的业务回调，否则返回 401。</summary>
     /// <param name="action">执行业务逻辑的回调。</param>
     /// <returns>业务执行结果 <see cref="ServiceResult"/>。</returns>
