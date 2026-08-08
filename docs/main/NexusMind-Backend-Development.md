@@ -530,4 +530,43 @@ row_version（与既有 Enable/Run 一致）。
 
 **B22 实施状态（2026-08-07）**：迁移 `028_scenario_workflow.mysql.sql` 与 EF 迁移 `AddScenarioWorkflow` 已落地；`ScenarioTemplate`/`ScenarioInstance` 实体、`IScenarioWorkflowServices`/`ScenarioWorkflowServices`（模板/实例列表、Enable Device Resolver 容忍缺设备、Run 单 Action metadata、Confirm 逐步执行与状态汇总）与 `ScenarioController` 5 条路由已发布；权限 `smart_home.write` 注册（owner/admin/member）；`SmartHomeSceneServices` 兼容代理（懒启用 + scene_completed 发布保留）已发布；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 153/153（新增 ScenarioWorkflowServicesTests 12 项）；真实 MySQL 028 顺序迁移已在本机执行验证（3 模板种子落库）；真实设备执行仍按部署环境验证。
 
+## 16. V2.5 快速剪辑 Skill（Skill 独立执行）
+
+快速剪辑是 SkillExecutor 的首个实现：用户提供素材位置与创作目标和指令，服务端确定性生成剪辑方案，经用户确认后通过剪辑 MCP 在本地主机生成剪映 `.draft` 草稿并登记为生成文件。Skill 独立执行、不绑定 Expert（先例对齐 §15 场景工作流：SourceType=skill 的 AgentRun，复用确认/幂等/审计链路，不新建运行时）。
+
+### 16.1 领域与执行
+
+- **SkillRun**：`POST /api/v1/skills/{skillCode}/runs` 创建 SourceType=skill 的 AgentRun（不关联 Expert，`expert_id` 为空，与 scenario 同惯例），输入参数（素材位置、创作目标和指令）与剪辑方案写入 `RequestJson`/`ResultJson`，复用既有权限快照与 UUID 幂等键；
+- **方案生成（确定性）**：输入素材位置与创作指令 → 剪辑 MCP（jianying-mcp / capcut-mate，FFmpeg/ffprobe 为后台依赖）解析视频/音频时长与分辨率 → 生成剪辑方案摘要（片段序列/音频/时长）→ 产出 1 个 `draft_generate` Run Action（RiskLevel=L1）→ 方案摘要展示后经用户确认；
+- **执行与产物**：Action 确认（复用既有确认/幂等/审计链路）→ `add_video_segment`/`add_audio_segment` 写入 → `export_draft()` 生成 `.draft` → `RegisterGeneratedFileAsync` 登记为生成文件（复用专家文件链路，下载走 10 分钟 readToken）；
+- 剪辑 MCP 独立于 CreatorMcp，遵守本地优先原则；项目选型与部署形态为 B24/B25 前置依赖。
+
+### 16.2 迁移 `029`
+
+`database/029_quick_edit_skill.mysql.sql`（`-- Apply after 028`）：
+
+- `skills` 注册 `quick-edit`（category=`media`，输入/输出 schema 声明素材位置与创作指令，`risk_level=L1`）；
+- `family_audit_logs` action CHECK 扩展（`skill_run_created`/`skill_action_confirmed`/`skill_draft_registered`）与 target_type CHECK 扩展（`skill_run`/`skill_draft`）；
+- `expert_runs` 零改动：SourceType/RequestJson/ResultJson 既有列承载，不新增列（与 §15 同约定）。
+
+### 16.3 权限与 API
+
+- 新增权限 `media.read`（owner/admin/member；Skill 目录与运行发起前置）；Skill 运行沿用 `ai.run`；
+- `POST /api/v1/skills/{skillCode}/runs`：`ai.run` + `media.read`，请求含 UUID 幂等键与 Skill 输入参数；未知/未启用 Skill → 422，跨租户 → 404；
+- 运行轮询/取消/重试复用既有 `expert-runs` 契约（`GET /api/v1/expert-runs/{id}`、`/events`、`/cancel`、`/retry`）；
+- Action 确认沿用既有确认端点链路（`POST .../actions/{actionId}/confirm`：UUID 幂等键、ActionExecutionAudits 重放、权限快照复验），不新建并行确认机制；
+- 生成文件下载复用专家文件 readToken 下载；`GET /api/v1/skills` 目录接口既有已发布（CreatorMcp 已消费），快速剪辑沿用；
+- 响应绝不包含 MCP 内部路径、草稿绝对路径、素材目录内容或 Prompt。
+
+### 16.4 切片与验收
+
+| 切片 | 范围 | 最小验收 |
+| --- | --- | --- |
+| B24 | `029` 迁移、`media.read` 权限、SkillRun 创建 API（SourceType=skill）、确定性方案生成与 `draft_generate` Action | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（新增 SkillRun 测试：创建/幂等/未知 Skill 422/跨租户 404/方案生成/权限）；真实 MySQL 029 顺序迁移本机验证 |
+| B25 | Action 确认 → 剪辑 MCP 写入草稿 → `RegisterGeneratedFileAsync` 登记 → readToken 下载；审计 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（确认执行/幂等重放/文件登记/审计）；剪辑 MCP 端到端按部署环境验证（需可访问素材与草稿目录的主机） |
+
+字段级契约发布后同步 `docs/api-implementation.md` 与 `docs/frontend-api-integration.md`。
+
 **B23 实施状态（2026-08-08）**：`DisableAsync`（接口+实现+`ScenarioController` 第 6 条路由 `POST /scenarios/instances/{instanceId}/disable`，`smart_home.write`）已发布；`EnableAsync` 修正已禁用实例的恢复语义；无新迁移（复用 028 `status` 字段与 `ScenarioInstanceStatus.Disabled` 常量）；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 158/158（新增 ScenarioWorkflowServicesTests 5 项）；真实 MySQL 无需新迁移，设备执行仍按部署环境验证。
+
+**B24 实施状态（2026-08-08）**：`029` 迁移落地——新建平台级 `skills` 目录表（`tenant_id=1`，同 `scenario_templates` 惯例；key 唯一 / category / input_schema_json / output_schema_json / required_permission / risk_level / status）并种子注册 `quick-edit`（category=`media`、`risk_level=L1`、`required_permission=media.read`），`family_audit_logs` CHECK 扩展 `skill_run_created`/`skill_action_confirmed`/`skill_draft_registered` 动作与 `skill_run`/`skill_draft` 目标（一次到位，B25 无新迁移）；EF 迁移 `AddSkillCatalog`（仅建表、无 CHECK、不更新快照）。`media.read` 权限注册（owner/admin/member，viewer 不含）；`SkillCatalog` 实体（表 `skills`，与 `ai_skills` 用户自定义技能语义分离）；`ISkillRunServices`/`SkillRunServices`（SkillRun 创建：解析平台 Skill → 校验输入（`media_location` 必填）→ 确定性方案生成（指令时长提取 1-600 秒、默认 15 秒、单片段方案，蛇形键承载于动作 RequestJson）→ SourceType=skill 的 AgentRun + `draft_generate` Action（L1）+ `skill_run_created` 审计；幂等重放 200、同键异类型 409；`GetAsync` 跨租户/跨用户 404）；`SkillRunsController` 路由 `POST /api/v1/skills/{skillCode}/runs`（`ai.run` + `media.read` 双策略）；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 165/165（新增 SkillRunServicesTests 7 项：创建/方案时长解析/幂等重放/未知 Skill 422/非法输入 422/跨租户 404/审计/同键异类型 409）；真实 MySQL 029 顺序迁移已在本机执行验证（seed 落库 + CHECK 生效）；剪辑 MCP 选型与部署形态仍为 B25 前置依赖。

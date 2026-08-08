@@ -417,6 +417,24 @@ configured."`（配置 SSRF 白名单规则前，iCal 网络拉取处于禁用�
 
 权限：`ai.run`。调用前服务端校验 `enabled`；未启用 → HTTP 422、`Code=42200`、`Msg="AI 生成能力已禁用，请在设置中开启。"`；启用 → 暂返 HTTP 501 占位（待后续切片接入）。请求体 `{ "prompt": "..." }`，当前切片仅占位。
 
+### 7.7 `POST /api/v1/skills/{skillCode}/runs`（B24 快速剪辑 Skill）
+
+权限：`ai.run` + `media.read`。Skill 独立执行（SourceType=skill，不绑定专家），当前仅 `quick-edit`。请求体小驼峰：
+
+```json
+{
+  "idempotencyKey": "3f7c0b2e-...",   // 可选，重复提交只返回首次结果
+  "inputJson": "{\"media_location\":\"/nas/videos/探店.mp4\",\"instruction\":\"竖屏 30 秒，加字幕\"}"
+}
+```
+
+- `media_location`（素材位置）必填；缺失或 `inputJson` 非法 JSON → HTTP 422；
+- 未知/未启用 Skill → HTTP 422；
+- 成功 HTTP 201：`Data` 为 `SkillRunView`（`Id`/`Status`/`ResultSummary`/`CreatedAt`/`FinishedAt`/`Events`/`Actions`），动作 `ActionType=draft_generate`、`RiskLevel=L1`；
+- 确定性方案：从 `instruction` 提取目标时长（`N秒`/`N分钟`，1-600 秒，默认 15 秒），单片段方案；
+- 轮询复用既有 `GET /api/v1/expert-runs/{id}` 等 expert-runs 契约，B24 不新建轮询端点；
+- 响应不包含素材目录内容、MCP 内部路径、草稿绝对路径或 Prompt。
+
 ## 8. AI 专家与 AgentRun 模块（`/api/v1/...`）
 
 `ExpertsController` 挂载在 `api/v1` 下（而非 `api/v1/experts`），以保留
@@ -1612,6 +1630,7 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `GET/POST/PUT/DELETE /api/v1/life/favorites[...]`、`POST /api/v1/life/favorites/import` | `life.favorite.read` / `life.favorite.write`（B14 预注册，B15 起消费） |
 | `GET /api/v1/conversations`、`GET /api/v1/conversations/{id}`、`GET /api/v1/conversations/{id}/messages` | `conversation.read`（B20，仅本人会话） |
 | `POST /api/v1/conversations`、`PUT/DELETE /api/v1/conversations/{id}`、`POST /api/v1/conversations/{id}/messages` | `conversation.write`（B20，仅本人会话） |
+| `POST /api/v1/skills/{skillCode}/runs`（B24 快速剪辑） | `ai.run` + `media.read`（owner/admin/member） |
 
 角色（`owner` / `admin` / `member` / `viewer`）及允许的策略在
 `HomeMind.Api/Services/Authorization.cs` 中定义。新增角色或范围时
@@ -1630,7 +1649,7 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `AiConfig.enabled`（B18 起） | 布尔值；`false` 时 AI 生成能力（`/ai/{generate,chat,stream}` 与专家运行）整体不可用 |
 | `ExpertCatalog.catalogType` | `expert` \| `group` |
 | `ExpertCatalog.Source`（B21 起） | `basic`（平台基础）\| `mine`（本人自建） |
-| `AgentRun.sourceType` | `expert` \| `group` |
+| `AgentRun.sourceType` | `expert` \| `group` \| `scenario` \| `skill`（B24 起 Skill 独立执行） |
 | `AgentRun.conversationId`（B20 起） | 专家会话主键，可空 |
 | `ConversationMessage.role` | `user` \| `assistant` |
 | `Conversation.expertId` / `expertVersionId` | 同空或同非空（`expertId` 传 null 解绑） |
@@ -1654,6 +1673,7 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `TenantMemberInvitationCreateRequest.proposedRole`（B19） | `admin` \| `member` \| `viewer`（不得为 owner） |
 | `WebNavigationRouteView.routeKey`（B19） | `tenant.dashboard` \| `tenant.confirmations` \| `tenant.steward` \| `tenant.knowledge` \| `tenant.family` \| `tenant.life` \| `tenant.connectors` \| `tenant.connector.authorize`（后端静态白名单） |
 | `WebNavigationPreferenceUpdateItem.sortOrder`（B19） | 0-1000 整数；值越小越靠前 |
+| `SkillRunActionView.actionType`（B24） | `draft_generate`（快速剪辑方案，L1） |
 
 ## 10. V2.4 Connector Scope 与个人授权
 

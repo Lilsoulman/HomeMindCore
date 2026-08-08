@@ -39,6 +39,7 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<CalendarEventException> CalendarEventExceptions => Set<CalendarEventException>();
     public DbSet<IcalOverride> IcalOverrides => Set<IcalOverride>();
     public DbSet<AiSkill> AiSkills => Set<AiSkill>();
+    public DbSet<SkillCatalog> SkillCatalogs => Set<SkillCatalog>();
     public DbSet<KnowledgeItem> KnowledgeItems => Set<KnowledgeItem>();
     public DbSet<AiConfig> AiConfigs => Set<AiConfig>();
     public DbSet<AiCallLog> AiCallLogs => Set<AiCallLog>();
@@ -131,6 +132,8 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<DeviceCapability>().Property(x => x.ValueSchema).HasColumnType("json");
         modelBuilder.Entity<DeviceState>().Property(x => x.State).HasColumnType("json");
         modelBuilder.Entity<SceneAction>().Property(x => x.TargetValue).HasColumnType("json");
+        modelBuilder.Entity<SkillCatalog>().Property(x => x.InputSchema).HasColumnType("json");
+        modelBuilder.Entity<SkillCatalog>().Property(x => x.OutputSchema).HasColumnType("json");
         modelBuilder.Entity<ScenarioTemplate>().Property(x => x.TriggerKeywords).HasColumnType("json");
         modelBuilder.Entity<ScenarioTemplate>().Property(x => x.Steps).HasColumnType("json");
         modelBuilder.Entity<ScenarioInstance>().Property(x => x.TriggerKeywords).HasColumnType("json");

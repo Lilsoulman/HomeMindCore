@@ -189,6 +189,12 @@ public static class FamilyAuditActions
     public const string ConversationRename = "conversation_rename";
     /// <summary>专家会话被软删除；由会话服务写入。</summary>
     public const string ConversationDelete = "conversation_delete";
+    /// <summary>Skill 运行被创建（SourceType=skill）；由 Skill 运行服务写入。</summary>
+    public const string SkillRunCreated = "skill_run_created";
+    /// <summary>Skill 运行动作被用户确认；由 Skill 运行服务写入（B25 消费）。</summary>
+    public const string SkillActionConfirmed = "skill_action_confirmed";
+    /// <summary>Skill 产物文件登记为生成文件；由 Skill 运行服务写入（B25 消费）。</summary>
+    public const string SkillDraftRegistered = "skill_draft_registered";
 }
 
 /// <summary>家庭上下文审计目标类型集合，决定 <see cref="FamilyAuditLog.TargetType"/> 的合法取值。</summary>
@@ -216,6 +222,10 @@ public static class FamilyAuditTargetTypes
     public const string WebNavigationPreference = "web_navigation_preference";
     /// <summary>目标为 <see cref="HomeMind.Common.Model.Entities.Conversation"/>（会话创建/重命名/软删除）。</summary>
     public const string Conversation = "conversation";
+    /// <summary>目标为 SourceType=skill 的 <see cref="HomeMind.Common.Model.Entities.AgentRun"/>。</summary>
+    public const string SkillRun = "skill_run";
+    /// <summary>目标为 Skill 产物（剪映 .draft 草稿）文件登记。</summary>
+    public const string SkillDraft = "skill_draft";
 }
 
 /// <summary>家庭域审计记录实体；与管家动态、运行事件分离，专门承载 Family 域可审计动作。</summary>

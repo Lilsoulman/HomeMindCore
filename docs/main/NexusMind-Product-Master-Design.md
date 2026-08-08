@@ -62,7 +62,8 @@ Smart Home、日历、邮件、健康、财务、天气、出行和办公等外�
 - 装修户型图 AI 方案生成
 - 微信、企业微信、飞书、钉钉等协作平台 Connector
 - OCR 第三方截图识别（个人生活专家 MVP 以手工录入与对话提取为主）
-- 短视频一键生成（种草视频的脚本/合成能力，进入后续版本）
+- 快速剪辑（生成剪映 .draft 草稿）已排期 V2.5，见 §7.1
+- 一键成片渲染（短视频脚本与合成能力）仍暂不纳入
 
 ## 3. 信息架构与核心页面
 
@@ -429,6 +430,68 @@ Skill 是 AI 的“手脚”，定义稳定的输入、输出、权限和失败�
 | 控制灯光 | device / action | 执行结果 | `light.write` |
 | 控制空调 | device / mode / target | 执行结果 | `air.write` |
 | 创建家庭提醒 | schedule / content | 提醒 ID | `notification.write` |
+| 快速剪辑 | 素材位置 + 创作目标和指令 | 剪映 .draft 草稿（登记 Expert File） | `media.read`、`ai.skills.*` |
+
+### Skill 跨端分级
+
+Skill 按**产物形态**分级，决定其承载端（与「附件选择/上传、Action 确认、运行时间线、生成文件下载已移 PC 端」的既有决策同源）：
+
+- **简单 Skill（移动端）**：输出为即时状态/建议/单动作确认，单屏可完成，如读取家庭环境、控制灯光/空调、创建家庭提醒、场景一键执行、探店翻牌与行程规划；
+- **复杂 Skill（Web 端）**：输入含文件/路径或多步编排，产物为可下载文件，如快速剪辑（及未来的 PPT/渲染类）；
+- 分级判定以产物形态为准，不引入 `mobile_friendly` 等元数据字段（YAGNI，待 Skill 数量增长后再评估）。
+
+### 7.1 快速剪辑 Skill（V2.5）
+
+**产品目标**：把「探店/日常拍摄素材 → 可编辑剪映草稿」的重复劳动用对话完成。产物是剪映 .draft 草稿文件，可在剪映中继续编辑或渲染，**不做一键成片**；草稿为本地文件、可编辑可丢弃、不对外发布。
+
+**用户表达与执行链路**：
+
+```text
+用户："帮我剪一下探店视频"（+素材位置 +创作目标和指令）
+  ↓
+NexusMind Agent（理解意图）
+  ↓
+匹配「快速剪辑」Skill
+  ↓
+Skill Executor 调用剪辑 MCP（jianying-mcp / capcut-mate）
+  ↓
+MCP 调用 FFmpeg(ffprobe) 解析视频/音频时长与分辨率
+  ↓
+生成剪辑方案（片段序列/音频/时长摘要）→ 用户确认
+  ↓
+add_video_segment / add_audio_segment 写入 → export_draft()
+  ↓
+生成 .draft 草稿文件 → RegisterGeneratedFileAsync 登记（复用 Expert File 链路）
+  ↓
+返回"草稿已生成，打开剪映即可编辑"
+```
+
+**Skill 输入契约**：
+
+- `素材位置`：本机/NAS 目录路径或 URI（视频/音频文件或目录）；
+- `创作目标和指令`：自然语言，如时长、画幅比例、配乐、字幕等要求。
+
+**剪辑 MCP 工具契约**（jianying-mcp / capcut-mate，FFmpeg 为后台依赖）：
+
+| 工具 | 输入 | 输出 |
+| --- | --- | --- |
+| `add_video_segment` | video_url | 片段已写入草稿（含 ffprobe 解析的时长/分辨率） |
+| `add_audio_segment` | audio_url | 音频已写入草稿 |
+| `export_draft` | — | .draft 文件路径 |
+
+**确认与风险**：生成剪辑方案摘要（片段数/音频/时长）后经用户确认再写入草稿；草稿为本地可编辑可丢弃文件、不对外发布，属低风险操作，运行记录与审计留痕。素材读取需 `media.read` 权限（新权限码，与后端设计对齐时确认）。
+
+**跨端契约**：
+
+- 移动端：无入口、不承载该能力（复杂 Skill 不在移动端范围）；能力 Tab 仅保留既有只读运行记录入口；
+- Web 端：完整流程——快速剪辑工作台（`/app/media/quick-edit`）：素材位置与创作目标和指令表单 → 创建 Skill Run → 轮询至剪辑方案摘要 → Action 确认 → .draft 生成文件下载（复用 `/app/runs/:id` 现有 readToken 下载能力）；
+- 服务端：SkillExecutor 首个实现——Skill 独立执行（`POST /api/v1/skills/{skillCode}/runs`，SourceType=skill 的 AgentRun，不绑定专家，同场景工作流先例）、剪辑 MCP 客户端、`media.read` 权限、产物经 `RegisterGeneratedFileAsync` 登记。
+
+**验收标准**：对话输入素材位置与创作指令 → 返回 .draft 路径；ffprobe 元数据解析正确；草稿可在剪映打开编辑；运行/审计完整。
+
+**待决**（留待后端设计）：jianying-mcp / capcut-mate 具体项目选型与剪映版本兼容；剪辑 MCP 部署形态（需部署于可访问素材目录与剪映草稿目录的主机，符合本地优先原则）——两者为后端 B24/B25 切片的前置依赖。
+
+**B24 实施状态（2026-08-08）**：`029` 迁移新建平台级 `skills` 目录表（tenant_id=1）并注册 `quick-edit`（media / L1 / media.read），`family_audit_logs` CHECK 扩展 `skill_run_created`/`skill_action_confirmed`/`skill_draft_registered` 与 `skill_run`/`skill_draft`；`POST /api/v1/skills/{skillCode}/runs`（`ai.run` + `media.read`）已发布：确定性方案生成（指令时长提取 1-600 秒、默认 15 秒、单片段方案）+ `draft_generate` Action（L1）+ `skill_run_created` 审计；`dotnet build` 0 errors/0 CS1591、`dotnet test` 全绿 165/165、真实 MySQL 029 顺序迁移已在本机验证。剪辑 MCP 选型与部署形态仍为 B25（Action 确认 → 剪辑 MCP 写入草稿 → 生成文件登记 → readToken 下载）前置依赖。
 
 ## 8. 文档治理与联动
 
@@ -486,6 +549,9 @@ Skill 是 AI 的“手脚”，定义稳定的输入、输出、权限和失败�
 
 | 日期 | 主题 | 本文变更 | 前端同步 | 后端同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-08 | V2.5 B24 快速剪辑 Skill 基线 | `029` 迁移新建平台级 `skills` 目录表（key/category/input_schema/output_schema/required_permission/risk_level，tenant_id=1）并注册 `quick-edit`（media/L1/media.read）；`media.read` 权限（owner/admin/member）；`POST /api/v1/skills/{skillCode}/runs` 发布（SourceType=skill、确定性方案生成 + `draft_generate` Action L1、`skill_run_created` 审计）；剪辑 MCP 选型与部署形态仍为 B25 前置依赖 | 待同步 Web 端文档（快速剪辑工作台接入 7.7 契约） | 已同步后端总设计（§16 B24 实施状态）与开发计划（B24 已完成，B25 下一步） | 已同步 |
+| 2026-08-08 | V2.5 快速剪辑跨端修订 | 复杂 Skill（快速剪辑）整体归 Web 端完整流程（工作台表单/方案确认/草稿下载），移动端无入口、仅保留简单 Skill；新增「Skill 跨端分级」（按产物形态判定，不引入 mobile_friendly 元数据）；Skill 独立执行端点 `POST /api/v1/skills/{skillCode}/runs`（SourceType=skill，同场景工作流先例，不绑定专家）与 `media.read` 权限；剪辑 MCP 选型与部署形态为后端 B24/B25 前置依赖 | 已同步前端总设计（移动端无新增、显式边界）与 Web 端文档（快速剪辑工作台页面） | 已同步后端总设计（§16）与开发计划（B24/B25） | 已同步 |
+| 2026-08-08 | V2.5 快速剪辑 Skill | 落地「快速剪辑」Skill：素材位置 + 创作目标和指令 → jianying-mcp/capcut-mate 调 FFmpeg 解析 → 生成剪映 .draft 草稿并登记 Expert File；产物可编辑不对外发布、低风险、方案确认后生成；跨端契约：移动端对话、web 端目录/运行/下载复用；§2 短视频生成拆为「快速剪辑已排期 + 一键成片仍不纳入」；剪辑 MCP 独立于 CreatorMcp（遵守 §12.2-5） | 待同步前端总设计（运行详情文件下载复用，无新页面） | 待同步后端总设计（SkillExecutor 实现、剪辑 MCP 客户端、media.read） | 待同步 |
 | 2026-08-08 | V2.3 B23 场景实例禁用 | 场景实例 `status=enabled\|disabled` 语义落地：禁用只阻止新触发（Run 404）、不中断进行中运行、重复启用恢复；纯后端能力，不改领域模型与风险规则 | 已同步前端总设计（场景实例卡片「禁用/启用」入口） | 已同步后端总设计（§15 实例状态流转）与开发计划（B23） | 已同步 |
 | 2026-08-07 | V2.4 B22 场景工作流 | 落地「场景 = Run 的一种特殊输入」决策：`ScenarioTemplate`/`ScenarioInstance` 两级模型（平台模板 → 家庭实例），执行引擎硬编码（复用 Run Action 确认/幂等/审计链路）、内容配置化（实例化 Device Resolver 容忍缺设备）、步骤上下文承载于运行动作 metadata、不新增 Step 表与独立引擎；场景风险取步骤 MAX；旧场景路由保留为兼容代理；拖拽编排与步骤表按演进门槛（运营/用户/step SLA 需求）触发 | 待同步前端总设计（场景 Tab 模板化「一键启用」入口） | 已同步后端总设计（§15）与开发计划（B22） | 已同步 |
 | 2026-08-07 | V2.4 B19 Web 治理 API | 落地 `tenant_member_invitations`（手机号哈希邀请、owner 转让）与 `web_navigation_preferences`（角色粒度菜单偏好）+ 成员/角色受控管理 + 邀请流程 + 我的个人连接汇总；固定 4 角色不变；菜单偏好仅接受已发布 `route_key` 显隐/排序 | 待同步前端总设计 | 已同步后端总设计 | 已同步 |
@@ -677,7 +743,7 @@ V2.3 个人生活专家后端切片（B15 收藏基线、B16 注册与翻牌、B
 - 确定家庭成员生命周期状态机的管理权限、终态更正流程和数据保留期限；
 - 定义年费续费钩子，包括权益、宽限期、到期降级、提醒和支付回调边界；
 - 确定推送聚合策略的具体窗口、摘要频率、成员偏好与 L2/L3 升级规则；
-- 确定个人生活专家的 OCR 截图识别与短视频生成能力进入后续版本的具体排期与第三方依赖。
+- 确定个人生活专家的 OCR 截图识别能力进入后续版本的具体排期与第三方依赖（短视频生成已排期 V2.5 快速剪辑，见 §7.1）。
 - 确定可画、飞书、钉钉等 Productivity/Future Connector Provider 的接入排期（影响专家对话框的可选连接器列表）。
 
 ## 12. V2.4 家庭与个人连接器、Web 治理

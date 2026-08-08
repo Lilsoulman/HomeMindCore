@@ -666,3 +666,53 @@ public static class TeamRunMemberStatus
     /// <summary>被跳过（如合成模式下不参与执行）。</summary>
     public const string Skipped = "skipped";
 }
+
+/// <summary>平台级 Skill 目录表，声明 Skill 的输入/输出契约、所需权限与风险等级。</summary>
+/// <remarks>tenant_id 固定为 1（平台级，同 <c>scenario_templates</c> 惯例）；运行经
+/// <c>POST /api/v1/skills/&#123;skillCode&#125;/runs</c> 创建 SourceType=skill 的 AgentRun。
+/// 与 <see cref="AiSkill"/>（ai_skills 用户自定义技能）语义分离。</remarks>
+[Table("skills")]
+public sealed class SkillCatalog
+{
+    /// <summary>Skill 主键。</summary>
+    [Key, Column("id")] public long Id { get; set; }
+    /// <summary>所属租户标识，平台级固定 1。</summary>
+    [Column("tenant_id")] public long TenantId { get; set; }
+    /// <summary>Skill 业务键，全局唯一，路由 skillCode 即此字段。</summary>
+    [Column("key")] public string Key { get; set; } = null!;
+    /// <summary>Skill 对外展示名称。</summary>
+    [Column("name")] public string Name { get; set; } = null!;
+    /// <summary>Skill 分类，如 media。</summary>
+    [Column("category")] public string Category { get; set; } = null!;
+    /// <summary>Skill 描述，Swagger 展示与运行期说明使用。</summary>
+    [Column("description")] public string? Description { get; set; }
+    /// <summary>输入契约 JSON Schema，运行创建时校验输入参数。</summary>
+    [Column("input_schema_json")] public string InputSchema { get; set; } = null!;
+    /// <summary>输出契约 JSON Schema，可空。</summary>
+    [Column("output_schema_json")] public string? OutputSchema { get; set; }
+    /// <summary>调用该 Skill 所需的最小权限，如 media.read。</summary>
+    [Column("required_permission")] public string RequiredPermission { get; set; } = null!;
+    /// <summary>风险等级，取值参见 <see cref="ConfirmationRiskLevel"/>；快速剪辑为 L1。</summary>
+    [Column("risk_level")] public string RiskLevel { get; set; } = "L1";
+    /// <summary>Skill 状态，取值参见 <see cref="SkillCatalogStatus"/>。</summary>
+    [Column("status")] public string Status { get; set; } = "active";
+    /// <summary>记录创建时间（UTC）。</summary>
+    [Column("created_at", TypeName = "datetime(3)")] public DateTime CreatedAt { get; set; }
+    /// <summary>记录最近一次修改时间（UTC）。</summary>
+    [Column("updated_at", TypeName = "datetime(3)")] public DateTime UpdatedAt { get; set; }
+    /// <summary>软删除时间（UTC），非空表示已删除；已删除 Skill 不再可发起运行。</summary>
+    [Column("deleted_at", TypeName = "datetime(3)")] public DateTime? DeletedAt { get; set; }
+    /// <summary>行版本号，乐观锁比较字段。</summary>
+    [ConcurrencyCheck, Column("row_version")] public long RowVersion { get; set; } = 1;
+    /// <summary>行版本号，用于同步冲突检测。</summary>
+    [Column("sync_version")] public long SyncVersion { get; set; }
+}
+
+/// <summary>平台级 Skill 目录状态常量集合。</summary>
+public static class SkillCatalogStatus
+{
+    /// <summary>启用，可发起运行。</summary>
+    public const string Active = "active";
+    /// <summary>停用，运行发起返回 422。</summary>
+    public const string Inactive = "inactive";
+}

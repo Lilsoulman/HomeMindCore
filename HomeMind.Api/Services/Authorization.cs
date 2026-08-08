@@ -63,6 +63,7 @@ public static class PermissionNames
     public const string ConversationWrite = "conversation.write";
     public const string ExpertMineRead = "expert.mine.read";
     public const string ExpertMineWrite = "expert.mine.write";
+    public const string MediaRead = "media.read";
 
     public static IReadOnlyCollection<string> All { get; } = new[]
     {
@@ -102,6 +103,7 @@ public static class PermissionNames
         ,ConversationWrite
         ,ExpertMineRead
         ,ExpertMineWrite
+        ,MediaRead
     };
 }
 
@@ -146,6 +148,7 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         ,PermissionNames.ConversationWrite
         ,PermissionNames.ExpertMineRead
         ,PermissionNames.ExpertMineWrite
+        ,PermissionNames.MediaRead
     };
 
     private static readonly HashSet<string> ViewerPermissions = new(StringComparer.Ordinal)
