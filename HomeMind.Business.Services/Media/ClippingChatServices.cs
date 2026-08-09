@@ -34,13 +34,13 @@ public sealed class ClippingChatServices : IClippingChatServices
             return Task.FromResult(new ServiceResult(422, "对话上下文步骤非法。"));
 
         var message = request.Message.Trim();
-        // 意图匹配仅在初始素材收集步骤生效；进入目标/方案/结果步骤后消息按该步骤语义直接处理。
-        if (context.Step == StepCollectingMaterials && !IntentPattern.IsMatch(message))
-            return Task.FromResult(new ServiceResult(200, "当前仅支持快速剪辑相关对话。",
-                new ClippingChatResponse("抱歉，我目前只处理快速剪辑相关的请求（如「帮我剪视频」「剪一下这段素材」）。", Array.Empty<string>(), context)));
-
         var materials = context.Materials?.Where(m => !string.IsNullOrWhiteSpace(m)).ToList() ?? new List<string>();
         var goal = string.IsNullOrWhiteSpace(context.Goal) ? null : context.Goal.Trim();
+
+        // 意图匹配仅在素材尚未就绪的收集步骤生效：素材已就绪后用户消息（如「竖屏 30 秒」）直接作为创作目标处理。
+        if (context.Step == StepCollectingMaterials && materials.Count == 0 && !IntentPattern.IsMatch(message))
+            return Task.FromResult(new ServiceResult(200, "当前仅支持快速剪辑相关对话。",
+                new ClippingChatResponse("抱歉，我目前只处理快速剪辑相关的请求（如「帮我剪视频」「剪一下这段素材」）。", Array.Empty<string>(), context)));
 
         switch (context.Step)
         {
@@ -49,8 +49,11 @@ public sealed class ClippingChatServices : IClippingChatServices
                     return Task.FromResult(Ok("好的，我来帮你剪视频。请先上传素材（支持视频/音频文件），或填写素材路径。",
                         new[] { "上传素材", "填写素材路径" }, context));
                 if (goal is null)
-                    return Task.FromResult(Ok($"素材已就绪（{materials.Count} 段）。请告诉我创作目标：如时长、画幅、配乐、字幕等要求。",
-                        new[] { "竖屏 30 秒", "加字幕和配乐", "按默认剪辑" }, context with { Step = StepGeneratingPlan }));
+                {
+                    goal = message.Length > 120 ? message[..120] : message;
+                    return Task.FromResult(Ok($"素材已就绪（{materials.Count} 段），创作目标已记录：{goal}。确认后即可生成剪辑方案。",
+                        new[] { "生成方案" }, context with { Step = StepGeneratingPlan, Goal = goal }));
+                }
                 return Task.FromResult(Ok($"创作目标已记录：{goal}。确认后即可生成剪辑方案。", new[] { "生成方案" }, context with { Step = StepGeneratingPlan }));
 
             case StepGeneratingPlan:

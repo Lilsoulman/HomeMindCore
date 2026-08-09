@@ -321,8 +321,10 @@ public sealed class HousekeeperRunServices : IHousekeeperRunServices
             .Where(x => x.RunId == run.Id && x.TenantId == run.TenantId)
             .OrderBy(x => x.Sequence)
             .ToListAsync(cancellationToken);
+        // 返回全部动作类型：家庭管家只产生 smart_home_device，Skill 独立运行（快速剪辑）产生 draft_generate，
+        // 二者共用本运行视图与确认链路（Web 文档 §6.3）。
         var actions = await _db.ExpertRunActions
-            .Where(x => x.RunId == run.Id && x.TenantId == run.TenantId && x.ActionType == "smart_home_device")
+            .Where(x => x.RunId == run.Id && x.TenantId == run.TenantId)
             .OrderBy(x => x.Id)
             .ToListAsync(cancellationToken);
 
@@ -340,10 +342,47 @@ public sealed class HousekeeperRunServices : IHousekeeperRunServices
 
     private static HousekeeperRunActionView ToActionView(ExpertRunAction action)
     {
+        if (action.ActionType != "smart_home_device")
+        {
+            // Skill 独立运行动作（如快速剪辑 draft_generate）：输出结构化剪辑方案供 Web 渲染时间线（B30）。
+            var plan = ReadSkillPlan(action.RequestJson);
+            return new HousekeeperRunActionView(action.Id, action.ActionType, action.Status, "生成剪映草稿", "快速剪辑方案，确认后生成 .draft 草稿。", 0, "", "", null!, plan.Segments, plan.Audio, plan.TotalDuration);
+        }
         var draft = ReadDraft(action.RequestJson)
             ?? throw new InvalidOperationException("家庭管家行动草案格式无效。");
         return new HousekeeperRunActionView(action.Id, action.ActionType, action.Status, draft.Title, draft.Description, draft.DeviceId, draft.DeviceName, draft.Capability, draft.TargetValue);
     }
+
+    /// <summary>从 Skill 方案动作的 RequestJson 读取结构化片段序列与总时长（B30）；解析失败返回空值。</summary>
+    private static SkillPlanData ReadSkillPlan(string requestJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(requestJson);
+            var root = document.RootElement;
+            var segments = new List<SkillPlanSegmentView>();
+            if (root.TryGetProperty("segments", out var segmentArray) && segmentArray.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var segment in segmentArray.EnumerateArray())
+                {
+                    var index = segment.TryGetProperty("index", out var indexElement) && indexElement.TryGetInt32(out var parsedIndex) ? parsedIndex : segments.Count + 1;
+                    var source = segment.TryGetProperty("source", out var sourceElement) ? sourceElement.GetString() ?? "" : "";
+                    var duration = segment.TryGetProperty("duration", out var durationElement) && durationElement.TryGetInt32(out var parsedDuration) ? parsedDuration : 0;
+                    segments.Add(new SkillPlanSegmentView(index, source, duration));
+                }
+            }
+            object? audio = null;
+            if (root.TryGetProperty("audio", out var audioElement) && audioElement.ValueKind == JsonValueKind.Object) audio = audioElement;
+            var totalDuration = root.TryGetProperty("total_duration", out var totalElement) && totalElement.TryGetInt32(out var parsedTotal) ? parsedTotal : 0;
+            return new SkillPlanData(segments, audio, totalDuration);
+        }
+        catch (JsonException)
+        {
+            return new SkillPlanData([], null, 0);
+        }
+    }
+
+    private sealed record SkillPlanData(IReadOnlyList<SkillPlanSegmentView> Segments, object? Audio, int TotalDuration);
 
     private async Task<ExecutionContext> LoadExecutionContextAsync(long userId, long tenantId, ActionDraft draft, CancellationToken cancellationToken)
     {

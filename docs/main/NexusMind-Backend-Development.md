@@ -652,3 +652,51 @@ row_version（与既有 Enable/Run 一致）。
 **B27 实施状态（2026-08-09）**：`031` 迁移落地——重建 `expert_runs.ck_run_source` CHECK：原 expert/group 语义不变，追加 `scenario`/`skill`（补 B22/B24 真实 MySQL 缺口——本机先前仅验证迁移执行未创建真实 Run，`ck_run_source` 原约束会拒绝这两类）与 `xhs`（B27 发布）；无 EF 迁移。`FamilyAuditActions.XhsNotePublished`/`FamilyAuditTargetTypes.XhsNote` 常量与 `FamilyAuditLogger` 白名单同步（B26 仅迁移侧，代码常量 B27 消费补齐）。`IXhsPublishServices`/`XhsPublishServices` 发布链路：创建（参数校验 type=image/video、标题≤20、正文≤1000、图文≤18 图、视频恰 1 → SourceType=`xhs` 的 AgentRun（ExpertVersionId null、permission_snapshot personal）+ `xhs_publish` ExpertRunAction（RiskLevel=L2）+ 幂等键同键重放 200/同键异类型 409）+ 确认（UUID 幂等键 422 → `ActionExecutionAudits` 同键重放不重复发布 → 权限快照复验 → 经 `XhsMcpClient.PublishAsync` 执行 → action `executed`/run `completed` + `xhs_note_published` 审计（目标 `xhs_note`），失败 502、action/run `failed`）。`XhsController` 新增 `POST /api/v1/connector-providers/xhs/notes/publish` 与 `POST /publish-actions/{actionId}/confirm`（`ai.run` + `connector.write`，非法幂等键 422/动作不存在或非本人 404/已终态换键 409）；`XhsPublishConfirmRequest`/`XhsPublishActionView` DTO。`dotnet build` 0 errors/0 CS1591（唯一警告为存量 CS8604），`dotnet test` 全绿 190/190（新增 XhsPublishServicesTests 8 项：创建 L2 动作/参数校验 422/未授权 404/确认发布+审计/幂等重放不重复发布/422-404-409/失败 502 与终态/同键异类型 409）；真实 MySQL 031 顺序迁移已在本机执行验证（约束含 scenario/skill/xhs 分支，xhs 事务内插入成功）；真实发布按部署环境验证。
 
 **B28 实施状态（2026-08-09）**：`JianyingMcpClient` 发布——实现 `IClippingMcpClient.GenerateDraftAsync`：解析方案 JSON（素材名拼草稿名）→ 调用 `create_draft`（draft_name/width 1920/height 1080/fps 30）→ 按 MCP 返回草稿目录读取 draft.json 字节流返回；草稿路径不可读抛 `McpClientException`（调用方按登记失败 502 处理）；素材片段装配与最终 draft.json 内容以部署的 jianying-mcp 版本工具契约为准（部署验证时校准）。`IClippingMcpClient` DI 改为配置驱动：`Mcp:Clients:Jianying:Enabled=false` 默认回退 `MockClippingMcpClient`（测试与无环境回退），true 时经 `uv --directory <repo>/jianyingdraft run server.py` 真实 stdio 调用（SAVE_PATH/OUTPUT_PATH 由 MCP 进程环境提供）；`appsettings.json` 增 `Mcp:Clients:Jianying`（Enabled/CommandFileName=uv/Arguments/TimeoutSeconds=60）。SkillRunServices 零改动（契约保持返回字节流）。`dotnet build` 0 errors/0 CS1591（22 个警告均为既有存量），`dotnet test` 全绿 190/190（既有全保留）；真实 MySQL 无需新迁移。**本机 jianying-mcp 部署验证受阻**：已克隆 `D:\HomeMind\tools\jianying-mcp`（README 确认启动命令与环境变量）、winget 安装 uv 0.12.2 成功；本机无 Python 3.13 且 `uv python install 3.13`/`uv sync` 因网络限制（releases.astral.sh 与 github.com 下载不可达）挂起，依赖安装无法完成——待网络/环境就绪后执行真实草稿生成端到端。
+
+## 18. V2.7 思维导图 Skill（Skill 独立执行，零转换依赖）
+
+思维导图 Skill 输入为 markdown 文本，产物为浏览器端交互视图与可导出文件。转换是确定性纯函数，由 Web 端 markmap-lib 执行，服务端零新增运行时依赖（否决 node 子进程：部署耦合、进程管理与 Windows 引号处理；否决 C# 重实现：偏离 markmap 语义、维护成本高）。服务端只负责 Skill 目录、权限、Run 记录与审计。
+
+### 18.1 领域与执行
+
+- **SkillRun**：`POST /api/v1/skills/mindmap/runs` 创建 SourceType=skill 的 AgentRun（不关联 Expert），输入 `markdown` 文本（≤ 100,000 字符，超限 422）写入 RequestJson；**同步完成**（无外部依赖、无 Action、无确认——L1 只读），ResultSummary 输出摘要（`characterCount` + 首个一级标题）；复用既有权限快照与 UUID 幂等键（幂等重放 200、同键异请求 409）；
+- **审计**：写 `skill_run_created`（目标 `skill_run`，复用 029 CHECK，无新动作码）；
+- **不落文件**：`.md` 文件由浏览器 FileReader 本地读取为文本；服务端不新增文件上传、不登记生成文件、不调用 MCP。
+
+### 18.2 迁移 `035`
+
+`database/035_mindmap_skill.mysql.sql`（`-- Apply after 034`；无 EF 迁移、无表结构变更，同 B23/B25 先例）：
+
+- `skills` 注册 `mindmap`（category=`productivity`，input_schema 声明 `markdown` 必填、≤100000 字符，`risk_level=L1`，`required_permission=mindmap.read`）；
+- 权限注册 `mindmap.read`（owner/admin/member，viewer 不含，同 `media.read` 惯例）。
+
+### 18.3 权限与 API
+
+- `POST /api/v1/skills/mindmap/runs`：`ai.run` + `mindmap.read`；请求含 UUID 幂等键与 `{ markdown }`；未知/未启用 Skill → 422，markdown 缺失或超限 → 422，跨租户 → 404；
+- 运行查询/事件/取消/重试复用既有 `expert-runs` 契约（`GET /api/v1/expert-runs/{id}`、`/events`）；`GET /api/v1/skills` 目录接口既有已发布；
+- 响应与日志绝不包含 Prompt；markdown 内容仅存 Run RequestJson（家庭租户隔离），Response 摘要仅含字符数与一级标题。
+
+### 18.4 切片与验收
+
+| 切片 | 范围 | 最小验收 |
+| --- | --- | --- |
+| B33 | `035` 迁移（skills 注册 mindmap + `mindmap.read` 权限）、`POST /api/v1/skills/mindmap/runs`（SourceType=skill、同步 completed、摘要生成、`skill_run_created` 审计、幂等重放/422/404） | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（创建/同步完成/摘要/幂等重放/超限 422/未知 Skill 422/跨租户 404/审计）；真实 MySQL 035 顺序迁移本机验证 |
+
+## 19. V2.7 Skill 目录查看（scope 视图）
+
+产品决策：用户端只能查看本人用户级技能，开发端可查看全部（平台级目录 + 租户内成员技能）。现状说明：`GET /api/v1/skills` 历史语义为用户级 `ai_skills` 列表（AiSkillServices，`ai.skills.read`，租户+用户过滤）；平台级 `skills` 目录此前仅服务内部按 key 查询（SkillRunServices），**无列表接口**——B24 实施状态中「`GET /api/v1/skills` 目录接口既有已发布」的表述与实际不符，本设计修正。为不破坏既有消费方（CreatorMcp 默认不带 scope），扩展 scope 参数并保持默认行为不变。
+
+### 19.1 API 与视图
+
+- `GET /api/v1/skills?scope=mine|platform|all`（默认 `mine`）：
+  - `mine`：本人用户级技能（现状行为不变，视图含 Prompt——仅本人可读）；
+  - `platform`：平台级 Skill 目录（`skills` 表 tenant_id=1、status=active、未删），返回 key/name/category/description/risk_level/required_permission/input_schema_json/status（非敏感）；
+  - `all`：平台级目录 + 当前租户全部成员的技能摘要（id/name/is_active/成员名/created_at/updated_at），**不含 Prompt 明文**（提示词属敏感数据，仅本人可读）；
+- 权限：`mine` 沿用 `ai.skills.read`（所有成员）；`platform`/`all` 服务端校验当前家庭角色为 owner/admin（`ai.skills.read` + `tenant_members.role ∈ {owner, admin}`），member/viewer 即使持有 `ai.read` 也 403——**平台级 Skill 目录不得被成员查询**；跨租户 404；
+- 实现：AiSkillServices 增加 `ListPlatformAsync`/`ListAllAsync`（平台目录直查 `SkillCatalogs`；all 视图在租户内关联 `ai_skills` 与成员名，输出脱敏 DTO，不含 Prompt）。
+
+### 19.2 切片与验收
+
+| 切片 | 范围 | 最小验收 |
+| --- | --- | --- |
+| B34 | `GET /api/v1/skills` 扩展 scope（默认 mine 行为不变/platform/all）、平台目录与成员技能脱敏视图（all 不含 Prompt）、角色校验（platform/all 仅 owner/admin，member/viewer 持 `ai.read` 也 403） | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（默认 mine 不变/平台目录列表/成员技能脱敏无 Prompt/member 持 ai.read 查 platform/all 仍 403/跨租户 404）；无新迁移 |

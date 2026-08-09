@@ -150,8 +150,8 @@ Web 是与 Flutter App 共用同一 `/api/v1`、JWT、家庭和权限模型的 P
 
 | 入口 | 主要用户 | 产品职责 | 明确边界 |
 | --- | --- | --- | --- |
-| Web 用户端 | 所有已登录家庭成员 | 家庭概览、确认中心、管家动态、成员/知识、个人偏好、本人连接与 Run 记录 | 不配置家庭凭据，不查看其他成员个人连接 |
-| Web 开发端 | 当前家庭 owner/admin 或部署者 | 家庭级 Connector、成员授权、同步任务、自动化、专家/Skill 的受控管理 | 不跨租户、不显示凭据、不直连 MySQL/HA/MCP SQLite |
+| Web 用户端 | 所有已登录家庭成员 | 家庭概览、确认中心、管家动态、成员/知识、个人偏好、本人连接、本人技能与 Run 记录 | 不配置家庭凭据，不查看其他成员个人连接 |
+| Web 开发端 | 当前家庭 owner/admin 或部署者 | 家庭级 Connector、成员授权、同步任务、自动化、专家/Skill 的受控管理与目录查看（平台级 + 成员技能，提示词不回显） | 不跨租户、不显示凭据、不直连 MySQL/HA/MCP SQLite |
 
 前端路由是客户端发布物，不能作为 API 或权限的事实来源。用户端和开发端均按服务端返回的角色与权限显示菜单，服务端始终复验。`HomeMind.CreatorMcp` 的本地 SQLite 缓存只供受控本机 Agent 查询，不是家庭级 Connector、家庭知识库或任何 App/Web 数据源。
 
@@ -431,13 +431,14 @@ Skill 是 AI 的“手脚”，定义稳定的输入、输出、权限和失败�
 | 控制空调 | device / mode / target | 执行结果 | `air.write` |
 | 创建家庭提醒 | schedule / content | 提醒 ID | `notification.write` |
 | 快速剪辑 | 素材位置 + 创作目标和指令 | 剪映 .draft 草稿（登记 Expert File） | `media.read`、`ai.skills.*` |
+| 生成思维导图 | markdown 文本 | 交互式思维导图（树视图 + SVG/PNG/HTML 导出） | `mindmap.read` |
 
 ### Skill 跨端分级
 
 Skill 按**产物形态**分级，决定其承载端（与「附件选择/上传、Action 确认、运行时间线、生成文件下载已移 PC 端」的既有决策同源）：
 
 - **简单 Skill（移动端）**：输出为即时状态/建议/单动作确认，单屏可完成，如读取家庭环境、控制灯光/空调、创建家庭提醒、场景一键执行、探店翻牌与行程规划；
-- **复杂 Skill（Web 端）**：输入含文件/路径或多步编排，产物为可下载文件，如快速剪辑（及未来的 PPT/渲染类）；
+- **复杂 Skill（Web 端）**：输入含文件/路径或多步编排，产物为可下载文件或交互渲染，如快速剪辑、思维导图（及未来的 PPT/渲染类）；
 - 分级判定以产物形态为准，不引入 `mobile_friendly` 等元数据字段（YAGNI，待 Skill 数量增长后再评估）。
 
 ### 7.1 快速剪辑 Skill（V2.5）
@@ -503,6 +504,35 @@ chat 引导接口（无状态 context 推进 + 规则意图匹配 + 模板回复
 
 **B32 实施状态（2026-08-09）**：`POST /api/v1/clipping/chat` chat 引导接口：无状态 context 随请求回传（`collecting_materials → generating_plan → reviewing → done`，非法步进 422），规则式意图匹配（剪辑关键词），模板回复 + `suggestions` 引导按钮；只引导不执行——方案生成/确认/下载仍走既有 Skill Run 链路；不落库、不新建会话表。
 
+### 7.2 思维导图 Skill（V2.7）
+
+**产品目标**：把「MD 文档 → 可交互思维导图」做成 Web 端低门槛工具：粘贴或选择 markdown → 交互式思维导图（缩放/折叠）→ 导出 SVG/PNG/自包含 HTML。纯确定性转换、无 AI 生成、无外部写入，属 L1 只读低风险。
+
+**执行链路**：
+
+```text
+用户输入 markdown（粘贴或本地 .md 文件读取）
+  ↓
+POST /api/v1/skills/mindmap/runs 创建 Skill Run（SourceType=skill，同步完成）
+  ↓
+客户端 markmap-lib 转换渲染（交互视图：缩放/折叠/适配）
+  ↓
+导出 SVG / PNG / 自包含 HTML（内联本地 vendor 资源，断网可开）
+```
+
+**转换位置决策**：转换由浏览器端 markmap-lib 执行，服务端零转换依赖。否决服务端 node 子进程（部署耦合 node 运行时、进程管理、Windows 引号处理）与 C# 重实现（偏离 markmap 语义、维护成本高）。服务端只保存输入与审计。
+
+**Skill 输入契约**：`markdown` 文本（≤ 100,000 字符，超限 422）；`.md` 文件由浏览器本地读取为文本，不上传服务端文件。
+
+**风险与边界**：L1 只读、无 Action、无确认；`mindmap.read` 权限（owner/admin/member，viewer 不含）；markdown 全文存 Run RequestJson（家庭租户隔离），输入不写日志、响应不返回 Prompt。
+
+**跨端契约**：
+- 移动端：无入口（复杂 Skill 分级，产物为交互渲染与可下载文件）；
+- Web 端：`/app/tools/mindmap` 工作台——输入 → 预览 → 导出，完整流程（详见 Web 端文档 §6.8）；
+- 服务端：`skills` 目录注册 mindmap、`POST /api/v1/skills/mindmap/runs`（同步 completed + `skill_run_created` 审计）、`mindmap.read` 权限注册；无新表、无新审计动作码（复用 029 CHECK）。
+
+**验收标准**：输入 markdown → 返回同步 completed 的 Run；Web 渲染可交互导图并可导出 SVG/PNG/HTML；超限/未知 Skill/跨租户按契约拒绝；运行可在既有 Run 详情追溯。
+
 ## 8. 文档治理与联动
 
 本文件是“为什么做、做什么、跨端如何协作”的总纲，也是控制产品走向的唯一最终产品内容输出。当前产品由一人负责从产品设计、研发设计到落地，因此该维护者同时承担产品决策收敛、跨端拆分和实施状态核对职责；但产品、前端、后端和计划表仍须保持各自明确的内容边界。
@@ -559,6 +589,8 @@ chat 引导接口（无状态 context 推进 + 规则意图匹配 + 模板回复
 
 | 日期 | 主题 | 本文变更 | 前端同步 | 后端同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
+| 2026-08-09 | V2.7 Skill 目录查看（用户端/开发端） | Web 端补「查看 Skill」能力：用户端 `/app/skills` 仅查看本人用户级技能（ai_skills）；开发端 `/console/experts` 新增 Skill Tab——平台级目录（skills，key/分类/风险/权限/输入 schema）+ 租户成员技能（名称/状态，Prompt 不回显）；`GET /api/v1/skills?scope=mine\|platform\|all`（默认 mine 向后兼容，对齐 /experts 先例；修正既有「GET /api/v1/skills 即平台目录」的文档偏差——实际为用户级列表，平台目录此前无列表接口；platform/all 仅 owner/admin 角色校验，member/viewer 即使持 `ai.read` 也 403，平台级 Skill 目录不可被成员查询）；无新迁移、无新权限码（`ai.skills.read`） | 已同步 Web 端文档（§4 路由/§6.9/§8/§10） | 已同步后端总设计（§19） | 待排期 |
+| 2026-08-09 | V2.7 思维导图 Skill（设计基线） | 新增「生成思维导图」Skill（Web 端）：输入 markdown → 客户端 markmap-lib 转换渲染交互视图（缩放/折叠）→ 导出 SVG/PNG/自包含 HTML；转换在浏览器执行、服务端零转换依赖（否决 node 子进程部署耦合与 C# 重实现）；`mindmap.read` 权限（owner/admin/member）+ `POST /api/v1/skills/mindmap/runs`（SourceType=skill、同步 completed、`skill_run_created` 审计、无 Action/确认）；移动端无入口；本地 `core/scripts/md2mindmap.mjs` 为同源离线工具 | 已同步 Web 端文档（思维导图工作台页面） | 已同步后端总设计（§18） | 待排期 |
 | 2026-08-09 | V2.5 B25 剪辑执行与文件登记 | 快速剪辑确认执行链路落地：`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`）确认 `draft_generate` 动作 → 剪辑 MCP 客户端（确定性 Mock `MockClippingMcpClient`，不访问素材目录、不产生真实文件路径）生成 .draft 草稿内容 → `RegisterGeneratedFileAsync` 登记为 Ready 生成文件（附件到 run）→ 下载复用既有 readToken 端点（10 分钟）；`skill_action_confirmed`/`skill_draft_registered` 审计；无新迁移；剪辑 MCP 真实项目选型与部署形态（jianying-mcp/capcut-mate，需可访问素材与剪映草稿目录的主机）转为部署环境验证项，不阻塞 B24/B25 收口 | 待同步 Web 端文档（快速剪辑工作台确认与下载流程接入 7.8 契约） | 已同步后端总设计（§16 B25 实施状态）与开发计划（B25 已完成，V2.5 收口） | 已同步 |
 | 2026-08-09 | V2.6 剪映真实 MCP 接入（B28） | `JianyingMcpClient` 实现 `IClippingMcpClient`（`create_draft` + 读取草稿字节流，SkillRunServices 契约零改动）；`IClippingMcpClient` DI 配置驱动（`Mcp:Clients:Jianying:Enabled` 默认 Mock 回退，开启后经真实 jianying-mcp stdio 生成草稿）；真实草稿生成端到端按部署环境验证（本机网络限制致 Python 3.13 依赖安装受阻，已记录，待环境就绪执行） | 无前端契约变化（草稿下载流程不变） | 已同步后端总设计（§17 B28 实施状态）与开发计划（B28 已完成，下一步为部署环境验证项） | 已同步 |
 | 2026-08-09 | V2.6 小红书笔记发布（B27） | 发布 L2 确认链路落地：`031` 迁移重建 `expert_runs.ck_run_source` CHECK（追加 scenario/skill/xhs，补 B22/B24 真实库缺口）；`IXhsPublishServices`/`XhsPublishServices`（参数校验 → SourceType=xhs 的 Run + `xhs_publish` Action L2 → 确认经本地 MCP `xhs_publish_content` 发布 → `xhs_note_published` 审计）；`POST notes/publish` 与 `POST publish-actions/{actionId}/confirm`（`ai.run` + `connector.write`）；幂等重放不重复发布 | 待同步 Web 端文档（发布确认接入 10.1 契约） | 已同步后端总设计（§17 B27 实施状态）与开发计划（B27 已完成，B28 下一步） | 已同步 |

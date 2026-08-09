@@ -23,10 +23,13 @@ public sealed record HousekeeperRunEventView(int Sequence, string Type, string M
 /// <param name="Status">动作状态。</param>
 /// <param name="Title">动作标题。</param>
 /// <param name="Description">动作描述。</param>
-/// <param name="DeviceId">归一化设备主键。</param>
+/// <param name="DeviceId">归一化设备主键，非设备类动作为 0。</param>
 /// <param name="DeviceName">归一化设备名。</param>
 /// <param name="Capability">目标能力名。</param>
 /// <param name="TargetValue">目标值对象。</param>
+/// <param name="Segments">剪辑方案片段序列（B30，draft_generate 动作输出，供 Web 渲染方案时间线）。</param>
+/// <param name="Audio">剪辑方案配乐信息，当前方案为 null。</param>
+/// <param name="TotalDuration">剪辑方案总时长（秒），无方案时为空。</param>
 public sealed record HousekeeperRunActionView(
     long Id,
     string ActionType,
@@ -36,7 +39,10 @@ public sealed record HousekeeperRunActionView(
     long DeviceId,
     string DeviceName,
     string Capability,
-    object TargetValue);
+    object TargetValue,
+    IReadOnlyList<SkillPlanSegmentView>? Segments = null,
+    object? Audio = null,
+    int? TotalDuration = null);
 
 /// <summary>管家运行汇总视图。</summary>
 /// <param name="Id">运行主键。</param>
