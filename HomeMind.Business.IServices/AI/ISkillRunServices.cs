@@ -44,4 +44,17 @@ public interface ISkillRunServices
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>执行结果统一响应；非法幂等键返回 422，动作不存在返回 404，已终态返回 409。</returns>
     Task<ServiceResult> ConfirmActionAsync(long userId, long tenantId, long runId, long actionId, ConfirmSkillRunActionRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 修订 Skill 运行剪辑方案（B31）：以新的创作指令重新确定性生成方案并替换方案动作的
+    /// RequestJson（仅 <c>pending_actions</c> 且方案动作未确认，否则 409），写 <c>plan_revised</c>
+    /// 事件与 <c>skill_run_revised</c> 审计；同一修订幂等键重放当前视图，不重复生成。
+    /// </summary>
+    /// <param name="userId">修订用户标识，由 JWT 推导。</param>
+    /// <param name="tenantId">当前租户标识，由 JWT 推导。</param>
+    /// <param name="runId">运行主键。</param>
+    /// <param name="request">修订请求体，含新创作指令与 UUID 幂等键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>修订后运行视图统一响应；非法幂等键返回 422，运行不可见返回 404，方案已确认或运行终态返回 409。</returns>
+    Task<ServiceResult> ReviseAsync(long userId, long tenantId, long runId, ReviseSkillRunRequest request, CancellationToken cancellationToken = default);
 }

@@ -47,6 +47,17 @@ public sealed class SkillRunsController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<object>>> ConfirmAction(long runId, long actionId, ConfirmSkillRunActionRequest request) =>
         ToResponse(await WithUserAsync((user, token) => _skillRuns.ConfirmActionAsync(user.UserId, user.TenantId, runId, actionId, request, token)));
 
+    /// <summary>修订运行剪辑方案：以新的创作指令重新确定性生成方案并替换方案动作（B31，仅未确认可修订）。</summary>
+    /// <remarks>权限：<c>ai.run</c> + <c>media.read</c>。需要必填的 <c>idempotencyKey</c>；方案已确认或运行终态返回 409。</remarks>
+    /// <param name="runId">运行主键。</param>
+    /// <param name="request">修订请求体，含新创作指令与 UUID 幂等键。</param>
+    /// <returns>修订后运行视图统一响应；非法幂等键返回 422，运行不可见返回 404。</returns>
+    [Authorize(Policy = PermissionNames.AiRun)]
+    [Authorize(Policy = PermissionNames.MediaRead)]
+    [HttpPost("runs/{runId:long}/revise")]
+    public async Task<ActionResult<ApiResponse<object>>> Revise(long runId, ReviseSkillRunRequest request) =>
+        ToResponse(await WithUserAsync((user, token) => _skillRuns.ReviseAsync(user.UserId, user.TenantId, runId, request, token)));
+
     /// <summary>在用户上下文就绪时执行给定的业务回调，否则返回 401。</summary>
     /// <param name="action">执行业务逻辑的回调。</param>
     /// <returns>业务执行结果 <see cref="ServiceResult"/>。</returns>

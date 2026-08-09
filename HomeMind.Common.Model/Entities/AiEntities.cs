@@ -716,3 +716,51 @@ public static class SkillCatalogStatus
     /// <summary>停用，运行发起返回 422。</summary>
     public const string Inactive = "inactive";
 }
+
+/// <summary>快速剪辑素材登记表：浏览器上传落盘或路径模式登记的输入文件，ffprobe 提取时长/分辨率/帧率元数据。</summary>
+/// <remarks>素材仅登记服务端可访问路径（上传落盘或路径模式校验目录内），供剪辑 MCP 访问；
+/// 上传返回 <see cref="StoragePath"/> 由前端回填 Skill 输入 <c>media_location</c>（B24 契约零改动）。
+/// 与 <see cref="ExpertFile"/>（生成文件）语义分离：素材是输入文件，归上传者本人可见可删。</remarks>
+[Table("clipping_materials")]
+public sealed class ClippingMaterial
+{
+    /// <summary>素材主键。</summary>
+    [Key, Column("id")] public long Id { get; set; }
+    /// <summary>所属租户标识。</summary>
+    [Column("tenant_id")] public long TenantId { get; set; }
+    /// <summary>上传者用户标识，素材仅本人可见可删。</summary>
+    [Column("owner_user_id")] public long OwnerUserId { get; set; }
+    /// <summary>素材文件名（含扩展名）。</summary>
+    [Column("file_name", TypeName = "varchar(255)")] public string FileName { get; set; } = null!;
+    /// <summary>服务端可访问的素材路径（上传落盘路径或路径模式登记路径）。</summary>
+    [Column("storage_path", TypeName = "varchar(1024)")] public string StoragePath { get; set; } = null!;
+    /// <summary>素材 MIME 类型，路径模式登记可能为空。</summary>
+    [Column("content_type", TypeName = "varchar(128)")] public string? ContentType { get; set; }
+    /// <summary>文件大小（字节）。</summary>
+    [Column("file_size")] public long FileSize { get; set; }
+    /// <summary>时长（秒），ffprobe 提取；解析失败为空。</summary>
+    [Column("duration_seconds")] public int? DurationSeconds { get; set; }
+    /// <summary>画面宽度（像素），ffprobe 提取；解析失败为空。</summary>
+    [Column("width")] public int? Width { get; set; }
+    /// <summary>画面高度（像素），ffprobe 提取；解析失败为空。</summary>
+    [Column("height")] public int? Height { get; set; }
+    /// <summary>帧率（fps），ffprobe 提取；解析失败为空。</summary>
+    [Column("fps")] public double? Fps { get; set; }
+    /// <summary>素材状态，取值参见 <see cref="ClippingMaterialStatus"/>。</summary>
+    [Column("status", TypeName = "varchar(16)")] public string Status { get; set; } = "active";
+    /// <summary>软删除标记，true 表示已删除。</summary>
+    [Column("is_deleted")] public bool IsDeleted { get; set; }
+    /// <summary>记录创建时间（UTC）。</summary>
+    [Column("created_at", TypeName = "datetime(3)")] public DateTime CreatedAt { get; set; }
+    /// <summary>记录最近一次修改时间（UTC）。</summary>
+    [Column("updated_at", TypeName = "datetime(3)")] public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>快速剪辑素材状态常量集合。</summary>
+public static class ClippingMaterialStatus
+{
+    /// <summary>启用，可被 Skill 输入引用。</summary>
+    public const string Active = "active";
+    /// <summary>已删除（软删除）。</summary>
+    public const string Deleted = "deleted";
+}

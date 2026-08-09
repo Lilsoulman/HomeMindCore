@@ -44,7 +44,10 @@ public sealed class FamilyAuditLogger : IFamilyAuditLogger
         FamilyAuditActions.SkillRunCreated,
         FamilyAuditActions.SkillActionConfirmed,
         FamilyAuditActions.SkillDraftRegistered,
-        FamilyAuditActions.XhsNotePublished
+        FamilyAuditActions.XhsNotePublished,
+        FamilyAuditActions.MediaFileUploaded,
+        FamilyAuditActions.MediaFileDeleted,
+        FamilyAuditActions.SkillRunRevised
     };
     private static readonly HashSet<string> AllowedTargetTypes = new(StringComparer.Ordinal)
     {
@@ -61,7 +64,8 @@ public sealed class FamilyAuditLogger : IFamilyAuditLogger
         FamilyAuditTargetTypes.Conversation,
         FamilyAuditTargetTypes.SkillRun,
         FamilyAuditTargetTypes.SkillDraft,
-        FamilyAuditTargetTypes.XhsNote
+        FamilyAuditTargetTypes.XhsNote,
+        FamilyAuditTargetTypes.ClippingMaterial
     };
 
     private readonly HomeMindDbContext _db;

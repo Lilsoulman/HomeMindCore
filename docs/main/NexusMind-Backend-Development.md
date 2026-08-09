@@ -535,9 +535,15 @@ row_version（与既有 Enable/Run 一致）。
 
 快速剪辑是 SkillExecutor 的首个实现：用户提供素材位置与创作目标和指令，服务端确定性生成剪辑方案，经用户确认后通过剪辑 MCP 在本地主机生成剪映 `.draft` 草稿并登记为生成文件。Skill 独立执行、不绑定 Expert（先例对齐 §15 场景工作流：SourceType=skill 的 AgentRun，复用确认/幂等/审计链路，不新建运行时）。
 
+**V2.7 对话式优化**：Web 端工作台升级为分步对话式引导——素材支持浏览器上传（`clipping_materials` 登记 + ffprobe 元数据）或路径输入；对话经无状态 chat 引导接口推进（只引导不执行）；方案以结构化视图渲染为时间线；支持修订指令重新生成方案（B29-B32）。
+
 ### 16.1 领域与执行
 
 - **SkillRun**：`POST /api/v1/skills/{skillCode}/runs` 创建 SourceType=skill 的 AgentRun（不关联 Expert，`expert_id` 为空，与 scenario 同惯例），输入参数（素材位置、创作目标和指令）与剪辑方案写入 `RequestJson`/`ResultJson`，复用既有权限快照与 UUID 幂等键；
+- **素材登记（B29）**：浏览器上传经 `POST /api/v1/clipping/materials` 落盘服务端素材目录并 ffprobe 提取元数据（时长/分辨率，失败返回 null 不阻塞），上传返回可访问路径供前端回填 `media_location`（B24 契约零改动）；路径模式仅允许配置的素材根目录、越界 403；素材仅本人可见可删，上传/删除写 `media_file_uploaded`/`media_file_deleted` 审计；
+- **方案结构化视图（B30）**：方案 Action 视图输出 `segments`/`audio`/`total_duration`（数据取自方案 Action 的 RequestJson，此前仅文本摘要），供 Web 渲染方案时间线；
+- **方案修订（B31）**：`POST /api/v1/skills/runs/{runId}/revise` 以新创作指令重新确定性生成方案并替换方案 Action 的 RequestJson（仅 `pending_actions` 且方案未确认，否则 409），更新 ResultSummary/Result，写 `plan_revised` 事件与 `skill_run_revised` 审计；
+- **chat 引导（B32）**：`POST /api/v1/clipping/chat` 无状态 context 随请求回传并推进（`collecting_materials → generating_plan → reviewing → done`，非法步进 422），规则式意图匹配（剪辑关键词）与模板回复 + suggestions，只引导不执行，不落库、不新建会话表。
 - **方案生成（确定性）**：输入素材位置与创作指令 → 剪辑 MCP（jianying-mcp / capcut-mate，FFmpeg/ffprobe 为后台依赖）解析视频/音频时长与分辨率 → 生成剪辑方案摘要（片段序列/音频/时长）→ 产出 1 个 `draft_generate` Run Action（RiskLevel=L1）→ 方案摘要展示后经用户确认；
 - **执行与产物**：Action 确认（复用既有确认/幂等/审计链路）→ `add_video_segment`/`add_audio_segment` 写入 → `export_draft()` 生成 `.draft` → `RegisterGeneratedFileAsync` 登记为生成文件（复用专家文件链路，下载走 10 分钟 readToken）；
 - 剪辑 MCP 独立于 CreatorMcp，遵守本地优先原则；项目选型与部署形态为 B24/B25 前置依赖。
@@ -550,10 +556,18 @@ row_version（与既有 Enable/Run 一致）。
 - `family_audit_logs` action CHECK 扩展（`skill_run_created`/`skill_action_confirmed`/`skill_draft_registered`）与 target_type CHECK 扩展（`skill_run`/`skill_draft`）；
 - `expert_runs` 零改动：SourceType/RequestJson/ResultJson 既有列承载，不新增列（与 §15 同约定）。
 
+### 16.2.1 迁移 `033`/`034`（B29/B31）
+
+- `database/033_clipping_materials.mysql.sql`（`-- Apply after 031`）：新建 `clipping_materials` 表（BIGINT 主键同现有约定、tenant_id、owner_user_id、file_name、storage_path、content_type、file_size、duration_seconds、width、height、fps、status、is_deleted、created_at/updated_at）；EF 迁移 `AddClippingMaterials`（仅建表、不更新快照，遵循仓库 Surgical Changes 约定）；
+- `database/034_skill_run_revised.mysql.sql`（`-- Apply after 033`）：`family_audit_logs` action CHECK 扩展 `skill_run_revised`（无 EF 迁移，同 B23/B25 先例）。
+
 ### 16.3 权限与 API
 
-- 新增权限 `media.read`（owner/admin/member；Skill 目录与运行发起前置）；Skill 运行沿用 `ai.run`；
+- 新增权限 `media.read`（owner/admin/member；Skill 目录与运行发起前置）与 `media.write`（owner/admin/member；素材上传/删除）；Skill 运行沿用 `ai.run`；
 - `POST /api/v1/skills/{skillCode}/runs`：`ai.run` + `media.read`，请求含 UUID 幂等键与 Skill 输入参数；未知/未启用 Skill → 422，跨租户 → 404；
+- `POST /api/v1/skills/runs/{runId}/revise`（B31）：`ai.run` + `media.read`，body `{ instruction, idempotencyKey }`；仅 `pending_actions` 且方案 Action 未确认，否则 409；幂等键重放；
+- `POST/GET/DELETE /api/v1/clipping/materials`（B29）：POST 上传与 DELETE 删除用 `media.write`、GET 列表用 `media.read`；上传 multipart（`media_file_uploaded` 审计）落盘服务端素材目录并 ffprobe 提取元数据；路径模式仅允许配置的素材根目录、越界 403；列表/删除仅本人（删除 `media_file_deleted` 审计）；
+- `POST /api/v1/clipping/chat`（B32）：`ai.run` + `media.read`，body `{ message, context }`，无状态 context 回传、非法步进 422、规则意图匹配 + 模板回复；
 - 运行轮询/取消/重试复用既有 `expert-runs` 契约（`GET /api/v1/expert-runs/{id}`、`/events`、`/cancel`、`/retry`）；
 - Action 确认沿用既有确认端点链路（`POST .../actions/{actionId}/confirm`：UUID 幂等键、ActionExecutionAudits 重放、权限快照复验），不新建并行确认机制；
 - 生成文件下载复用专家文件 readToken 下载；`GET /api/v1/skills` 目录接口既有已发布（CreatorMcp 已消费），快速剪辑沿用；
@@ -565,12 +579,24 @@ row_version（与既有 Enable/Run 一致）。
 | --- | --- | --- |
 | B24 | `029` 迁移、`media.read` 权限、SkillRun 创建 API（SourceType=skill）、确定性方案生成与 `draft_generate` Action | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（新增 SkillRun 测试：创建/幂等/未知 Skill 422/跨租户 404/方案生成/权限）；真实 MySQL 029 顺序迁移本机验证 |
 | B25 | Action 确认 → 剪辑 MCP 写入草稿 → `RegisterGeneratedFileAsync` 登记 → readToken 下载；审计 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（确认执行/幂等重放/文件登记/审计）；剪辑 MCP 端到端按部署环境验证（需可访问素材与草稿目录的主机） |
+| B29 | `033` 迁移 `clipping_materials` + `media.write` 权限、素材上传/列表/删除（multipart → 素材目录落盘 → ffprobe 元数据 → 审计）、路径模式仅允许素材根目录（越界 403） | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（上传登记/元数据/越权/路径越界 403/删除）；真实 MySQL 033 顺序迁移本机验证 |
+| B30 | 方案 Action 视图输出结构化 `segments`/`audio`/`total_duration`（数据取自方案 RequestJson） | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（结构化视图测试）；无新迁移 |
+| B31 | `POST /skills/runs/{runId}/revise`（`ai.run` + `media.read`）：`pending_actions` 且未确认可修订、替换方案 RequestJson、`plan_revised` 事件、`skill_run_revised` 审计（`034` CHECK 扩展）、幂等重放 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（状态机/幂等重放/409/422/404）；真实 MySQL 034 顺序迁移本机验证 |
+| B32 | `POST /api/v1/clipping/chat`：无状态 context 校验推进、规则式意图匹配、模板回复 + suggestions；只引导不执行；不落库 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（意图匹配/状态机/非法步进 422）；无新迁移 |
 
 字段级契约发布后同步 `docs/api-implementation.md` 与 `docs/frontend-api-integration.md`。
 
 **B23 实施状态（2026-08-08）**：`DisableAsync`（接口+实现+`ScenarioController` 第 6 条路由 `POST /scenarios/instances/{instanceId}/disable`，`smart_home.write`）已发布；`EnableAsync` 修正已禁用实例的恢复语义；无新迁移（复用 028 `status` 字段与 `ScenarioInstanceStatus.Disabled` 常量）；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 158/158（新增 ScenarioWorkflowServicesTests 5 项）；真实 MySQL 无需新迁移，设备执行仍按部署环境验证。
 
 **B24 实施状态（2026-08-08）**：`029` 迁移落地——新建平台级 `skills` 目录表（`tenant_id=1`，同 `scenario_templates` 惯例；key 唯一 / category / input_schema_json / output_schema_json / required_permission / risk_level / status）并种子注册 `quick-edit`（category=`media`、`risk_level=L1`、`required_permission=media.read`），`family_audit_logs` CHECK 扩展 `skill_run_created`/`skill_action_confirmed`/`skill_draft_registered` 动作与 `skill_run`/`skill_draft` 目标（一次到位，B25 无新迁移）；EF 迁移 `AddSkillCatalog`（仅建表、无 CHECK、不更新快照）。`media.read` 权限注册（owner/admin/member，viewer 不含）；`SkillCatalog` 实体（表 `skills`，与 `ai_skills` 用户自定义技能语义分离）；`ISkillRunServices`/`SkillRunServices`（SkillRun 创建：解析平台 Skill → 校验输入（`media_location` 必填）→ 确定性方案生成（指令时长提取 1-600 秒、默认 15 秒、单片段方案，蛇形键承载于动作 RequestJson）→ SourceType=skill 的 AgentRun + `draft_generate` Action（L1）+ `skill_run_created` 审计；幂等重放 200、同键异类型 409；`GetAsync` 跨租户/跨用户 404）；`SkillRunsController` 路由 `POST /api/v1/skills/{skillCode}/runs`（`ai.run` + `media.read` 双策略）；`dotnet build` 0 errors/0 CS1591，`dotnet test` 全绿 165/165（新增 SkillRunServicesTests 7 项：创建/方案时长解析/幂等重放/未知 Skill 422/非法输入 422/跨租户 404/审计/同键异类型 409）；真实 MySQL 029 顺序迁移已在本机执行验证（seed 落库 + CHECK 生效）；剪辑 MCP 选型与部署形态仍为 B25 前置依赖。
+
+**B29 实施状态（2026-08-09）**：`033` 迁移新建 `clipping_materials` 素材登记表 + EF 迁移 `AddClippingMaterials`；`media.write` 权限注册（owner/admin/member，viewer 不含）；`IClippingMaterialServices`/`ClippingMaterialServices`（上传：multipart → 配置素材根目录落盘 → ffprobe 提取时长/分辨率（失败 null 不阻塞）→ 返回素材视图含可访问路径 → `media_file_uploaded` 审计；路径模式校验仅允许素材根目录内、越界 403；列表/删除仅本人，删除 `media_file_deleted` 审计）；`ClippingMaterialsController` 三条路由；`dotnet build` 0 errors/0 CS1591、`dotnet test` 全绿（新增上传登记/元数据/越权/路径越界/删除测试）；真实 MySQL 033 顺序迁移已在本机执行验证；ffprobe 按部署环境验证。
+
+**B30 实施状态（2026-08-09）**：`SkillRunActionView` 输出结构化剪辑方案（`segments`/`audio`/`total_duration`，数据取自方案 Action 的 RequestJson，此前仅文本摘要）；Web 端据此渲染方案时间线；无新迁移；`dotnet build`/`dotnet test` 全绿（结构化视图测试）。
+
+**B31 实施状态（2026-08-09）**：`034` 迁移扩展 `family_audit_logs` action CHECK（`skill_run_revised`，无 EF 迁移）；`ISkillRunServices.ReviseAsync`/`SkillRunServices`（仅 `pending_actions` 且方案 Action 未确认可修订，否则 409；新指令重新确定性生成方案并替换方案 Action 的 RequestJson、更新 ResultSummary/Result、`plan_revised` 事件、`skill_run_revised` 审计、幂等键重放）；`SkillRunsController` 新增 `POST /api/v1/skills/runs/{runId}/revise`（`ai.run` + `media.read`，非法幂等键 422/跨租户 404）；真实 MySQL 034 顺序迁移已在本机执行验证。
+
+**B32 实施状态（2026-08-09）**：`IClippingChatServices`/`ClippingChatServices`（无状态 context 随请求回传：`collecting_materials → generating_plan → reviewing → done`，非法步进 422；规则式意图匹配——消息含剪辑关键词即进入快速剪辑引导；模板回复 + suggestions 引导按钮；只引导不执行，不落库）+ `ClippingChatController` 单条路由 `POST /api/v1/clipping/chat`（`ai.run` + `media.read`）；`dotnet build`/`dotnet test` 全绿（意图匹配/状态机/非法上下文）。
 
 **B25 实施状态（2026-08-09）**：`IClippingMcpClient`/`MockClippingMcpClient` 已发布（确定性 Mock：按剪辑方案生成最小剪映草稿 JSON——片段序列/总时长/draft_roaming_id，不访问素材目录、不产生真实文件路径；真实 jianying-mcp / capcut-mate 接入为部署环境验证项）。`ISkillRunServices.ConfirmActionAsync`/`SkillRunServices` 确认执行链路：UUID 幂等键 422 校验 → `ActionExecutionAudits` 同键重放首次结果不重复登记 → 权限快照复验 → 经剪辑 MCP 生成 .draft 内容 → `RegisterGeneratedFileAsync` 登记 `quick_edit_{runId}.draft.json`（application/json，附件到 run，解析 fileId/sizeBytes）→ action `executed`/run `completed`，登记失败 502、action/run `failed`；写 `skill_action_confirmed`（目标 `skill_run`）与 `skill_draft_registered`（目标 `skill_draft`）审计；**无新迁移**。`SkillRunsController` 新增路由 `POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`，非法幂等键 422/动作不存在或非本人 404/已终态换键 409）；下载复用既有 `POST /api/v1/expert-files/{fileId}/read-token`（10 分钟 readToken）。`dotnet build` 0 errors/0 CS1591（唯一警告为存量 ScenarioWorkflowServices 可空性，非本切片引入），`dotnet test` 全绿 170/170（新增 SkillRunServicesTests 5 项：确认执行登记与双审计/幂等重放/422-404-409/登记失败 502 与终态/Mock 草稿结构）；真实 MySQL 无需新迁移；剪辑 MCP 端到端（真实写入素材与剪映草稿目录）按部署环境验证。
 

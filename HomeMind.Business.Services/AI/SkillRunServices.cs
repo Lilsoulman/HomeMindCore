@@ -218,6 +218,58 @@ public sealed class SkillRunServices : ISkillRunServices
         return new ServiceResult(502, summary);
     }
 
+    /// <inheritdoc />
+    public async Task<ServiceResult> ReviseAsync(long userId, long tenantId, long runId, ReviseSkillRunRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!Guid.TryParse(request.IdempotencyKey, out _))
+            return new ServiceResult(422, "修订剪辑方案时必须提供有效的幂等键。");
+
+        var run = await _db.AgentRuns.SingleOrDefaultAsync(
+            x => x.Id == runId && x.TenantId == tenantId && x.UserId == userId && x.SourceType == "skill", cancellationToken);
+        if (run is null) return new ServiceResult(404, "请求的 Skill 运行不存在。");
+        if (!IsSnapshotAuthorized(run, userId))
+            return new ServiceResult(403, "当前成员无权修订该运行的方案。");
+
+        var action = await _db.ExpertRunActions.SingleOrDefaultAsync(
+            x => x.RunId == run.Id && x.TenantId == tenantId && x.ActionType == "draft_generate", cancellationToken);
+        if (action is null) return new ServiceResult(404, "请求的 Skill 动作不存在。");
+
+        // 幂等重放（与 B25 确认同机制）：同一修订幂等键仅返回当前视图，不重复生成事件/审计。
+        var previous = await _db.ActionExecutionAudits.SingleOrDefaultAsync(
+            x => x.RunActionId == action.Id && x.IdempotencyKey == request.IdempotencyKey, cancellationToken);
+        if (previous is not null)
+            return new ServiceResult(200, "该修订已生效，返回当前方案。", await ToViewAsync(run, cancellationToken));
+
+        if (run.Status != "pending_actions" || action.Status != "pending")
+            return new ServiceResult(409, "方案已确认或运行已终态，不能再次修订。");
+
+        var input = ReadSkillInput(run.Input);
+        if (input is null) return new ServiceResult(422, "运行输入解析失败，不能修订。");
+
+        var plan = BuildPlan(input.MediaLocation, request.Instruction?.Trim());
+        var planJson = JsonSerializer.Serialize(ToPlanJson(plan), JsonOptions);
+        var now = DateTime.UtcNow;
+        action.RequestJson = planJson;
+        action.UpdatedAt = now;
+        run.ResultSummary = $"快速剪辑方案已生成：素材「{plan.SourceName}」，总时长约 {plan.TotalDuration} 秒，确认后生成剪映草稿。";
+        AddEvent(run, await NextSequenceAsync(runId, cancellationToken), "plan_revised", $"已按新创作目标重新生成方案，共 1 个片段，总时长约 {plan.TotalDuration} 秒。", now);
+        _db.ActionExecutionAudits.Add(new ActionExecutionAudit
+        {
+            TenantId = tenantId,
+            RunActionId = action.Id,
+            OperatorUserId = userId,
+            IdempotencyKey = request.IdempotencyKey,
+            Status = "executed",
+            Command = JsonSerializer.Serialize(new { action_type = "draft_generate_revise" }),
+            CreatedAt = now,
+            UpdatedAt = now
+        });
+        await _db.SaveChangesAsync(cancellationToken);
+        await _audit.LogAsync(tenantId, userId, FamilyAuditActions.SkillRunRevised, FamilyAuditTargetTypes.SkillRun,
+            run.Id, null, new { run_id = run.Id, segment_count = 1, total_duration = plan.TotalDuration }, null, run.Id, cancellationToken);
+        return new ServiceResult(200, "剪辑方案已修订。", await ToViewAsync(run, cancellationToken));
+    }
+
     /// <summary>复验运行权限快照：快照缺失视为存量运行放行；SkillRun 为 household 快照且无连接器授权，仅校验归属。</summary>
     private static bool IsSnapshotAuthorized(AgentRun run, long userId)
     {
@@ -316,20 +368,32 @@ public sealed class SkillRunServices : ISkillRunServices
         return element.TryGetProperty(camelName, out value) ? value : null;
     }
 
-    /// <summary>从运行动作的剪辑方案读取片段与总时长；解析失败返回空值。</summary>
-    private static (int SegmentCount, int TotalDuration) ReadPlanSummary(string requestJson)
+    /// <summary>从运行动作的剪辑方案读取片段序列与总时长（B30 结构化视图数据）；解析失败返回空值。</summary>
+    private static SkillPlanData ReadPlan(string requestJson)
     {
         try
         {
             using var document = JsonDocument.Parse(requestJson);
             var root = document.RootElement;
-            var segmentCount = ReadValue(root, "segments") is { ValueKind: JsonValueKind.Array } segments ? segments.GetArrayLength() : 0;
-            var totalDuration = ReadValue(root, "total_duration") is { ValueKind: JsonValueKind.Number } duration && duration.TryGetInt32(out var parsed) ? parsed : 0;
-            return (segmentCount, totalDuration);
+            var segments = new List<SkillPlanSegmentView>();
+            if (ReadValue(root, "segments") is { ValueKind: JsonValueKind.Array } segmentArray)
+            {
+                foreach (var segment in segmentArray.EnumerateArray())
+                {
+                    var index = segment.TryGetProperty("index", out var indexElement) && indexElement.TryGetInt32(out var parsedIndex) ? parsedIndex : segments.Count + 1;
+                    var source = segment.TryGetProperty("source", out var sourceElement) ? sourceElement.GetString() ?? "" : "";
+                    var segmentDuration = segment.TryGetProperty("duration", out var durationElement) && durationElement.TryGetInt32(out var parsedDuration) ? parsedDuration : 0;
+                    segments.Add(new SkillPlanSegmentView(index, source, segmentDuration));
+                }
+            }
+            object? audio = null;
+            if (ReadValue(root, "audio") is { ValueKind: JsonValueKind.Object } audioElement) audio = audioElement;
+            var totalDuration = ReadValue(root, "total_duration") is { ValueKind: JsonValueKind.Number } duration && duration.TryGetInt32(out var parsedTotal) ? parsedTotal : 0;
+            return new SkillPlanData(segments, audio, totalDuration);
         }
         catch (JsonException)
         {
-            return (0, 0);
+            return new SkillPlanData([], null, 0);
         }
     }
 
@@ -353,14 +417,14 @@ public sealed class SkillRunServices : ISkillRunServices
             actions.Select(ToActionView).ToArray());
     }
 
-    /// <summary>从动作的剪辑方案读取片段数与总时长生成动作视图；内容非法时回退为默认值。</summary>
+    /// <summary>从动作的剪辑方案读取片段序列与总时长生成动作视图（B30 结构化输出）；内容非法时回退为默认值。</summary>
     private static SkillRunActionView ToActionView(ExpertRunAction action)
     {
-        var (segmentCount, totalDuration) = ReadPlanSummary(action.RequestJson);
-        var description = segmentCount == 0
+        var plan = ReadPlan(action.RequestJson);
+        var description = plan.Segments.Count == 0
             ? "生成剪映 .draft 草稿文件。"
-            : $"共 {segmentCount} 个片段，总时长约 {totalDuration} 秒，风险等级 {ConfirmationRiskLevel.L1}。";
-        return new SkillRunActionView(action.Id, action.ActionType, action.Status, "快速剪辑方案", description, ConfirmationRiskLevel.L1);
+            : $"共 {plan.Segments.Count} 个片段，总时长约 {plan.TotalDuration} 秒，风险等级 {ConfirmationRiskLevel.L1}。";
+        return new SkillRunActionView(action.Id, action.ActionType, action.Status, "快速剪辑方案", description, ConfirmationRiskLevel.L1, plan.Segments, plan.Audio, plan.TotalDuration);
     }
 
     private void AddEvent(AgentRun run, int sequence, string type, string message, DateTime createdAt) =>
@@ -385,4 +449,5 @@ public sealed class SkillRunServices : ISkillRunServices
 
     private sealed record SkillInput(string MediaLocation, string? Instruction);
     private sealed record SkillPlanInfo(string MediaLocation, string? Instruction, string SourceName, int TotalDuration);
+    private sealed record SkillPlanData(IReadOnlyList<SkillPlanSegmentView> Segments, object? Audio, int TotalDuration);
 }

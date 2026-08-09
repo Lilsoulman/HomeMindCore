@@ -53,6 +53,27 @@ public class SkillRunServicesTests
         Assert.Equal(run.Id, audit.RelatedRunId);
     }
 
+    /// <summary>B30：创建后的动作视图输出结构化片段序列（Segments/TotalDuration），供 Web 渲染方案时间线。</summary>
+    [Fact]
+    public async Task Create_ActionView_Exposes_Structured_Plan()
+    {
+        await using var db = NewDb("plan-view");
+        SeedQuickEdit(db);
+        var services = NewServices(db);
+
+        var result = await services.CreateAsync(10, 1, "quick-edit", new SkillRunCreateRequest(null, """{"media_location":"/nas/videos/探店.mp4","instruction":"竖屏 30 秒"}"""), default);
+
+        Assert.True(result.Succeeded);
+        var view = Assert.IsType<SkillRunView>(result.Data);
+        var action = Assert.Single(view.Actions);
+        Assert.NotNull(action.Segments);
+        var segment = Assert.Single(action.Segments);
+        Assert.Equal(1, segment.Index);
+        Assert.Equal("探店.mp4", segment.Source);
+        Assert.Equal(30, segment.Duration);
+        Assert.Equal(30, action.TotalDuration);
+    }
+
     /// <summary>同一幂等键重复创建返回既有运行，不重复创建。</summary>
     [Fact]
     public async Task Create_Replays_Same_Idempotency_Key()
@@ -290,6 +311,92 @@ public class SkillRunServicesTests
         var video = root.GetProperty("materials").GetProperty("videos")[0];
         Assert.Equal("探店.mp4", video.GetProperty("source").GetString());
         Assert.Equal(30, video.GetProperty("duration").GetInt32());
+    }
+
+    /// <summary>B31：修订以新指令重新生成方案：替换方案 RequestJson、plan_revised 事件、skill_run_revised 审计、视图携带新片段序列。</summary>
+    [Fact]
+    public async Task Revise_Succeeds_And_Replaces_Plan()
+    {
+        await using var db = NewDb("revise");
+        SeedQuickEdit(db);
+        var services = NewServices(db);
+        var runId = await CreateRunAsync(services, db);
+        var key = Guid.NewGuid().ToString();
+
+        var result = await services.ReviseAsync(10, 1, runId, new ReviseSkillRunRequest("竖屏 60 秒，加字幕", key), default);
+
+        Assert.Equal(200, result.StatusCode);
+        var view = Assert.IsType<SkillRunView>(result.Data);
+        Assert.Equal("pending_actions", view.Status);
+        var action = Assert.Single(view.Actions);
+        var segment = Assert.Single(action.Segments!);
+        Assert.Equal(60, segment.Duration);
+        Assert.Equal(60, action.TotalDuration);
+
+        var stored = await db.ExpertRunActions.SingleAsync();
+        using var plan = JsonDocument.Parse(stored.RequestJson);
+        Assert.Equal(60, plan.RootElement.GetProperty("total_duration").GetInt32());
+        Assert.Contains(db.RunEvents.ToList(), e => e.EventType == "plan_revised");
+        var audit = await db.FamilyAuditLogs.SingleAsync(x => x.Action == FamilyAuditActions.SkillRunRevised);
+        Assert.Equal(FamilyAuditTargetTypes.SkillRun, audit.TargetType);
+        Assert.Equal(runId, audit.RelatedRunId);
+    }
+
+    /// <summary>B31：同一修订幂等键重放返回当前视图，不重复生成 plan_revised 事件与审计。</summary>
+    [Fact]
+    public async Task Revise_Replays_Same_Idempotency_Key()
+    {
+        await using var db = NewDb("revise-replay");
+        SeedQuickEdit(db);
+        var services = NewServices(db);
+        var runId = await CreateRunAsync(services, db);
+        var key = Guid.NewGuid().ToString();
+
+        var first = await services.ReviseAsync(10, 1, runId, new ReviseSkillRunRequest("竖屏 45 秒", key), default);
+        var second = await services.ReviseAsync(10, 1, runId, new ReviseSkillRunRequest("横屏 90 秒", key), default);
+
+        Assert.Equal(200, first.StatusCode);
+        Assert.Equal(200, second.StatusCode);
+        Assert.Equal(1, await db.ActionExecutionAudits.CountAsync());
+        Assert.Equal(1, db.RunEvents.Count(e => e.EventType == "plan_revised"));
+        Assert.Equal(2, await db.FamilyAuditLogs.CountAsync()); // skill_run_created + skill_run_revised
+        var view = Assert.IsType<SkillRunView>(second.Data);
+        Assert.Equal(45, Assert.Single(Assert.Single(view.Actions).Segments!).Duration);
+    }
+
+    /// <summary>B31：方案已确认（action 非 pending）后修订返回 409，不覆盖已执行方案。</summary>
+    [Fact]
+    public async Task Revise_After_Confirm_Returns409()
+    {
+        await using var db = NewDb("revise-confirmed");
+        SeedQuickEdit(db);
+        var services = NewServices(db);
+        var runId = await CreateRunAsync(services, db);
+        var action = await db.ExpertRunActions.SingleAsync();
+        await services.ConfirmActionAsync(10, 1, runId, action.Id, new ConfirmSkillRunActionRequest(Guid.NewGuid().ToString()), default);
+
+        var result = await services.ReviseAsync(10, 1, runId, new ReviseSkillRunRequest("竖屏 60 秒", Guid.NewGuid().ToString()), default);
+
+        Assert.Equal(409, result.StatusCode);
+        Assert.DoesNotContain(db.RunEvents.ToList(), e => e.EventType == "plan_revised");
+    }
+
+    /// <summary>B31：跨用户/跨租户修订返回 404；非法幂等键返回 422。</summary>
+    [Fact]
+    public async Task Revise_OtherUser_Or_InvalidKey_Returns_404_422()
+    {
+        await using var db = NewDb("revise-other");
+        SeedQuickEdit(db);
+        var services = NewServices(db);
+        var runId = await CreateRunAsync(services, db);
+
+        var otherUser = await services.ReviseAsync(11, 1, runId, new ReviseSkillRunRequest("竖屏 30 秒", Guid.NewGuid().ToString()), default);
+        var otherTenant = await services.ReviseAsync(10, 2, runId, new ReviseSkillRunRequest("竖屏 30 秒", Guid.NewGuid().ToString()), default);
+        var invalidKey = await services.ReviseAsync(10, 1, runId, new ReviseSkillRunRequest("竖屏 30 秒", "not-a-guid"), default);
+
+        Assert.Equal(404, otherUser.StatusCode);
+        Assert.Equal(404, otherTenant.StatusCode);
+        Assert.Equal(422, invalidKey.StatusCode);
     }
 
     private static async Task<long> CreateRunAsync(SkillRunServices services, HomeMindDbContext db)

@@ -9,6 +9,11 @@ public sealed record SkillRunCreateRequest(string? IdempotencyKey, string InputJ
 /// <param name="IdempotencyKey">UUID 幂等键，重复提交只返回首次执行结果，不重复登记草稿文件。</param>
 public sealed record ConfirmSkillRunActionRequest(string IdempotencyKey);
 
+/// <summary>修订 Skill 运行剪辑方案（B31，修改创作目标重新生成方案）的请求体。</summary>
+/// <param name="Instruction">新的创作目标和指令；空串表示清除指令（回退默认时长）。</param>
+/// <param name="IdempotencyKey">UUID 幂等键，同一修订键只生成一次 plan_revised 事件与审计。</param>
+public sealed record ReviseSkillRunRequest(string Instruction, string IdempotencyKey);
+
 /// <summary>Skill 运行视图（SourceType=skill）；只展示展示安全字段，不包含素材绝对路径、草稿路径或 Prompt。</summary>
 /// <param name="Id">运行主键。</param>
 /// <param name="Status">运行生命周期状态。</param>
@@ -33,4 +38,13 @@ public sealed record SkillRunEventView(int Sequence, string Type, string Message
 /// <param name="Title">动作标题，如「快速剪辑方案」。</param>
 /// <param name="Description">动作说明。</param>
 /// <param name="RiskLevel">动作风险等级，快速剪辑为 L1。</param>
-public sealed record SkillRunActionView(long Id, string ActionType, string Status, string Title, string Description, string RiskLevel);
+/// <param name="Segments">剪辑方案片段序列（B30 结构化输出，此前仅文本摘要），无方案时为空。</param>
+/// <param name="Audio">剪辑方案配乐信息，当前方案为 null（透传方案 RequestJson 的 audio 节点）。</param>
+/// <param name="TotalDuration">剪辑方案总时长（秒），无方案时为空。</param>
+public sealed record SkillRunActionView(long Id, string ActionType, string Status, string Title, string Description, string RiskLevel, IReadOnlyList<SkillPlanSegmentView>? Segments = null, object? Audio = null, int? TotalDuration = null);
+
+/// <summary>剪辑方案片段视图（B30）；只含展示安全字段，不暴露素材绝对路径。</summary>
+/// <param name="Index">片段序号，从 1 开始。</param>
+/// <param name="Source">片段来源素材名（路径最后一段）。</param>
+/// <param name="Duration">片段时长（秒）。</param>
+public sealed record SkillPlanSegmentView(int Index, string Source, int Duration);

@@ -1,5 +1,7 @@
 using HomeMind.Business.IServices.Base;
 using HomeMind.Business.Services.Base;
+using HomeMind.Business.IServices.Media;
+using HomeMind.Business.Services.Media;
 using HomeMind.Business.IServices.Productivity;
 using HomeMind.Business.Services.Productivity;
 using HomeMind.Business.IServices.AI;
@@ -85,6 +87,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConversationServices, ConversationServices>();
         services.AddScoped<IExpertSelfServeServices, ExpertSelfServeServices>();
         services.AddScoped<ISkillRunServices, SkillRunServices>();
+        // B29 快速剪辑素材登记：上传/路径登记 + ffprobe 元数据；素材仅本人可见可删。
+        services.AddScoped<IFfprobeExtractor, FfprobeExtractor>();
+        services.AddScoped<IClippingMaterialServices, ClippingMaterialServices>();
+        // B32 剪辑对话引导：无状态 context 推进 + 规则意图匹配 + 模板回复；只引导不执行。
+        services.AddScoped<IClippingChatServices, ClippingChatServices>();
         // 剪映 MCP 客户端：默认 Mock（无本地 jianying-mcp 环境回退，测试用）；Mcp:Clients:Jianying:Enabled=true 时切换真实 stdio 实现。
         services.AddScoped<IClippingMcpClient>(sp =>
         {

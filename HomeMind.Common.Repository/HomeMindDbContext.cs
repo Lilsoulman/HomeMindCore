@@ -40,6 +40,7 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<IcalOverride> IcalOverrides => Set<IcalOverride>();
     public DbSet<AiSkill> AiSkills => Set<AiSkill>();
     public DbSet<SkillCatalog> SkillCatalogs => Set<SkillCatalog>();
+    public DbSet<ClippingMaterial> ClippingMaterials => Set<ClippingMaterial>();
     public DbSet<KnowledgeItem> KnowledgeItems => Set<KnowledgeItem>();
     public DbSet<AiConfig> AiConfigs => Set<AiConfig>();
     public DbSet<AiCallLog> AiCallLogs => Set<AiCallLog>();

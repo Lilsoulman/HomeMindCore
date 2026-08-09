@@ -444,32 +444,32 @@ Skill 按**产物形态**分级，决定其承载端（与「附件选择/上传
 
 **产品目标**：把「探店/日常拍摄素材 → 可编辑剪映草稿」的重复劳动用对话完成。产物是剪映 .draft 草稿文件，可在剪映中继续编辑或渲染，**不做一键成片**；草稿为本地文件、可编辑可丢弃、不对外发布。
 
-**用户表达与执行链路**：
+**用户表达与执行链路（V2.7 对话式优化）**：
 
 ```text
-用户："帮我剪一下探店视频"（+素材位置 +创作目标和指令）
+用户："帮我剪一下探店视频"
   ↓
-NexusMind Agent（理解意图）
+快速剪辑工作台（分步对话式引导：素材 → 创作目标 → 方案 → 确认 → 导出）
   ↓
-匹配「快速剪辑」Skill
+chat 引导接口（无状态 context 推进 + 规则意图匹配 + 模板回复，只引导不执行）
   ↓
-Skill Executor 调用剪辑 MCP（jianying-mcp / capcut-mate）
+素材：浏览器上传（服务端落盘 + ffprobe 提取时长/分辨率，登记 clipping_materials）或本机/NAS 路径（服务端校验）
   ↓
-MCP 调用 FFmpeg(ffprobe) 解析视频/音频时长与分辨率
+对话达成目标 → POST /skills/quick-edit/runs 创建 Skill Run（复用 B24 链路）
   ↓
-生成剪辑方案（片段序列/音频/时长摘要）→ 用户确认
+确定性方案生成（片段序列/音频/时长）→ 结构化视图（B30）渲染为时间线
   ↓
-add_video_segment / add_audio_segment 写入 → export_draft()
+不满意 → POST /skills/runs/{runId}/revise 修订指令重新生成方案（B31）
   ↓
-生成 .draft 草稿文件 → RegisterGeneratedFileAsync 登记（复用 Expert File 链路）
+确认 → 剪辑 MCP 生成 .draft → RegisterGeneratedFileAsync 登记（复用 B25 链路）
   ↓
 返回"草稿已生成，打开剪映即可编辑"
 ```
 
 **Skill 输入契约**：
 
-- `素材位置`：本机/NAS 目录路径或 URI（视频/音频文件或目录）；
-- `创作目标和指令`：自然语言，如时长、画幅比例、配乐、字幕等要求。
+- `素材位置`：本机/NAS 目录路径或 URI（视频/音频文件或目录），或浏览器上传的素材（经服务端登记为 `clipping_materials`，ffprobe 提取元数据，上传后回填可访问路径）；
+- `创作目标和指令`：自然语言，如时长、画幅比例、配乐、字幕等要求；方案生成后可通过修订接口（B31）调整指令重新生成。
 
 **剪辑 MCP 工具契约**（jianying-mcp / capcut-mate，FFmpeg 为后台依赖）：
 
@@ -484,8 +484,8 @@ add_video_segment / add_audio_segment 写入 → export_draft()
 **跨端契约**：
 
 - 移动端：无入口、不承载该能力（复杂 Skill 不在移动端范围）；能力 Tab 仅保留既有只读运行记录入口；
-- Web 端：完整流程——快速剪辑工作台（`/app/media/quick-edit`）：素材位置与创作目标和指令表单 → 创建 Skill Run → 轮询至剪辑方案摘要 → Action 确认 → .draft 生成文件下载（复用 `/app/runs/:id` 现有 readToken 下载能力）；
-- 服务端：SkillExecutor 首个实现——Skill 独立执行（`POST /api/v1/skills/{skillCode}/runs`，SourceType=skill 的 AgentRun，不绑定专家，同场景工作流先例）、剪辑 MCP 客户端、`media.read` 权限、产物经 `RegisterGeneratedFileAsync` 登记。
+- Web 端：完整流程——快速剪辑工作台（`/app/media/quick-edit`）升级为分步对话式引导（素材 → 创作目标 → 方案 → 确认 → 导出）：素材支持浏览器上传（素材卡片展示时长/分辨率）或路径输入；对话经 chat 引导接口（B32）推进；对话达成目标后创建 Skill Run → 轮询至方案（结构化时间线渲染，B30）→ 可修订重新生成（B31）→ Action 确认 → .draft 生成文件下载（复用 `/app/runs/:id` 现有 readToken 下载能力）；
+- 服务端：SkillExecutor 首个实现——Skill 独立执行（`POST /api/v1/skills/{skillCode}/runs`，SourceType=skill 的 AgentRun，不绑定专家，同场景工作流先例）、剪辑 MCP 客户端、`media.read`/`media.write` 权限、素材登记（B29）、结构化方案视图（B30）、方案修订（B31）、chat 引导（B32）、产物经 `RegisterGeneratedFileAsync` 登记。
 
 **验收标准**：对话输入素材位置与创作指令 → 返回 .draft 路径；ffprobe 元数据解析正确；草稿可在剪映打开编辑；运行/审计完整。
 
@@ -494,6 +494,14 @@ add_video_segment / add_audio_segment 写入 → export_draft()
 **B24 实施状态（2026-08-08）**：`029` 迁移新建平台级 `skills` 目录表（tenant_id=1）并注册 `quick-edit`（media / L1 / media.read），`family_audit_logs` CHECK 扩展 `skill_run_created`/`skill_action_confirmed`/`skill_draft_registered` 与 `skill_run`/`skill_draft`；`POST /api/v1/skills/{skillCode}/runs`（`ai.run` + `media.read`）已发布：确定性方案生成（指令时长提取 1-600 秒、默认 15 秒、单片段方案）+ `draft_generate` Action（L1）+ `skill_run_created` 审计；`dotnet build` 0 errors/0 CS1591、`dotnet test` 全绿 165/165、真实 MySQL 029 顺序迁移已在本机验证。剪辑 MCP 选型与部署形态仍为 B25（Action 确认 → 剪辑 MCP 写入草稿 → 生成文件登记 → readToken 下载）前置依赖。
 
 **B25 实施状态（2026-08-09）**：`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`）已发布：确认 `draft_generate` 动作 → 剪辑 MCP 客户端（当前为确定性 Mock `MockClippingMcpClient`，不访问素材目录、不产生真实文件路径）生成 .draft 草稿内容 → `RegisterGeneratedFileAsync` 登记为 Ready 生成文件（附件到 run）→ 下载复用既有 readToken 端点（10 分钟）；写 `skill_action_confirmed`/`skill_draft_registered` 审计；无新迁移；`dotnet build` 0 errors/0 CS1591、`dotnet test` 全绿 170/170（新增确认执行/幂等重放/错误分支/Mock 草稿 5 项测试）。剪辑 MCP 真实项目选型与部署形态（jianying-mcp / capcut-mate，需部署于可访问素材与剪映草稿目录的主机，符合本地优先原则）为部署环境验证项，不阻塞 B24/B25 切片收口。
+
+**B29 实施状态（2026-08-09）**：`033` 迁移新建 `clipping_materials` 素材登记表（BIGINT 主键同现有约定、tenant_id/owner_user_id/文件名/存储路径/大小/duration/width/height/fps/status/is_deleted）+ `media.write` 权限注册（owner/admin/member，viewer 不含）；`POST/GET/DELETE /api/v1/clipping/materials`（`media.read` + `media.write`）：multipart 上传 → 服务端素材目录落盘 → ffprobe 提取元数据（失败返回 null 不阻塞）→ `media_file_uploaded` 审计；路径模式仅允许配置的素材根目录、越界 403；列表/删除仅本人；上传返回可访问路径供前端回填 `media_location`（B24 契约零改动）。
+
+**B30 实施状态（2026-08-09）**：`SkillRunActionView` 输出结构化剪辑方案（`segments`/`audio`/`total_duration`，数据取自方案 Action 的 RequestJson，此前仅文本摘要）；Web 端据此渲染方案时间线；无新迁移。
+
+**B31 实施状态（2026-08-09）**：`POST /api/v1/skills/runs/{runId}/revise`（`ai.run` + `media.read`）方案修订：仅 `pending_actions` 且方案 Action 未确认可修订（否则 409），以新创作指令重新确定性生成方案并替换方案 Action 的 RequestJson、更新 ResultSummary/Result、写 `plan_revised` 事件与 `skill_run_revised` 审计（`034` 迁移扩展 CHECK）；幂等键重放；「修改目标重新生成」多轮对话由此支持。
+
+**B32 实施状态（2026-08-09）**：`POST /api/v1/clipping/chat` chat 引导接口：无状态 context 随请求回传（`collecting_materials → generating_plan → reviewing → done`，非法步进 422），规则式意图匹配（剪辑关键词），模板回复 + `suggestions` 引导按钮；只引导不执行——方案生成/确认/下载仍走既有 Skill Run 链路；不落库、不新建会话表。
 
 ## 8. 文档治理与联动
 
