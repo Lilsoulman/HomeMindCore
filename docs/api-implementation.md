@@ -629,8 +629,12 @@ Skill 独立执行（SkillExecutor 首个实现）：`029` 迁移新建平台级
 （`tenant_id=1`，同 `scenario_templates` 惯例）并种子注册 `quick-edit`
 （category=`media`、`risk_level=L1`、`required_permission=media.read`）；运行创建
 SourceType=skill 的 AgentRun（不绑定 Expert，`expert_id` 为空），复用确认/幂等/审计链路，
-不新建运行时。B25 起确认后经剪辑 MCP 客户端（当前为确定性 Mock 实现 `MockClippingMcpClient`，
-真实 jianying-mcp/capcut-mate 接入为部署环境验证项）生成 .draft 草稿内容并登记为生成文件。
+不新建运行时。B25 起确认后经剪辑 MCP 客户端生成 .draft 草稿内容并登记为生成文件；
+B28 起 `IClippingMcpClient` 为配置驱动：`Mcp:Clients:Jianying:Enabled=false`（默认）走确定性
+Mock 实现 `MockClippingMcpClient`（测试与无环境回退），`true` 时经真实 jianying-mcp
+（本地 stdio，`JianyingMcpClient` 调 `create_draft` 并读取草稿字节流，SAVE_PATH/OUTPUT_PATH
+由 MCP 进程环境提供）生成草稿；SkillRunServices 契约（返回字节流）零改动。
+真实草稿生成端到端按部署环境验证。
 
 | 端点 | 权限 | 契约要点 |
 | --- | --- | --- |

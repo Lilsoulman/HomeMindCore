@@ -85,7 +85,14 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConversationServices, ConversationServices>();
         services.AddScoped<IExpertSelfServeServices, ExpertSelfServeServices>();
         services.AddScoped<ISkillRunServices, SkillRunServices>();
-        services.AddScoped<IClippingMcpClient, MockClippingMcpClient>();
+        // 剪映 MCP 客户端：默认 Mock（无本地 jianying-mcp 环境回退，测试用）；Mcp:Clients:Jianying:Enabled=true 时切换真实 stdio 实现。
+        services.AddScoped<IClippingMcpClient>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            if (!config.GetValue<bool>("Mcp:Clients:Jianying:Enabled")) return new MockClippingMcpClient();
+            var options = config.GetSection("Mcp:Clients:Jianying").Get<McpProcessOptions>() ?? new McpProcessOptions();
+            return new JianyingMcpClient(new StdioMcpProcessClient(options));
+        });
         services.AddScoped<IXhsConnectorServices, XhsConnectorServices>();
         services.AddScoped<IXhsPublishServices, XhsPublishServices>();
         // 本地 stdio MCP 进程客户端：进程级共享（单例），进程内懒启动；命令与超时来自配置。

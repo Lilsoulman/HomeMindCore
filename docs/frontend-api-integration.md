@@ -447,6 +447,7 @@ configured."`（配置 SSRF 白名单规则前，iCal 网络拉取处于禁用�
 - 成功 HTTP 200：`Data` 为 `{ actionId, status, message, fileId }`，`message="草稿已生成，打开剪映即可编辑。"`；
 - 登记失败 → HTTP 502；
 - **下载流程**（Web 端快速剪辑工作台）：拿到 `fileId` 后调用既有 `POST /api/v1/expert-files/{fileId}/read-token` 获取 10 分钟 readToken，再用 `ReadUrl` 拉取草稿文件。
+- B28 起剪辑 MCP 为后端配置驱动（`Mcp:Clients:Jianying:Enabled`，默认 Mock，开启后经真实 jianying-mcp 生成草稿）；**前端契约无变化**，草稿下载流程不变。
 
 ## 8. AI 专家与 AgentRun 模块（`/api/v1/...`）
 
