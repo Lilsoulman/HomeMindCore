@@ -546,7 +546,9 @@ row_version（与既有 Enable/Run 一致）。
 
 **B35 实施状态（2026-08-13）**：`037` 迁移新建 `clipping_tasks`；chat 首次调用创建并回传 `taskId`，后续仅本人同租户可恢复；新增 `GET /api/v1/clipping/tasks/{taskId}`。quick-edit Run 请求可选 `taskId`，创建方案时绑定 run、持久化 current_plan 与版本 1，revise 追加版本；`SkillRunView` 对已绑定任务输出 `engineStage`、`version`、`versionHistory`。当前仅发布公开 `planning` 状态，**不调用或模拟** video-use/Seedance/HyperFrames/Remotion；真实四引擎调度、阶段事件、部分/全量重做为下一切片。
 
-**B36 实施状态（2026-08-13）**：已新增 `IClippingEngine` 适配器契约及调度服务，所有实现由命名配置注册。受控本地进程统一执行健康探测、超时和 stderr 排空；未配置、健康检查失败或执行失败均将任务置 `failed` 并只写脱敏失败事件，绝不调用 Mock 或占位结果伪造成功。`Seedance` 仅在全局开关、请求 `allowSeedance=true`、成本确认和服务端安全密钥均满足时调用；默认全部引擎关闭。`dotnet build` 通过，B36 定向测试 2/2 与服务测试 245/245 通过；真实引擎仅可在部署环境使用非敏感样片验收，未验证前不得启用。
+**B36 实施状态（2026-08-13）**：已新增 `IClippingEngine` 适配器契约及调度服务，所有实现由命名配置注册。受控本地进程统一执行健康探测、超时和 stderr 排空；未配置、健康检查失败或执行失败均将任务置 `failed` 并只写脱敏失败事件，绝不调用 Mock 或占位结果伪造成功。`Seedance` 仅在全局开关、请求 `allowSeedance=true`、成本确认和服务端安全密钥均满足时调用；默认全部引擎关闭。本机复验 `dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b36-deployment-verify` 为 0 errors，另有 `ScenarioWorkflowServices.cs` 既有 1 条 CS8604 警告；服务测试 246/246 通过；真实 MySQL `036_mindmap_skill`、`037_clipping_tasks` 已按顺序应用，`mindmap` 种子（1 条）与表字段备注已核验。非敏感样片经真实 API 上传已由 `D:\HomeMind\tools\ffmpeg\bin\ffprobe.exe` 提取为 7 秒、1920×1080，素材输入流生命周期、绝对存储目录及 JSON 字符串时长解析均已修复；真实 `jianying-mcp` 已经 UTF-8 无 BOM 客户端生成草稿并登记 7477 字节文件。所有四引擎配置仍保持关闭，须待逐引擎命令/凭据就绪后分别执行健康与阶段事件验收。
+
+**xhs 部署预检（2026-08-13）**：`D:\HomeMind\tools\xhs-mcp` 的 Node 依赖、stdio `initialize` 握手和只读 `xhs_auth_status` 均正常；当前状态为 `logged_out`。真实搜索/详情验证必须在授权用户人工扫码、服务端 Poll 落库 personal Connector 后执行；不自动发起登录，不执行 L2 发布确认或发布工具调用。
 
 任务状态为 `generating → reviewing|failed`，阶段事件复用 `RunEvents` 并新增展示安全 payload `{ stage, status, message, occurredAt }`；stage 限 `video_use|seedance|hyperframes|remotion|draft`，status 限 `queued|running|skipped|succeeded|failed`。每个失败均写 `failed` 事件和任务失败原因（脱敏），不得继续写成功事件或登记草稿。`POST /skills/runs/{runId}/revise` 识别参数调整、部分重做、全量重做：参数调整不调引擎；部分重做只排受影响 stage 与下游；全量重做从 `video_use` 开始。执行转入后台队列，查询仍使用 `GET /clipping/tasks/{taskId}` 与既有 `GET /expert-runs/{id}/events` 轮询；本切片不引入 WebSocket。
 
@@ -759,3 +761,54 @@ row_version（与既有 Enable/Run 一致）。
 | H5 | Confirmation 结构化上下文与 L1 Grant | once/run preference、到期/撤销、L2/L3 不命中、审计与跨家庭隔离 |
 | M1 | context_snapshots | 创建/版本/哈希/引用隔离，Run 中记忆变化不改变当前 snapshot |
 | M2 | memory_candidates + review worker | evidence/confidence、敏感事实待确认、后台失败不影响主 Run、删除/租户隔离 |
+
+## 21. 美团生活服务个人级 Connector（规划，未发布 API）
+
+本节落实产品总设计 §7.3。`meituan-travel`、`meituan-paotui` 和美团分销推广/领券 Skill 均只能经 `MeituanLifeConnector` 进入产品；官方 CLI、MCP Server 或 API 是 Adapter 的可替换实现，不能成为 Agent、Web 或移动端的直接依赖。以下均为拟议设计，不代表已经取得美团接口许可、MCP 服务、代下单或代付能力。
+
+### 21.1 连接、凭据与部署边界
+
+- 每位成员创建独立的 `binding_scope=personal` 连接实例，所有查询、Run 与确认均从 JWT 推导 owner 和 tenant；其他成员一律按资源不存在处理，且响应不暴露 owner、Token 或美团账户标识。
+- 旅行开发者 Token 仅允许通过 HTTPS 一次性提交到服务端，立即写入本地开发机的受控密钥存储；`workspace_connectors.config`、Run 参数/事件、审计详情、日志和 DTO 只能保存不可逆状态或 `credential_ref`。更新 Token 覆盖旧引用，撤销连接同时吊销引用；浏览器、LLM 上下文和子进程命令行均不得接收明文 Token。迁移 N100 时将密钥引用迁入 N100 的受控密钥存储，不改变客户端契约。
+- 首期 `MtTravelCliAdapter` 由本地开发机的受控 worker 调用 `mttravel`；可执行文件、工作目录、环境变量白名单、标准输入/输出长度、1--2 分钟超时、取消与 stderr 脱敏必须由服务端固定。调用参数只可来自已校验的结构化请求，禁止拼接用户自然语言为 shell 命令。MTR-1a 验收后原样迁移至 N100；未来美团正式 MCP/API 可替换该 Adapter，不改变上层 Tool 契约。
+- 美团账户登录、手机号、短信验证码、地址簿、支付和平台风控页面不进入 NexusMind。本系统只返回经许可的跳转目标，由用户主动打开美团 App 完成最终预订/支付；不得伪造交易完成状态。
+
+本地开发机在 MTR-1a 验收前，按美团官方 Skill 文档安装 CLI 与旅行 Skill（命令须以美团当前文档为准）：
+
+```bash
+npm i -g mtskills-cli
+mtskills i meituan-travel
+```
+
+这两条命令只在本地开发机的受控开发账户执行，用于准备 `MtTravelCliAdapter` 的运行依赖；它们不是 Web 前端能力，也不得由浏览器或 Agent 触发。美团 Token 仍由旅行连接页一次性提交给 NexusMind 服务端，再写入受控本机密钥存储；不得要求家庭成员在命令行中录入或向命令行参数传递 Token。MTR-1a 验收通过后，再由 N100 的受控部署账户重复安装并完成迁移验收。
+
+### 21.2 旅行 MVP 的 Tool、Run 与事实数据
+
+`travel.search` 是第一个可排期 Tool：接收城市、日期、人数、预算和偏好，创建异步个人 Run，结果保留“AI 家庭上下文摘要”和“美团原始供给详情”两个区块。原始价格、评分、距离、库存、费用与时效不得被模型改写、估算或与摘要混合。Adapter 失败、超时、授权失效和不可解析响应都以脱敏错误终止 Run，不降级伪造成功结果。
+
+`travel.plan` 只生成行程、待办与日历 Action，复用既有 Run 的 L1 确认、幂等和审计语义；预订不创建 NexusMind 订单。日历与个人偏好仅使用用户明确确认的最小信息，完整地址、订单详情和任何支付信息均不写入家庭知识或学习记忆。
+
+拟议而**尚未发布**的旅行 API 如下；在真实 Token、平台许可和部署验收前不得写入 Swagger 或面向客户端开放：
+
+| 路由 | 用途 | 权限 / 约束 |
+| --- | --- | --- |
+| `GET /api/v1/connector-providers/meituan-travel/connection` | 返回本人连接的已配置状态、更新时间与可用性 | `connector.read`；不返回 Token、账户或 `credential_ref` |
+| `PUT /api/v1/connector-providers/meituan-travel/connection` | 一次性接收 Token 并建立/更新个人连接 | `connector.authorize`；请求不可写审计明细，提交后服务端不回显 |
+| `DELETE /api/v1/connector-providers/meituan-travel/connection` | 撤销本人连接和密钥引用 | `connector.authorize`；幂等并写脱敏审计 |
+| `POST /api/v1/connector-providers/meituan-travel/runs` | 创建 `travel.search` 异步 Run | `ai.run` + `connector.read`；校验结构化参数、个人归属、取消/超时和结果脱敏 |
+
+### 21.3 跑腿与领券的后置边界
+
+- `errand.quote` 只能在平台账户授权、地址最小化、POI/费用来源和删除策略获批后提供，费用预览为 L2；`errand.create_order` 至少 L3，提交前必须比对预览与请求的参数哈希，超过 100 元再次显式确认，支付仍交给美团 App。订单状态仅做只读同步。
+- `coupon.claim`、`coupon.history`、`coupon.reminder` 不进入当前开发。它们先完成分销资格、平台条款、隐私/营销独立评审、首次协议、用户主动订阅与退订、设备/账号清除路径；不得利用家庭敏感上下文或主动营销诱导消费。
+
+### 21.4 切片、依赖与最小验收
+
+| 切片 | 后端范围 | 前置依赖与最小验收 |
+| --- | --- | --- |
+| MTR-1a | 本地 Provider 注册、个人连接状态、受控 Token 引用、`MtTravelCliAdapter`、异步 `travel.search` Run 与脱敏结果 | 真实 Token 与美团许可确认；个人隔离、Token 不回显、超时/取消、原始数据不被摘要改写的测试及本地实机查询验收 |
+| MTR-1b | N100 迁移与家庭部署验证 | MTR-1a 完成；在 N100 重新安装官方 CLI/Skill、迁移密钥引用和受控配置，验证重启恢复、健康检查、资源占用、局域网与外网失败降级；不改变 API/Tool/Web 契约 |
+| MTR-2 | 家庭周末出游 Expert、日历/待办 L1 Action、个人偏好候选与外跳 | MTR-1a 完成；若面向家庭正式使用则还需 MTR-1b；确认幂等、外跳仅用户点击、未确认信息不入记忆的端到端验证 |
+| MTP-1 | 跑腿费用预览的 Adapter 与 L2 确认设计 | 平台账户/地址簿许可、POI/价格展示规则与数据删除设计均已书面确认；未满足前不开发 |
+| MTP-2 | 参数冻结的 L3 订单创建与只读订单状态 | MTP-1 完成；订单取消/售后/支付外跳与高额二次确认验收 |
+| MTC-1 | 领券合规评审，不实现业务接口 | 分销资格、用户协议、隐私/营销审查、退订和清除机制均通过；否则长期保持未排期 |

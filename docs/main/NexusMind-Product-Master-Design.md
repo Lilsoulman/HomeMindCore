@@ -676,6 +676,54 @@ POST /api/v1/skills/mindmap/runs 创建 Skill Run（SourceType=skill，同步完
 
 **验收标准**：输入 markdown → 返回同步 completed 的 Run；Web 渲染可交互导图并可导出 SVG/PNG/HTML；超限/未知 Skill/跨租户按契约拒绝；运行可在既有 Run 详情追溯。
 
+### 7.3 美团生活服务 Connector（规划）
+
+NexusMind 将美团 AI Hub 的三个官方 Skill 作为“数字生活服务连接现实生活”的候选能力：`meituan-travel`（旅行）、`meituan-paotui`（跑腿）与美团分销推广/领券 Skill。它们不是可直接移植的 NexusMind Skill，也不等同于已发布的美团通用 API 或 MCP Server；NexusMind 仅在美团许可、个人开发者/用户授权和本机部署均验证后，以**个人级 Connector + 受控 Tool + Expert/Run**的方式接入。
+
+```text
+家庭/个人目标与上下文
+  ↓
+旅行 / 跑腿 / 优惠 Expert（意图与参数补全）
+  ↓
+NexusMind Skill（稳定输入、风险、确认与可观测语义）
+  ↓
+MeituanLife Connector（个人授权、CLI 或官方 MCP/API Adapter）
+  ↓
+美团 Skill / 官方服务
+  ↓
+查询结果、费用预览、用户确认、App 内支付或订单状态
+```
+
+#### 7.3.1 统一边界
+
+- **个人隔离：** 每个成员独立绑定自己的美团开发者 Token 或美团账户授权；Token、手机号、验证码、用户/设备 Token 仅在 N97 的受限服务端或本机官方组件中使用，浏览器、模型上下文、Run Event、审计详情和日志均不得出现明文。家庭成员不得共享另一成员的美团身份或地址簿。
+- **适配隔离：** `MeituanLifeConnector` 是唯一产品边界。首期可在 Adapter 内受控调用官方 CLI；若美团正式提供且许可使用 MCP/API，则替换 Adapter 内实现，不让 Agent、Web 或 Flutter 依赖 CLI 命令、目录、脚本或供应商字段。
+- **不伪造交易：** “查询交易能力”不代表 NexusMind 可代扣、代付或绕过美团 App。所有支付、短信验证、账号登录、最终订单确认和需要平台页面处理的风控均交还美团；返回跳转链接时由用户主动打开。
+- **事实与展示：** 实时价格、评分、距离、库存、费用和时效必须以美团原始返回为准；NexusMind 可给出与家庭偏好相关的决策摘要，但不得改写、估算、截断或虚构供给数值。图片和外链仅按 Provider 许可展示。
+- **最小数据：** 地址簿、POI、手机号和订单详情按单次任务最小读取；手机号只以脱敏形式展示。个人偏好/家庭知识只能在用户确认后写入，不能把完整地址、验证码、支付或账户令牌写入记忆。
+- **默认关闭：** 新 Provider 在 `enabled=false` 状态发布；没有真实环境验收、许可证明、用户告知和撤销/删除路径前，不进入普通用户目录或主动推荐。
+
+#### 7.3.2 三项 Skill 的产品映射与风险
+
+| 美团 Skill | NexusMind 场景与 Tool | 风险 / 确认 | 首期边界 |
+| --- | --- | --- | --- |
+| `meituan-travel` | “家庭周末出游管家”：结合日历空档、成员（儿童/老人）、偏好和预算，调用 `travel.search` 获取机酒票/景点/攻略供给；`travel.plan` 生成可确认的日历/待办 | 查询 L1；同步日历为 L1 确认；预订与支付不由 NexusMind 执行 | 首个 MVP。先由本地开发机调用 `mttravel` 完成闭环验证，再迁移到 N100；任务耗时 1–2 分钟，必须异步 Run 化。仅中国境内旅行，不处理签证/护照/海外咨询。 |
+| `meituan-paotui` | “家庭应急跑腿”：寄文件、取快递、帮买、取号等；`errand.quote` 查询地址/POI 与费用预览，`errand.create_order` 创建订单，`errand.get_order` 查询状态 | 费用预览 L2；创建订单至少 L3，且预览与提交参数哈希必须一致；费用超过 100 元需再次显式确认；支付始终在美团 App | Phase 2。仅在美团账户授权、地址簿权限、订单撤销/售后边界与中国大陆 AI 合规要求确认后开放；不自动读取地址簿或发送验证码。 |
+| 美团分销推广 / 领券 | “家庭消费优惠助手”：`coupon.claim` 领取权益、`coupon.history` 查询本人领券记录、`coupon.reminder` 管理本人提醒 | 领券是对外账户动作：首次需同意美团规则，逐次 L2 确认；登录/短信验证码/清除设备标识均为 L3；提醒只能用户主动订阅、可随时关闭 | Phase 3 候选，默认不实现。不得按 Skill 的营销话术向家庭成员主动推销，不可根据家庭敏感上下文诱导消费；须先取得分销资格、平台允许的展示/归因规则与独立隐私评审。 |
+
+#### 7.3.3 首个应用化闭环：家庭周末出游管家
+
+用户说“下个月带爸妈去杭州，两晚，轻松一点，预算四千”，NexusMind 先补齐出发城市、日期、人数与预算，再读取**本人授权**的日历和已确认的偏好；异步查询美团酒旅，返回“AI 方案摘要 + 不得改写的美团原始供给详情”。用户选定方案后可确认写入日历和待办，并主动跳转美团完成预订/支付；出行后仅将用户明确反馈转为个人偏好候选。该闭环验证“家庭上下文 → 真实生活服务 → 计划 → 用户支付”的价值，不依赖自动下单。
+
+#### 7.3.4 实施门禁与顺序
+
+1. **MTR-1a 本地旅行闭环验证：** 在本地开发机按美团官方文档执行 `npm i -g mtskills-cli` 与 `mtskills i meituan-travel`，用受控 `MtTravelCliAdapter` 跑通 Token 安全录入、个人连接隔离、异步 Run、原始结果渲染、失败/超时和用户点击外跳。安装命令不是 Web/Agent 功能，Token 仍只经服务端安全托管；先验证真实 Token 与美团许可。
+2. **MTR-1b N100 家庭主机迁移：** 仅在 MTR-1a 通过后，将同一 Adapter、密钥引用、超时/取消、日志脱敏与健康检查配置迁移至 N100；不得为 N100 重写 Agent、Web 或 Tool 契约。N100 的内存、存储、散热和常驻负载以实际购买配置进行部署验收，不在产品文档中虚构固定规格。
+3. **MTR-2 旅行计划协同：** 结合家庭上下文输出方案，复用已有日历 Action、幂等、审计与个人偏好候选；预订仍外跳。
+4. **MTP-1 跑腿预览：** 仅在账户授权后读取地址簿/POI 并生成费用预览卡；执行前完成 L3 风险模型、费用二次确认、参数冻结、订单状态和数据删除设计。
+5. **MTP-2 跑腿订单：** 经 L3 逐项确认创建订单；支付与平台风控外跳，订单状态只读同步；任何接口不明确时不实现代下单。
+6. **MTC-1 领券合规评审：** 确认分销资格、备案/平台条款、用户协议、认证本地存储、退出/清除和提醒退订；通过后才考虑显式领券与提醒，不纳入首月 MVP。
+
 ## 8. 文档治理与联动
 
 本文件是“为什么做、做什么、跨端如何协作”的总纲，也是控制产品走向的唯一最终产品内容输出。当前产品由一人负责从产品设计、研发设计到落地，因此该维护者同时承担产品决策收敛、跨端拆分和实施状态核对职责；但产品、前端、后端和计划表仍须保持各自明确的内容边界。
@@ -733,13 +781,14 @@ POST /api/v1/skills/mindmap/runs 创建 Skill Run（SourceType=skill，同步完
 | 日期 | 主题 | 本文变更 | 前端同步 | 后端同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | 2026-08-12 | Hermes Agent / Studio × MCP 融合分析 | 新增 V2.5 参考架构：HA 四个产品级 Tool、WebSocket state_changed 过滤/冷却、MCP Manifest 生命周期、审批 scope 对 L1/L2/L3 的安全映射、冻结 Context Snapshot、Memory/Skill Candidate、Skill Curator 与 Crew/DAG 边界；详细源码分析写入 `NexusMind-Hermes-MCP-Fusion-Analysis.md`。校准 Studio 实际为 React/TypeScript，且当前源码无固定“15 任务周期”机制，15 Run/7 天仅作为 NexusMind 可配置建议 | 后续 Flutter 增强 `ConfirmationCard`，不移植 Studio React 组件 | 后续按 H1-H5、M1-M2 切片落地，复用现有 Adapter/Run/Confirmation/Family Knowledge | 已同步设计，待排期 |
+| 2026-08-13 | 美团 AI Hub 三项生活服务 Skill 融合 | 依据已阅读的 `meituan-travel`（Skill 12）、`meituan-paotui`（Skill 17）与美团分销推广/领券 Skill（Skill 18），新增 §7.3：三项能力统一收敛为个人级 `MeituanLifeConnector`；旅行优先验证“家庭周末出游管家”，跑腿按费用预览→L3 下单→美团支付分阶段推进，领券因分销/营销/账户安全风险先做合规门禁；明确 CLI/MCP/API 都只能是 Adapter 实现，不能让 Token、手机号、验证码、供应商脚本或交易确认泄露到 Web/Agent | Web 新增旅行连接配置与旅行工作台设计，跑腿/领券在 API 和合规门禁满足前隐藏 | 后端新增 MTR/MTP/MTC 分期 Connector、Token 安全托管、异步 Run、确认与审计设计；不宣称已有美团 MCP 或代付能力 | 已同步设计与计划，待实施 |
 | 2026-08-12 | HA MCP Server 技术分析与小红书暂停 | 新增 §6.4「HA MCP Server 技术分析与选型」：确立 `Agent → SmartHome Connector → HA MCP Server → HA` 边界、`zorak1103/ha-mcp` 为协议适配参考并组合其他三项目的发现/DI/部署模式；默认 N97 stdio、REST+WebSocket 混合、搜索式两级工具发现、HA Token 引用化管理、读写风险分域和重连/幂等边界。小红书 Connector 已交付能力维持现状；因平台警告，暂停其新增功能、真实发布联调和扩展性开发，直至另行解除 | 无前端变更 | HA MCP 进入第二阶段设计待实现；不变更已存在 xhs API/数据 | 已同步 |
 | 2026-08-12 | H2 HA MCP 只读适配 | `HomeAssistantMcpAdapter` 已以 `ha_list_entities`/`ha_get_state` 完成只读发现与状态映射；仅在 Adapter 内部保留原始实体标识，复用既有设备标准模型。写操作在 H2 明确拒绝，运行模式默认 REST 回退，未扩张 Agent 或移动端工具面 | 无前端变更 | 下一切片实施 WebSocket `state_changed` 过滤、冷却、去重与断线重订阅 | 已同步 |
 | 2026-08-12 | H3 HA WebSocket 实时同步 | `IHomeAssistantEventSubscriber`/后台宿主以 Vault 密钥鉴权并订阅 `state_changed`；事件经域/实体白名单、ignore、冷却与去重，只由 `DeviceSyncService` 写入标准 `DeviceState` 和自动化回调，断线后退避重订阅。默认关闭，无新增对外 API、DTO 或 Agent 工具 | 无前端变更 | 下一切片实施 H4 受控设备写入、确认、幂等和状态回读；真实 HA WebSocket/Vault 联调待部署环境验证 | 已同步 |
 | 2026-08-09 | V2.8 视频剪辑模块完整设计 | 落地「视频剪辑模块设计」：§7.1 执行链路改为四引擎协作架构（video-use 转写+EDL+ffmpeg 粗剪 → Seedance 2.0 可选生成填充 → HyperFrames 包装动效 → Remotion 可选复杂场景 → jianying-mcp 写 .draft），已实施「确定性方案生成 + 剪辑 MCP」链路降级为流水线末段，方案生成方式随引擎切片演进、确认/幂等/审计链路不变；新增「修改与调整」7 维度映射与增量修改 3 粒度（参数调整/部分重做/全量重做，B31 revise 演进）；新增 `clipping_tasks` 会话状态持久化表（V2.8+ 切片，覆盖 B32「不落库」决策，chat 引导语义升级为 task_id 引用）；导出风险维持 L1 不变（不升 L2）；素材登记沿用 B29 `clipping_materials`（主键以现有 BIGINT 约定为准） | 已同步 Web 端文档（§4 路由/§5 交互/§6.3 修改指令、修改历史与引擎进度）与移动端计划表（V2.8 仍仅 Web 端）；移动端总设计边界已覆盖无需变更 | 已同步后端总设计（§16 V2.8 演进设计）与开发计划（V2.8 基线条目 + B35+ 切片排期） | 待排期 |
 | 2026-08-09 | xhs 真实 MCP 部署验证与校准 | 小红书个人级 Connector 真实接入前置完成：`tools/xhs-mcp` 本地部署（xhs-mcp 0.8.11 + overrides 强制 node-fetch@2.7.0 修复 ERR_REQUIRE_ESM）；扫码登录 → 幂等发起授权（已登录跳过浏览器流程）→ poll 落库 → 搜索端到端验证成功；StdioMcpProcessClient 四项修复（**UTF-8 无 BOM 输入**——根因：BOM 导致 node MCP 收到后 JSON 解析失败、永不应答；超时后进程重建防流冲突；stderr 后台排空防死锁；WorkingDirectory 配置）；XhsMcpClient 搜索解析校准（feeds + noteCard 嵌套）；`dotnet test` 214/214 全绿 | 无前端契约变化 | 已同步后端总设计（§17 部署验证实施状态）与开发计划（部署验证项状态） | 已同步 |
 | 2026-08-13 | V2.7 Skill 目录查看（B34） | `GET /api/v1/skills?scope=mine\|platform\|all` 已发布：默认 mine 保持本人用户级技能和 Prompt 行为；platform 返回启用的平台目录；all 返回平台目录加当前租户 active 成员的脱敏技能摘要，不含 Prompt/scopes。platform/all 在服务端按 JWT 角色限 owner/admin，member/viewer 返回 403；无新迁移、权限码或审计动作 | 已同步前端 API 集成文档 | 已同步后端总设计（§19）与开发计划 | 已完成 |
-| 2026-08-13 | V2.8 B36 四引擎调度 | 已交付本地优先的可替换适配器与后台调度：未配置、健康检查失败或执行失败均写脱敏 `failed` 事件并终止任务，绝不伪造成功；Seedance 默认关闭且需逐任务成本确认、全局开关和安全密钥。真实引擎尚待部署环境样片验收 | Web 轮询任务与既有 Run events；不新增移动端入口 | 同步 §16 的适配器、状态、失败和部署门禁；定向测试与服务测试全绿 | 代码验收完成，部署验证待执行 |
+| 2026-08-13 | V2.8 B36 四引擎调度 | 已交付本地优先的可替换适配器与后台调度：未配置、健康检查失败或执行失败均写脱敏 `failed` 事件并终止任务，绝不伪造成功；Seedance 默认关闭且需逐任务成本确认、全局开关和安全密钥。真实 API 已以非敏感样片完成 ffprobe 元数据上传（7 秒、1920×1080）及 jianying-mcp 草稿生成和文件登记（7477 字节）；修复上传流过早释放、绝对目录配置和 ffprobe 字符串时长解析。服务测试 246 项通过；四引擎仍全部关闭 | Web 轮询任务与既有 Run events；不新增移动端入口 | 同步 §16 的适配器、状态、失败和部署门禁；待逐引擎命令/凭据就绪后执行健康与阶段事件验收 | 剪映与素材部署验收完成；四引擎和 xhs 独立验收待执行 |
 | 2026-08-09 | V2.7 思维导图 Skill（设计基线） | 新增「生成思维导图」Skill（Web 端）：输入 markdown → 客户端 markmap-lib 转换渲染交互视图（缩放/折叠）→ 导出 SVG/PNG/自包含 HTML；转换在浏览器执行、服务端零转换依赖（否决 node 子进程部署耦合与 C# 重实现）；`mindmap.read` 权限（owner/admin/member）+ `POST /api/v1/skills/mindmap/runs`（SourceType=skill、同步 completed、`skill_run_created` 审计、无 Action/确认）；移动端无入口；本地 `core/scripts/md2mindmap.mjs` 为同源离线工具 | 已同步 Web 端文档（思维导图工作台页面） | 已同步后端总设计（§18） | 待排期 |
 | 2026-08-09 | V2.5 B25 剪辑执行与文件登记 | 快速剪辑确认执行链路落地：`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`）确认 `draft_generate` 动作 → 剪辑 MCP 客户端（确定性 Mock `MockClippingMcpClient`，不访问素材目录、不产生真实文件路径）生成 .draft 草稿内容 → `RegisterGeneratedFileAsync` 登记为 Ready 生成文件（附件到 run）→ 下载复用既有 readToken 端点（10 分钟）；`skill_action_confirmed`/`skill_draft_registered` 审计；无新迁移；剪辑 MCP 真实项目选型与部署形态（jianying-mcp/capcut-mate，需可访问素材与剪映草稿目录的主机）转为部署环境验证项，不阻塞 B24/B25 收口 | 待同步 Web 端文档（快速剪辑工作台确认与下载流程接入 7.8 契约） | 已同步后端总设计（§16 B25 实施状态）与开发计划（B25 已完成，V2.5 收口） | 已同步 |
 | 2026-08-09 | V2.6 剪映真实 MCP 接入（B28） | `JianyingMcpClient` 实现 `IClippingMcpClient`（`create_draft` + 读取草稿字节流，SkillRunServices 契约零改动）；`IClippingMcpClient` DI 配置驱动（`Mcp:Clients:Jianying:Enabled` 默认 Mock 回退，开启后经真实 jianying-mcp stdio 生成草稿）；真实草稿生成端到端按部署环境验证（本机网络限制致 Python 3.13 依赖安装受阻，已记录，待环境就绪执行） | 无前端契约变化（草稿下载流程不变） | 已同步后端总设计（§17 B28 实施状态）与开发计划（B28 已完成，下一步为部署环境验证项） | 已同步 |

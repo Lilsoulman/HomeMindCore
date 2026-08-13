@@ -76,6 +76,28 @@ public class ClippingMaterialServicesTests : IDisposable
         Assert.Null(view.Width);
     }
 
+    /// <summary>真实 ffprobe 输出中的时长是字符串时，仍能解析时长、分辨率和帧率。</summary>
+    [Fact]
+    public async Task FfprobeExtractor_Parses_StringDuration_FromRealExecutable()
+    {
+        const string executable = @"D:\HomeMind\tools\ffmpeg\bin\ffprobe.exe";
+        const string sample = @"D:\HomeMind\core\data\clipping\materials\e2e-video1.mp4";
+        if (!File.Exists(executable) || !File.Exists(sample)) return;
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Clipping:FfprobePath"] = executable
+        }).Build();
+        var extractor = new FfprobeExtractor(config, NullLogger<FfprobeExtractor>.Instance);
+
+        var metadata = await extractor.ExtractAsync(sample);
+
+        Assert.NotNull(metadata);
+        Assert.Equal(7, metadata.DurationSeconds);
+        Assert.Equal(1920, metadata.Width);
+        Assert.Equal(1080, metadata.Height);
+        Assert.Equal(30, metadata.Fps);
+    }
+
     /// <summary>路径模式越出允许根目录返回 403，不落库。</summary>
     [Fact]
     public async Task Upload_PathMode_OutOfAllowedRoot_Returns403()
@@ -111,7 +133,7 @@ public class ClippingMaterialServicesTests : IDisposable
             ["Clipping:AllowedRootPath"] = null,
             ["Clipping:FfprobePath"] = "ffprobe"
         }).Build();
-        var services = new ClippingMaterialServices(db, new FakeFfprobe(null), new FamilyAuditLogger(db, NullLogger<FamilyAuditLogger>.Instance), config);
+        var services = new ClippingMaterialServices(db, new FakeFfprobe(null), new FamilyAuditLogger(db, NullLogger<FamilyAuditLogger>.Instance), config, NullLogger<ClippingMaterialServices>.Instance);
 
         var result = await services.UploadAsync(10, 1, new ClippingMaterialUploadRequest("/nas/videos/a.mp4", null, null, 0, null), default);
 
@@ -236,7 +258,7 @@ public class ClippingMaterialServicesTests : IDisposable
             ["Clipping:AllowedRootPath"] = _allowedRoot,
             ["Clipping:FfprobePath"] = "ffprobe"
         }).Build();
-        return new ClippingMaterialServices(db, ffprobe ?? new FakeFfprobe(null), new FamilyAuditLogger(db, NullLogger<FamilyAuditLogger>.Instance), config);
+        return new ClippingMaterialServices(db, ffprobe ?? new FakeFfprobe(null), new FamilyAuditLogger(db, NullLogger<FamilyAuditLogger>.Instance), config, NullLogger<ClippingMaterialServices>.Instance);
     }
 
     /// <summary>ffprobe 提取器测试替身：返回固定元数据或 null（解析失败）。</summary>

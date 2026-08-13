@@ -7,6 +7,7 @@ using HomeMind.Common.Model.ViewModel.Data.Media;
 using HomeMind.Common.Repository;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace HomeMind.Business.Services.Media;
 
@@ -22,6 +23,7 @@ public sealed class ClippingMaterialServices : IClippingMaterialServices
     private readonly HomeMindDbContext _db;
     private readonly IFfprobeExtractor _ffprobe;
     private readonly IFamilyAuditLogger _audit;
+    private readonly ILogger<ClippingMaterialServices> _logger;
     private readonly string _storageRoot;
     private readonly string? _allowedRootPath;
 
@@ -30,11 +32,12 @@ public sealed class ClippingMaterialServices : IClippingMaterialServices
     /// <param name="ffprobe">ffprobe 元数据提取器。</param>
     /// <param name="audit">家庭域审计日志写入器。</param>
     /// <param name="config">配置：Clipping:StoragePath（素材目录，默认 data/clipping/materials）、Clipping:AllowedRootPath（路径模式允许根目录，未配置禁用路径模式）。</param>
-    public ClippingMaterialServices(HomeMindDbContext db, IFfprobeExtractor ffprobe, IFamilyAuditLogger audit, IConfiguration config)
+    public ClippingMaterialServices(HomeMindDbContext db, IFfprobeExtractor ffprobe, IFamilyAuditLogger audit, IConfiguration config, ILogger<ClippingMaterialServices> logger)
     {
         _db = db;
         _ffprobe = ffprobe;
         _audit = audit;
+        _logger = logger;
         _storageRoot = string.IsNullOrWhiteSpace(config["Clipping:StoragePath"]) ? "data/clipping/materials" : config["Clipping:StoragePath"]!;
         _allowedRootPath = string.IsNullOrWhiteSpace(config["Clipping:AllowedRootPath"]) ? null : config["Clipping:AllowedRootPath"]!;
     }
@@ -81,6 +84,7 @@ public sealed class ClippingMaterialServices : IClippingMaterialServices
             catch (Exception error) when (error is not OperationCanceledException)
             {
                 TryDeleteFile(targetPath);
+                _logger.LogError(error, "快速剪辑素材落盘失败：用户 {UserId}，文件名 {FileName}。", userId, safeName);
                 return new ServiceResult(500, "素材存储失败，请稍后重试。");
             }
         }

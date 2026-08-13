@@ -30,6 +30,7 @@
 - V2.6 已确认小红书个人级 Connector（产品决策：搜索 + 发布，形态=个人级 Connector）：`xhs` Provider 经本地 stdio MCP（xhs-mcp，Puppeteer 扫码登录，凭据由本机 MCP 进程管理不落 cookie 明文）；搜索/详情只读 L1、发布 L2 逐项确认；扫码登录态复用 `connector_authorization_sessions`（本地状态轮询，不改表结构），`credential_ref` 仅存 `local://xhs-sessions/{uuid}` 会话标识；本地优先部署于开发机，生产按 N97 另行评估；按 B26（授权与搜索）/B27（发布）切片实施，B28 接入剪映真实 MCP。
 - V2.7 已排期快速剪辑对话式优化（产品总设计 §7.1、后端设计 §16）：素材上传登记（B29，`033` 迁移 `clipping_materials` + ffprobe 元数据 + `media.write`）、方案结构化视图（B30）、方案修订（B31，`034` 迁移 CHECK `skill_run_revised`）、chat 引导（B32，无状态 context + 规则意图匹配，只引导不执行）。
 - V2.7 思维导图 Skill（B33）已完成：`036` 迁移（因既有未跟踪 `035_xhs_content_creator_expert` 占号而顺序避让）注册 mindmap（`mindmap.read`，owner/admin/member，viewer 不含）；`POST /api/v1/skills/mindmap/runs` 同步 completed、摘要（字符数 + 首个一级标题）+ `skill_run_created` 审计；浏览器端 markmap-lib 转换渲染，服务端零转换依赖；定向测试 4/4 通过，真实 MySQL 迁移待部署环境验证。
+- 美团 AI Hub 三项生活服务 Skill 已完成产品与后端设计收敛（产品总设计 §7.3、后端设计 §21）：旅行 (`meituan-travel`) 是待平台许可/真实 Token 验证后的下一业务候选切片；跑腿 (`meituan-paotui`) 与分销推广/领券分别受账户交易和营销合规门禁阻塞，均未开发、未发布 API。
 - V2.7 已排期 Skill 目录查看（产品总设计变更记录、后端设计 §19）：`GET /api/v1/skills?scope=mine|platform|all`（默认 mine 向后兼容，对齐 /experts 先例；修正既有「GET /api/v1/skills 即平台目录」的表述偏差——实际为用户级列表）；platform/all 仅 owner/admin **角色**校验（member/viewer 持 `ai.read` 也 403），成员技能视图不含 Prompt；无新迁移；按 B34 切片实施。
 
 ## 已完成
@@ -70,7 +71,28 @@
 
 ## 下一步
 
-V2.4 B19-B21 与 P3、V2.5 B24/B25、V2.6 B26-B28、V2.7 B29-B34、V2.8 B35-B36 均已完成代码验收。B36「四引擎调度与阶段事件」已新增受控引擎配置/适配器、后台消费者及 RunEvents 安全 payload；未配置或健康失败会将任务置 `failed` 并写 `failed`，不会以 Mock/占位伪造成功。默认所有引擎关闭；Seedance 同时校验全局开关、逐任务 allowSeedance、成本确认和安全密钥。revise 支持 `parameters|partial|full`（默认按指令推断），部分从 HyperFrames 起、全量从 video-use 起排队。`dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b36-verify` 通过（0 errors，1 条既有 CS8604 警告）；B36 定向测试 2/2、服务测试全量 245/245 通过。下一步：在部署环境完成非敏感样片的真实引擎/健康检查验证；真实 MySQL `036/037` 顺序迁移、xhs-mcp、jianying-mcp 与 ffprobe 端到端仍待验证。
+2026-08-13 小红书部署预检：本地 `D:\\HomeMind\\tools\\xhs-mcp` 依赖完整，stdio MCP `initialize` 握手及只读 `xhs_auth_status` 调用成功；当前返回 `logged_out`，未发现可复用的有效登录态。下一步须由授权用户在本机人工扫码完成 personal Connector 授权，再验收真实搜索/详情；笔记发布仍保持 L2 逐项确认，未执行、不因本次预检而开放。四引擎的可执行命令、凭据和健康检查参数仍未配置，继续保持关闭。
+
+2026-08-13 真实剪映与素材验收完成：修复素材上传 Controller 在异步复制前释放 `IFormFile` 流的问题；配置绝对素材/生成文件目录；`FfprobeExtractor` 兼容 ffprobe 将 duration 输出为字符串的 JSON。非敏感样片经真实 API 上传返回 7 秒、1920×1080；`quick-edit` Run 确认经真实 `jianying-mcp` 生成剪映草稿并登记生成文件（7477 字节）。服务测试全量 246/246 通过。下一步：保持四引擎关闭，待各受控引擎具备实际命令和凭据后，分别执行健康检查与阶段事件验收；xhs-mcp 真实搜索/发布仍独立待验收。
+
+2026-08-13 真实 API 首次验收发现：相对 `Clipping:StoragePath` 会受 API 运行目录影响导致素材上传失败；草稿确认的生成文件登记还依赖 `ExpertFiles:Storage:LocalRoot`。本机配置已将两者固定到 `D:\\HomeMind\\core\\data` 下；重启 API 后继续以同一非敏感样片验收真实剪映草稿产物和文件登记。
+
+2026-08-13 部署预检：非敏感样片 `data/clipping/materials/e2e-video1.mp4` 已由 `D:\\HomeMind\\tools\\ffmpeg\\bin\\ffprobe.exe` 实测为 6.874 秒、1920×1080、30fps；`Clipping:FfprobePath` 已固定为该可执行文件，避免依赖系统 PATH。`jianying-mcp` 依赖与服务模块可用，但真实草稿生成仍须经运行中的 API（UTF-8 无 BOM MCP 客户端）验收 `draft_content.json`、`draft_meta_info.json` 与文件登记，未验收前不得开启四引擎。
+
+V2.4 B19-B21 与 P3、V2.5 B24/B25、V2.6 B26-B28、V2.7 B29-B34、V2.8 B35-B36 均已完成代码验收。B36「四引擎调度与阶段事件」已新增受控引擎配置/适配器、后台消费者及 RunEvents 安全 payload；未配置或健康失败会将任务置 `failed` 并写 `failed`，不会以 Mock/占位伪造成功。默认所有引擎关闭；Seedance 同时校验全局开关、逐任务 allowSeedance、成本确认和安全密钥。revise 支持 `parameters|partial|full`（默认按指令推断），部分从 HyperFrames 起、全量从 video-use 起排队。2026-08-13 本机复验：`dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b36-deployment-verify` 通过（0 errors；既有 `ScenarioWorkflowServices.cs` 的 1 条 CS8604 警告），服务测试全量 245/245 通过；真实 MySQL `036_mindmap_skill`、`037_clipping_tasks` 已按顺序应用，并核验 `mindmap` 种子（1 条）、`clipping_tasks` 表及所有字段中文备注。2026-08-13 已安装并验证 `D:\HomeMind\tools\ffmpeg\bin\ffprobe.exe`（`ffprobe -version` 成功）和 `D:\HomeMind\tools\jianying-mcp`（`uv sync --locked` 后以既有 `SAVE_PATH`/`OUTPUT_PATH` 成功加载服务模块）。下一步：在部署环境使用非敏感样片完成真实引擎健康检查、`ffprobe` 元数据和剪映草稿产物端到端验证；当前四引擎仍保持关闭，xhs-mcp 及真实剪映生成均未验收。
+
+### 美团生活服务候选计划（未启动）
+
+在既有部署验证完成且产品确认投入后，按下列顺序启动；这些切片不替代当前部署验证，也不视为已发布能力。
+
+| 顺序 | 切片 | 当前状态 | 开始条件 | 最小验收 |
+| --- | --- | --- | --- | --- |
+| 1 | MTR-1a 本地旅行只读基线 | 待验证 | 美团书面许可、真实开发者 Token、本地开发机 CLI 与受控密钥存储方案确认 | 个人连接隔离；Token 一次性录入不回显；异步查询可超时/取消；美团原始价格等供给字段与 AI 摘要分区呈现 |
+| 2 | MTR-1b N100 家庭主机迁移 | 未排期，依赖 MTR-1a | N100 已就绪；本机验证配置可安全迁移；常驻运行资源预算与密钥托管方式确认 | 受控 CLI/Skill 与密钥引用在 N100 重建；重启恢复、健康检查、超时取消、日志脱敏及网络断开降级通过；不改变 API/Tool/Web 契约 |
+| 3 | MTR-2 家庭周末出游协同 | 未排期，依赖 MTR-1a；正式家庭使用依赖 MTR-1b | 日历/待办目标、外跳方式和个人偏好写入告知确认 | L1 确认与幂等可追溯；只有用户点击才外跳；未确认交易/敏感信息不进入家庭知识或记忆 |
+| 4 | MTP-1 跑腿费用预览 | 合规阻塞 | 美团账户授权、地址簿/POI 最小化、费用展示及删除策略获批 | L2 费用预览、地址脱敏、个人归属与失败不伪造结果 |
+| 5 | MTP-2 跑腿订单 | 合规阻塞，依赖 MTP-1 | 平台订单、支付外跳、取消/售后和高额确认边界获批 | L3 逐项确认；预览/提交参数哈希一致；超过 100 元二次确认；仅只读状态同步 |
+| 6 | MTC-1 分销推广/领券 | 长期合规阻塞 | 分销资格、平台条款、隐私/营销评审、主动订阅/退订/清除机制全部通过 | 仅完成评审结论；未通过不开发 `coupon` 接口、不展示入口、不主动提醒 |
 
 ## 已关闭切片：B12（2026-08-05 完成）
 

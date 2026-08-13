@@ -33,15 +33,15 @@ public sealed class ClippingMaterialsController : ApiControllerBase
     [Authorize(Policy = PermissionNames.MediaWrite)]
     [HttpPost]
     public async Task<ActionResult<ApiResponse<object>>> Upload([FromForm] IFormFile file, [FromForm] string filePath) =>
-        ToResponse(await WithUserAsync((user, token) =>
+        ToResponse(await WithUserAsync(async (user, token) =>
         {
             if (file is not null)
             {
                 using var stream = file.OpenReadStream();
                 var request = new ClippingMaterialUploadRequest(null, Path.GetFileName(file.FileName), file.ContentType, file.Length, stream);
-                return _materials.UploadAsync(user.UserId, user.TenantId, request, token);
+                return await _materials.UploadAsync(user.UserId, user.TenantId, request, token);
             }
-            return _materials.UploadAsync(user.UserId, user.TenantId, new ClippingMaterialUploadRequest(filePath, null, null, 0, null), token);
+            return await _materials.UploadAsync(user.UserId, user.TenantId, new ClippingMaterialUploadRequest(filePath, null, null, 0, null), token);
         }));
 
     /// <summary>按登记时间倒序列出本人素材。</summary>

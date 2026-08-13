@@ -69,6 +69,7 @@ public sealed class WorkspaceConnector
     [Column("sync_version")] public long SyncVersion { get; set; }
 }
 
+
 /// <summary>用户对连接器的范围授权。</summary>
 [Table("user_connector_authorizations")]
 public sealed class UserConnectorAuthorization

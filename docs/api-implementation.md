@@ -677,6 +677,8 @@ B24/B25 不新建轮询端点。剪辑 MCP 端到端（真实 jianying-mcp 写�
 
 未配置或健康检查失败的本地引擎必须返回明确的失败/跳过事件，绝不将 Mock、占位或计划状态写为 succeeded。Seedance 默认关闭，仅当服务端开关、请求 `allowSeedance=true`、用户成本确认及服务端密钥同时成立才允许执行。
 
+2026-08-13 本机验证：默认四引擎均关闭，因此只验证未配置失败与 Seedance 门禁等安全语义。`D:\HomeMind\tools\ffmpeg\bin\ffprobe.exe` 已以 `data/clipping/materials/e2e-video1.mp4` 通过真实 API 上传解析为 7 秒、1920×1080（时长为 ffprobe JSON 字符串时同样可解析），并配置为 `Clipping:FfprobePath`；素材上传在异步复制完成前保持输入流存活，素材和生成文件目录均使用受控绝对路径。`D:\HomeMind\tools\jianying-mcp` 已完成锁定依赖同步，真实 quick-edit 确认已生成剪映草稿并登记 7477 字节文件。`xhs-mcp` 本地 stdio 握手与只读授权状态查询正常，但状态为 `logged_out`，须人工扫码后才可验收真实搜索/详情；发布仍不执行。服务测试 246/246 通过；真实四引擎成功事件仍须在逐引擎配置就绪后独立验收。
+
 ## V2.7 Skill 目录 scope 视图（已发布，B34）
 
 `GET /api/v1/skills` 扩展可选的 `scope` 查询参数，不新增迁移、权限码或审计动作。
