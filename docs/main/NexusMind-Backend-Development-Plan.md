@@ -2,7 +2,7 @@
 
 > **依据：** `NexusMind-Product-Master-Design.md`、`NexusMind-Backend-Development.md` 与 `D:\HomeMind\mobile\docs\main\NexusMind-Frontend-Development.md`。
 > **计划性质：** V2.3 的当前实施快照，只维护已完成、下一步和最小验收；产品决策及变更历史以产品总设计为准。
-> **最后更新：** 2026-08-09
+> **最后更新：** 2026-08-13
 
 ## 执行与回写规则
 
@@ -29,7 +29,7 @@
 - V2.5 已排期快速剪辑 Skill（产品总设计 §7.1、后端设计 §16）：Skill 独立执行（SourceType=skill，同场景工作流先例，不绑定专家）、`media.read` 权限（owner/admin/member）、剪辑 MCP 客户端依赖可访问素材/草稿目录的本机部署；按 B24/B25 切片实施。
 - V2.6 已确认小红书个人级 Connector（产品决策：搜索 + 发布，形态=个人级 Connector）：`xhs` Provider 经本地 stdio MCP（xhs-mcp，Puppeteer 扫码登录，凭据由本机 MCP 进程管理不落 cookie 明文）；搜索/详情只读 L1、发布 L2 逐项确认；扫码登录态复用 `connector_authorization_sessions`（本地状态轮询，不改表结构），`credential_ref` 仅存 `local://xhs-sessions/{uuid}` 会话标识；本地优先部署于开发机，生产按 N97 另行评估；按 B26（授权与搜索）/B27（发布）切片实施，B28 接入剪映真实 MCP。
 - V2.7 已排期快速剪辑对话式优化（产品总设计 §7.1、后端设计 §16）：素材上传登记（B29，`033` 迁移 `clipping_materials` + ffprobe 元数据 + `media.write`）、方案结构化视图（B30）、方案修订（B31，`034` 迁移 CHECK `skill_run_revised`）、chat 引导（B32，无状态 context + 规则意图匹配，只引导不执行）。
-- V2.7 已排期思维导图 Skill（产品总设计 §7.2、后端设计 §18）：markdown 输入 → 浏览器端 markmap-lib 转换渲染（**服务端零转换依赖**，否决 node 子进程与 C# 重实现），`POST /api/v1/skills/mindmap/runs` SourceType=skill、同步 completed、摘要（字符数 + 首个一级标题）+ `skill_run_created` 审计；`035` 迁移注册 mindmap（`mindmap.read`，owner/admin/member，viewer 不含）；按 B33 切片实施。
+- V2.7 思维导图 Skill（B33）已完成：`036` 迁移（因既有未跟踪 `035_xhs_content_creator_expert` 占号而顺序避让）注册 mindmap（`mindmap.read`，owner/admin/member，viewer 不含）；`POST /api/v1/skills/mindmap/runs` 同步 completed、摘要（字符数 + 首个一级标题）+ `skill_run_created` 审计；浏览器端 markmap-lib 转换渲染，服务端零转换依赖；定向测试 4/4 通过，真实 MySQL 迁移待部署环境验证。
 - V2.7 已排期 Skill 目录查看（产品总设计变更记录、后端设计 §19）：`GET /api/v1/skills?scope=mine|platform|all`（默认 mine 向后兼容，对齐 /experts 先例；修正既有「GET /api/v1/skills 即平台目录」的表述偏差——实际为用户级列表）；platform/all 仅 owner/admin **角色**校验（member/viewer 持 `ai.read` 也 403），成员技能视图不含 Prompt；无新迁移；按 B34 切片实施。
 
 ## 已完成
@@ -70,7 +70,7 @@
 
 ## 下一步
 
-V2.4 B19-B21 与 P3 已完成，第六阶段「专家会话与自建专家」与第七阶段「场景工作流」（含 B23 场景实例禁用）全部落地。V2.5 B24/B25 快速剪辑 Skill 全部完成：`029` 迁移新建平台级 `skills` 目录表并注册 `quick-edit`、`media.read` 权限、SkillRun 创建（确定性方案生成 + `draft_generate` Action）与确认执行（Mock 剪辑 MCP 生成 .draft → `RegisterGeneratedFileAsync` 生成文件登记 → 复用 readToken 下载）。V2.6 小红书个人级 Connector 全部完成：B26 `030` 迁移注册 xhs Provider 与审计 CHECK、本地 stdio MCP 客户端基础设施、扫码登录态适配现有授权模型（不改表结构、不落 cookie 明文）、搜索/详情只读 API（L1）；B27 `031` 迁移重建 `expert_runs.ck_run_source` CHECK（追加 scenario/skill/xhs，补 B22/B24 真实 MySQL 缺口）、发布 L2 确认链路（`xhs_publish` 动作 + `xhs_note_published` 审计）。V2.7 快速剪辑对话式优化全部完成：B29 `033` 迁移 `clipping_materials` 素材登记（`media.write`、上传/列表/删除 + ffprobe 元数据 + 路径越界 403）、B30 方案结构化视图（`SkillRunActionView` 输出 segments/audio/total_duration）、B31 方案修订（`revise` + `034` CHECK `skill_run_revised`）、B32 chat 引导（无状态 context + 规则意图匹配）。下一步（开发切片）：**B33 思维导图 Skill**——`035` 迁移注册 mindmap（category=productivity、L1、`mindmap.read`）+ 权限注册（owner/admin/member）；`POST /api/v1/skills/mindmap/runs`（`ai.run` + `mindmap.read`，markdown ≤100000 字符超限 422、SourceType=skill 同步 completed、摘要=字符数+首个一级标题、`skill_run_created` 审计、幂等重放/422/404）；**B34 Skill 目录 scope 视图**——`GET /api/v1/skills?scope=mine|platform|all`（默认 mine 行为不变；platform=平台级 skills 目录；all=平台目录+租户成员技能摘要；platform/all 服务端校验 owner/admin 角色，member/viewer 持 `ai.read` 也 403；all 视图不含 Prompt）；无新表、无新审计动作码（复用 029 CHECK）。随后为**部署环境验证项**（非开发切片）——真实 xhs-mcp 扫码授权/搜索/发布端到端、jianying-mcp 真实草稿生成端到端、ffprobe 元数据提取；其中 jianying-mcp 部署已克隆至 `D:\HomeMind\tools\jianying-mcp`（hey-jian-wei 主分支）并 winget 安装 uv 0.12.2，但本机网络限制（releases.astral.sh 与 github.com 下载不可达）导致 Python 3.13 依赖安装无法完成，待网络/环境就绪后执行。每项完成时更新本表替换状态，不追加逐日完成记录。
+V2.4 B19-B21 与 P3、V2.5 B24/B25、V2.6 B26-B28、V2.7 B29-B34、V2.8 B35-B36 均已完成代码验收。B36「四引擎调度与阶段事件」已新增受控引擎配置/适配器、后台消费者及 RunEvents 安全 payload；未配置或健康失败会将任务置 `failed` 并写 `failed`，不会以 Mock/占位伪造成功。默认所有引擎关闭；Seedance 同时校验全局开关、逐任务 allowSeedance、成本确认和安全密钥。revise 支持 `parameters|partial|full`（默认按指令推断），部分从 HyperFrames 起、全量从 video-use 起排队。`dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b36-verify` 通过（0 errors，1 条既有 CS8604 警告）；B36 定向测试 2/2、服务测试全量 245/245 通过。下一步：在部署环境完成非敏感样片的真实引擎/健康检查验证；真实 MySQL `036/037` 顺序迁移、xhs-mcp、jianying-mcp 与 ffprobe 端到端仍待验证。
 
 ## 已关闭切片：B12（2026-08-05 完成）
 

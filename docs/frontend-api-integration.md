@@ -449,6 +449,53 @@ configured."`（配置 SSRF 白名单规则前，iCal 网络拉取处于禁用�
 - **下载流程**（Web 端快速剪辑工作台）：拿到 `fileId` 后调用既有 `POST /api/v1/expert-files/{fileId}/read-token` 获取 10 分钟 readToken，再用 `ReadUrl` 拉取草稿文件。
 - B28 起剪辑 MCP 为后端配置驱动（`Mcp:Clients:Jianying:Enabled`，默认 Mock，开启后经真实 jianying-mcp 生成草稿）；**前端契约无变化**，草稿下载流程不变。
 
+### 7.9 `POST /api/v1/skills/runs/{runId}/revise`（B31 方案修订）
+
+权限：`ai.run` + `media.read`。仅当 Skill Run 为 `pending_actions` 且 `draft_generate` 动作尚未确认时可调用：
+
+```json
+{
+  "instruction": "竖屏 60 秒，突出菜品和环境，加字幕",
+  "idempotencyKey": "3f7c0b2e-..."
+}
+```
+
+- `idempotencyKey` 是 UUID 必填；非法值 → 422；运行不存在或非本人 → 404；方案已确认或运行已终态 → 409；
+- 成功 HTTP 200，`Data` 是更新后的 `SkillRunView`；同一幂等键重试直接返回当前视图，不重复产生方案；
+- 前端用返回的 `actions[].segments`、`audio`、`totalDuration` 替换时间线，再允许用户确认或再次修订。
+
+### 7.10 快速剪辑素材与对话引导（B29/B32）
+
+**素材登记**：
+
+- `POST /api/v1/clipping/materials`，权限 `media.write`，`multipart/form-data`；传 `file` 上传浏览器文件，或传 `filePath` 登记服务端允许根目录内已有文件，二者必须且只能提供一个。
+- 成功 HTTP 201，`Data`：`{ id, fileName, contentType, fileSize, durationSeconds, width, height, storagePath, createdAt }`；ffprobe 未解析时元数据字段为 `null`。将 `storagePath` 回填至 7.7 请求的 `inputJson.media_location`，不要自行拼接服务端路径。
+- 同时/均未传 `file`、`filePath`，路径不存在或文件大于 2GB → 422；路径模式未启用或越过允许根目录 → 403。
+- `GET /api/v1/clipping/materials`（`media.read`）返回当前用户素材列表；`DELETE /api/v1/clipping/materials/{materialId}`（`media.write`）软删除，非本人/不存在 → 404。
+
+**对话引导**：
+
+```json
+POST /api/v1/clipping/chat
+{
+  "message": "帮我剪成竖屏 30 秒",
+  "context": {
+    "step": "collecting_materials",
+    "materials": ["<上传接口返回的 storagePath>"],
+    "goal": null,
+    "planGenerated": false
+  }
+}
+```
+
+- 权限 `ai.run` + `media.read`；成功 HTTP 200 返回 `{ reply, suggestions, context }`。
+- `context` 为**无状态**客户端上下文，必须保存并原样回传；`step` 仅可为 `collecting_materials`、`generating_plan`、`reviewing`、`done`，空消息或非法步骤 → 422。
+- 此接口只返回引导话术和建议按钮，不会上传素材、创建运行、生成草稿或持久化会话；实际生成、修订、确认分别仍调用 7.7、7.9、7.8。
+
+**B35 任务恢复（已发布）**：chat 成功响应包含 `taskId`；后续请求可携带同一 `taskId`，并以 `GET /api/v1/clipping/tasks/{taskId}` 恢复 `{ id, runId, status, engineStage, materials, goal, currentPlan, versionHistory, createdAt, updatedAt }`。`taskId` 仅创建者在同租户可见，其他情况一律 404。
+
+**B36 引擎进度（代码验收完成，部署验证待执行）**：继续轮询上述任务和既有 `GET /api/v1/expert-runs/{runId}/events`，不新增 WebSocket。仅按 `{ stage, status, message, occurredAt }` 渲染进度：阶段为 `video_use|seedance|hyperframes|remotion|draft`，状态为 `queued|running|skipped|succeeded|failed`。前端不得把 `engineStage=planning`、`skipped` 或未配置提示展示为视频已生成；收到 `failed` 时展示安全 `message` 并保留重试/修改入口。Seedance 开关默认关闭，只有用户主动勾选并完成成本确认时才在请求中传 `allowSeedance=true`。
+
 ## 8. AI 专家与 AgentRun 模块（`/api/v1/...`）
 
 `ExpertsController` 挂载在 `api/v1` 下（而非 `api/v1/experts`），以保留
@@ -1646,7 +1693,10 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `GET/POST/PUT/DELETE /api/v1/life/favorites[...]`、`POST /api/v1/life/favorites/import` | `life.favorite.read` / `life.favorite.write`（B14 预注册，B15 起消费） |
 | `GET /api/v1/conversations`、`GET /api/v1/conversations/{id}`、`GET /api/v1/conversations/{id}/messages` | `conversation.read`（B20，仅本人会话） |
 | `POST /api/v1/conversations`、`PUT/DELETE /api/v1/conversations/{id}`、`POST /api/v1/conversations/{id}/messages` | `conversation.write`（B20，仅本人会话） |
-| `POST /api/v1/skills/{skillCode}/runs`、`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（B24/B25 快速剪辑） | `ai.run` + `media.read`（owner/admin/member） |
+| `POST /api/v1/skills/{skillCode}/runs`、`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`、`POST /api/v1/skills/runs/{runId}/revise`（B24/B25/B31 快速剪辑） | `ai.run` + `media.read`（owner/admin/member） |
+| `GET /api/v1/clipping/materials` | `media.read`（owner/admin/member） |
+| `POST/DELETE /api/v1/clipping/materials[...]` | `media.write`（owner/admin/member） |
+| `POST /api/v1/clipping/chat`（B32 对话引导） | `ai.run` + `media.read`（owner/admin/member） |
 
 角色（`owner` / `admin` / `member` / `viewer`）及允许的策略在
 `HomeMind.Api/Services/Authorization.cs` 中定义。新增角色或范围时
@@ -1693,6 +1743,9 @@ PC 用户端「我的专家」：自建/维护仅创建者本人可见可维护�
 | `XhsNoteDetailView`（B26） | `{ noteId, title, content, images[], link }` |
 | `WebNavigationPreferenceUpdateItem.sortOrder`（B19） | 0-1000 整数；值越小越靠前 |
 | `SkillRunActionView.actionType`（B24） | `draft_generate`（快速剪辑方案，L1） |
+| `SkillRunActionView.segments`（B30） | `{ index, source, duration }[]`；`source` 仅素材文件名，`duration` 单位为秒 |
+| `SkillRunActionView.audio` / `totalDuration`（B30） | 配乐信息（当前可为 null）/方案总时长（秒） |
+| `ClippingChatContext.step`（B32） | `collecting_materials` \| `generating_plan` \| `reviewing` \| `done`；客户端保存并回传 |
 | `AgentRun.status`（B25 SkillRun 确认后） | 确认成功 → `completed`；草稿生成/登记失败 → `failed` |
 
 ## 10. V2.4 Connector Scope 与个人授权

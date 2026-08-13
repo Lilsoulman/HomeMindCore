@@ -355,8 +355,9 @@ public class ConnectorAuthorizationServicesTests
     {
         await using var db = NewDb("xhs-start");
         var audit = new FakeAuditLogger();
+        var xhs = new FakeXhsClient();
         SeedXhsProvider(db);
-        var services = CreateServices(db, audit, vaultAvailable: false);
+        var services = CreateServices(db, audit, vaultAvailable: false, xhs: xhs);
 
         var result = await services.StartAuthorizationAsync(10, 1, "xhs", new StartAuthorizationRequest { RedirectUri = "" }, default);
 
@@ -365,7 +366,8 @@ public class ConnectorAuthorizationServicesTests
         Assert.Equal("mock-qr://xhs-login", view.QrContent);
         Assert.Null(view.AuthorizationUrl);
         var session = db.ConnectorAuthorizationSessions.Single();
-        Assert.Equal("xhs://local-polling", session.RedirectUri);
+        Assert.StartsWith("xhs://local-polling/", session.RedirectUri);
+        Assert.StartsWith("local://xhs-sessions/", xhs.LoginCredentialRef);
         Assert.Null(session.PkceVerifierRef);
         Assert.Equal(FamilyAuditActions.ConnectorAuthorizeStarted, audit.LastAction);
     }
@@ -408,6 +410,7 @@ public class ConnectorAuthorizationServicesTests
         Assert.Equal(10, connector.OwnerUserId);
         Assert.Equal(WorkspaceConnectorAuthStatus.Connected, connector.AuthStatus);
         Assert.StartsWith("local://xhs-sessions/", connector.CredentialRef);
+        Assert.Equal(connector.CredentialRef, xhs.StatusCredentialRef);
         Assert.Equal(FamilyAuditActions.ConnectorAuthorizeCompleted, audit.LastAction);
         var session = db.ConnectorAuthorizationSessions.Single();
         Assert.Equal(ConnectorAuthorizationSessionStatus.Completed, session.Status);
@@ -595,6 +598,8 @@ public class ConnectorAuthorizationServicesTests
         public bool LoggedIn { get; set; } = loggedIn;
         public int AuthStatusCalls { get; private set; }
         public int LogoutCalls { get; private set; }
+        public string? LoginCredentialRef { get; private set; }
+        public string? StatusCredentialRef { get; private set; }
 
         public Task<XhsAuthStatus> GetAuthStatusAsync(CancellationToken cancellationToken = default)
         {
@@ -602,8 +607,20 @@ public class ConnectorAuthorizationServicesTests
             return Task.FromResult(LoggedIn ? new XhsAuthStatus(true, "已登录") : new XhsAuthStatus(false, "未登录"));
         }
 
+        public Task<XhsAuthStatus> GetAuthStatusAsync(string credentialRef, CancellationToken cancellationToken = default)
+        {
+            StatusCredentialRef = credentialRef;
+            return GetAuthStatusAsync(cancellationToken);
+        }
+
         public Task<XhsLoginHint> TriggerLoginAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new XhsLoginHint("请扫码登录", "mock-qr://xhs-login"));
+
+        public Task<XhsLoginHint> TriggerLoginAsync(string credentialRef, CancellationToken cancellationToken = default)
+        {
+            LoginCredentialRef = credentialRef;
+            return TriggerLoginAsync(cancellationToken);
+        }
 
         public Task LogoutAsync(CancellationToken cancellationToken = default)
         {

@@ -79,6 +79,27 @@ public class DeviceSyncServicesTests
         Assert.Equal("adapter_unavailable", error.ErrorCode);
     }
 
+    /// <summary>实时事件仅通过同步服务写入标准状态，并在重复状态到达时保持幂等。</summary>
+    [Fact]
+    public async Task ApplyStateChangedAsync_Persists_Only_Changed_State()
+    {
+        await using var db = NewDb("event-state");
+        var connector = SeedConnector(db);
+        var device = new SmartHomeDevice { TenantId = 1, WorkspaceConnectorId = connector.Id, ExternalId = "light.living_room_main", Name = "客厅主灯", DeviceType = "light", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+        db.SmartHomeDevices.Add(device);
+        await db.SaveChangesAsync();
+        var automation = new FakeAutomation();
+        var service = new DeviceSyncService(db, [new FakeDiscovery("ha")], automation);
+
+        var applied = await service.ApplyStateChangedAsync(1, connector.Id, device.ExternalId!, "{\"state\":\"on\"}", DateTime.UtcNow, CancellationToken.None);
+        var replayed = await service.ApplyStateChangedAsync(1, connector.Id, device.ExternalId!, "{\"state\":\"on\"}", DateTime.UtcNow, CancellationToken.None);
+
+        Assert.True(applied);
+        Assert.False(replayed);
+        Assert.Single(await db.DeviceStates.ToListAsync());
+        Assert.Equal(1, automation.StateChangeCount);
+    }
+
     private static HomeMindDbContext NewDb(string name) =>
         new(new DbContextOptionsBuilder<HomeMindDbContext>()
             .UseInMemoryDatabase($"hm-b13-device-sync-{name}-{Guid.NewGuid()}")
@@ -125,14 +146,18 @@ public class DeviceSyncServicesTests
 
     private sealed class FakeAutomation : IAutomationRuleServices
     {
+        public int StateChangeCount { get; private set; }
         public Task<ServiceResult> ListAsync(long tenantId, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ServiceResult(200, "ok"));
         public Task<ServiceResult> CreateAsync(long userId, long tenantId, AutomationRuleRequest request, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ServiceResult(201, "ok"));
         public Task<ServiceResult> UpdateAsync(long userId, long tenantId, long ruleId, UpdateAutomationRuleRequest request, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ServiceResult(200, "ok"));
-        public Task<ServiceResult> HandleDeviceStateChangeAsync(long tenantId, long deviceId, string state, DateTime occurredAt, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new ServiceResult(200, "ok"));
+        public Task<ServiceResult> HandleDeviceStateChangeAsync(long tenantId, long deviceId, string state, DateTime occurredAt, CancellationToken cancellationToken = default)
+        {
+            StateChangeCount++;
+            return Task.FromResult(new ServiceResult(200, "ok"));
+        }
         public Task<ServiceResult> HandleSceneCompletedAsync(long tenantId, string sceneKey, DateTime occurredAt, CancellationToken cancellationToken = default) =>
             Task.FromResult(new ServiceResult(200, "ok"));
         public Task<ServiceResult> HandleSyncCompletedAsync(long tenantId, long connectorId, DateTime occurredAt, CancellationToken cancellationToken = default) =>

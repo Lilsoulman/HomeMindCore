@@ -59,5 +59,16 @@ public sealed class AiConfigServices : IAiConfigServices
         return item is not null && item.Enabled;
     }
 
+    public async Task<ServiceResult> EnsureRuntimeAvailableAsync(long userId, CancellationToken cancellationToken = default)
+    {
+        var item = await _db.AiConfigs.FindAsync(new object[] { userId }, cancellationToken);
+        if (item is null || string.IsNullOrWhiteSpace(item.Endpoint) || string.IsNullOrWhiteSpace(item.Model)
+            || item.ApiKeyEncrypted is not { Length: > 0 })
+            return new ServiceResult(422, "AI is not configured. Add an endpoint, model, and API key in settings.", null, ApiErrorCodes.PreconditionFailed);
+        if (!item.Enabled)
+            return new ServiceResult(422, "AI generation is disabled. Enable it in settings before creating content.", null, ApiErrorCodes.PreconditionFailed);
+        return new ServiceResult(200, "AI runtime is available.");
+    }
+
     private static object ToView(AiConfig x) => new { x.Endpoint, x.Model, x.Temperature, HasApiKey = x.ApiKeyEncrypted is { Length: > 0 }, x.Enabled };
 }

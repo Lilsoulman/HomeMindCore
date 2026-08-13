@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HomeMind.Api.Controllers.Base;
 using HomeMind.Api.Services;
+using HomeMind.Business.IServices.AI;
 using HomeMind.Business.IServices.Agent;
 using HomeMind.Business.IServices.Conversation;
 using HomeMind.Common.Model.ViewModel.Common;
@@ -23,14 +24,16 @@ public sealed class ConversationsController : ApiControllerBase
 {
     private readonly IConversationServices _conversations;
     private readonly IAgentRunServices _agentRuns;
+    private readonly IAiConfigServices _aiConfig;
 
     /// <summary>构造会话控制器。</summary>
     /// <param name="conversations">专家会话业务服务。</param>
     /// <param name="agentRuns">AgentRun 业务服务。</param>
-    public ConversationsController(IConversationServices conversations, IAgentRunServices agentRuns)
+    public ConversationsController(IConversationServices conversations, IAgentRunServices agentRuns, IAiConfigServices aiConfig)
     {
         _conversations = conversations;
         _agentRuns = agentRuns;
+        _aiConfig = aiConfig;
     }
 
     /// <summary>按最近更新时间倒序列出本人未删除的会话。</summary>
@@ -40,8 +43,8 @@ public sealed class ConversationsController : ApiControllerBase
     /// <returns>会话列表的统一响应。</returns>
     [Authorize(Policy = PermissionNames.ConversationRead)]
     [HttpGet("")]
-    public async Task<ActionResult<ApiResponse<object>>> ListConversations(int limit = 20, string? cursor = null) =>
-        ToResponse(await WithUserAsync((user, token) => _conversations.ListAsync(user.UserId, user.TenantId, limit, cursor, token)));
+    public async Task<ActionResult<ApiResponse<object>>> ListConversations(int limit = 20, string? cursor = null, long? expertId = null, string? expertCode = null) =>
+        ToResponse(await WithUserAsync((user, token) => _conversations.ListAsync(user.UserId, user.TenantId, limit, cursor, token, expertId, expertCode)));
 
     /// <summary>创建会话；可绑定专家与连接器，均非必填。</summary>
     /// <remarks>权限：<c>conversation.write</c>。绑定专家时校验可见性并解析最新已发布版本；连接器仅校验租户归属。</remarks>
@@ -107,6 +110,9 @@ public sealed class ConversationsController : ApiControllerBase
         if (!TryGetUser(out var user))
             return ToResponse(new ServiceResult(401, "未提供访问令牌，或访问令牌已过期。"));
         var token = HttpContext.RequestAborted;
+
+        var aiAvailable = await _aiConfig.EnsureRuntimeAvailableAsync(user.UserId, token);
+        if (!aiAvailable.Succeeded) return ToResponse(aiAvailable);
 
         var prepared = await _conversations.PrepareMessageAsync(user.UserId, user.TenantId, id, request.Content, token);
         if (!prepared.Succeeded) return ToResponse(prepared);

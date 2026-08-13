@@ -23,14 +23,16 @@ JSON 输入中的这些值。
 | 认证 | `POST /api/v1/auth/register`、`/login`、`/refresh`、`/logout`、`/wechat/exchange`（未实现）；`GET /api/v1/auth/me` |
 | 待办 | `GET/POST /api/v1/todos`；`PUT/DELETE /api/v1/todos/{id}`；`POST /api/v1/todos/{id}/subtasks`、`PUT/DELETE /api/v1/todos/{id}/subtasks/{subId}` |
 | 日历 | `GET/POST /api/v1/calendar/events`、`PUT/DELETE /api/v1/calendar/events/{id}`；`GET/POST /api/v1/calendar/subscriptions`、`PUT/DELETE /api/v1/calendar/subscriptions/{id}`；`POST /api/v1/calendar/ical/fetch`（未实现） |
-| 技能 | `GET/POST /api/v1/skills`；`PUT/DELETE /api/v1/skills/{id}`；Skill 独立运行（B24/B25）：`POST /api/v1/skills/{skillCode}/runs`、`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`，SourceType=skill，不绑定专家） |
+| 技能 | `GET /api/v1/skills?scope=mine\|platform\|all`、`POST /api/v1/skills`、`PUT/DELETE /api/v1/skills/{id}`；Skill 独立运行：`POST /api/v1/skills/{skillCode}/runs`、`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`、`POST /api/v1/skills/runs/{runId}/revise`（`ai.run` + `media.read`，SourceType=skill，不绑定专家） |
+| 快速剪辑（B29-B32） | `POST/GET /api/v1/clipping/materials`、`DELETE /api/v1/clipping/materials/{materialId}`、`POST /api/v1/clipping/chat`；素材登记、无状态对话引导与 Skill Run 方案修订 |
+| 快速剪辑（V2.8 B35） | `GET /api/v1/clipping/tasks/{taskId}`；chat 返回持久化 `taskId`，quick-edit Run 可携带 `taskId` 并输出 `engineStage`、`version`、`versionHistory` |
 | AI 配置 | `GET/PUT /api/v1/ai/config`（B18 新增 `enabled` 字段，默认 `true`，切换开关不传 `apiKey` 即可保留密文）；`POST /api/v1/ai/{generate,chat,stream}`（B18 占位，启用 → 501，未启用 → 422 + `Code=42200`） |
 | 专家目录 | `GET /api/v1/experts?scope=basic\|mine\|all`（B21 起支持来源过滤，默认 basic 向后兼容；列表项含 `Source` 字段，不暴露他人 owner）、`GET /api/v1/experts/{id}`（他人自建/已软删 404）；自建专家（B21）：`POST /api/v1/experts`、`PUT/DELETE /api/v1/experts/{id}`（`expert.mine.write`，PUT 携带 RowVersion 乐观锁 409/40903，更新生成 version+1 已发布版本） |
 | 智能体运行时 / 专家运行 | `POST /api/v1/expert-runs`、`GET /api/v1/expert-runs/{id}`、`/events`、`/actions`、`/actions/{actionId}/confirm`、`/cancel`、`/retry`；`POST /api/v1/expert-runs/{id}/actions` 创建动作。路由名称为兼容性保留，但领域资源为 `AgentRun`。 |
 | 专家文件（V1） | `POST/GET /api/v1/expert-files`、`POST /api/v1/expert-files/{fileId}/objects`、`DELETE /api/v1/expert-files/{fileId}`、`POST /api/v1/expert-files/{fileId}/read-token`、`POST /api/v1/experts/{expertId}/files`、`POST /api/v1/expert-runs/{runId}/files` |
 | 团队运行（V1） | `POST /api/v1/team-runs`；`GET /api/v1/team-runs/{id}`、`/events`、`/members`、`/synthesis`；`POST /api/v1/team-runs/{id}/cancel`、`/retry` |
 | 家庭管家（兼容） | `POST /api/v1/housekeeper-runs` 仅作为智能体运行时的兼容入口保留 |
-| 智能家居 | `GET /api/v1/smart-home/spaces`、`/devices?spaceId=`、`/scenes`、`/devices/health?spaceId=`；`POST /api/v1/smart-home/scenes/{sceneKey}/run` 创建需确认的场景运行动作（B22 起为兼容代理：懒启用场景模板实例并转调场景运行链路）；归一化的设备发现/状态同步通过连接器路由完成 |
+| 智能家居 | `GET /api/v1/smart-home/spaces`、`/devices?spaceId=`、`/scenes`、`/devices/health?spaceId=`；`POST /api/v1/smart-home/scenes/{sceneKey}/run` 创建需确认的场景运行动作（B22 起为兼容代理：懒启用场景模板实例并转调场景运行链路）；归一化的设备发现/状态同步通过连接器路由完成。H2 可将底层发现/状态读取切换为本地 HA MCP，但不新增 HTTP 路由、不返回 entity_id，且不开放控制写入。 |
 | 场景工作流（B22） | `GET /api/v1/smart-home/scenarios/templates`、`GET /api/v1/smart-home/scenarios/instances`（`smart_home.read`）；`POST /api/v1/smart-home/scenarios/templates/{templateCode}/enable`、`POST /api/v1/smart-home/scenarios/instances/{instanceId}/disable`（`smart_home.write`）；`POST /api/v1/smart-home/scenarios/instances/{instanceId}/run`、`POST /api/v1/smart-home/scenarios/runs/{runId}/actions/{actionId}/confirm`（`ai.run`）。平台模板 → 家庭实例 → 单场景动作运行；确认后逐步执行设备命令并按 success/partial/failed 汇总 |
 | 家庭上下文 | `GET/POST /api/v1/homes/{homeId}/members`、`PUT /api/v1/homes/{homeId}/members/{id}`、`POST /api/v1/homes/{homeId}/members/{id}/correction`；`GET/POST /api/v1/homes/{homeId}/knowledge?category=`、`DELETE /api/v1/homes/{homeId}/knowledge/{id}`；`GET/POST /api/v1/homes/{homeId}/decisions`。所有 homeId 由 `RequireHomeOwner` 校验等于 JWT tenant_id。终态更正写 `family_audit_logs`；知识同 key 冲突按 latest/authority/majority 留痕 |
 | 管家协同 | 管家动态：`GET /api/v1/homes/{homeId}/activities?limit=&cursor=`、`GET /api/v1/homes/{homeId}/activities/{id}`、`POST /api/v1/homes/{homeId}/activities/{id}/undo`；确认中心：`GET /api/v1/homes/{homeId}/confirmations?riskLevel=&status=`、`POST /api/v1/homes/{homeId}/confirmations/{id}/confirm`、`POST /api/v1/homes/{homeId}/confirmations/{id}/deny`、`POST /api/v1/homes/{homeId}/confirmations/batch-confirm`。只读用 `smart_home.read`，写操作用 `ai.run`；确认/拒绝/批量确认/撤销写 `family_audit_logs` 并生成管家动态 |
@@ -645,6 +647,74 @@ Mock 实现 `MockClippingMcpClient`（测试与无环境回退），`true` 时�
 复用既有 `expert-runs` 契约（`GET /api/v1/expert-runs/{id}`、`/events`、`/cancel`、`/retry`），
 B24/B25 不新建轮询端点。剪辑 MCP 端到端（真实 jianying-mcp 写入素材/剪映草稿目录）按部署环境验证。
 
+## V2.7 思维导图 Skill（已发布，B33）
+
+`036` 迁移注册平台级 `mindmap` Skill（`productivity` / L1 / `mindmap.read`）。服务端只保存 markdown 输入和展示安全摘要，转换由浏览器端 markmap-lib 完成，不创建 Action、不需要确认，也不引入服务端转换依赖。
+
+| 端点 | 权限 | 契约要点 |
+| --- | --- | --- |
+| `POST /api/v1/skills/mindmap/runs` | `ai.run` + `mindmap.read` | 请求 `{ idempotencyKey?, markdown }`。markdown 必填且最多 100000 字符，未知/未启用 Skill 或输入非法返回 422；同键重放返回既有运行 200、同键用于其他运行类型返回 409。成功 201 返回 `{ id, status, characterCount, firstHeading?, resultSummary, createdAt, finishedAt }`，状态同步为 `completed`，摘要只含字符数和首个一级标题，不返回 markdown 原文；写 `skill_run_created` 审计。 |
+
+`mindmap.read` 授予 owner/admin/member，viewer 不含。输入仅存于当前租户的 Run RequestJson；响应、审计详情和日志不得回显 markdown、Prompt 或模型思考链。
+
+## V2.8 剪辑任务持久化（B35）
+
+`037` 新建 `clipping_tasks`，将快速剪辑对话的可恢复状态、绑定的 Skill Run 和方案版本历史持久化。
+所有任务按 JWT 的 tenant_id + 创建用户隔离，不返回素材根目录、草稿路径、Prompt 或引擎内部参数。
+
+| 端点/字段 | 契约 |
+| --- | --- |
+| `POST /api/v1/clipping/chat` | 请求可选 `taskId`；未提供时创建任务，成功响应增加 `taskId`。提供 taskId 时仅允许任务创建者在同租户恢复，其他用户/租户返回 404。 |
+| `GET /api/v1/clipping/tasks/{taskId}` | `ai.run` + `media.read`。返回 `{ id, runId?, status, engineStage?, materials, goal?, currentPlan?, versionHistory, createdAt, updatedAt }`；不存在或无权访问为 404。 |
+| `POST /api/v1/skills/quick-edit/runs` | 原请求可选增加 `taskId`；校验任务归属后绑定 run，写入初始版本。成功的 `SkillRunView` 可含 `engineStage`、`version`、`versionHistory`。 |
+| `POST /api/v1/skills/runs/{runId}/revise` | 对已绑定任务追加版本历史并更新当前方案；可选 `reworkScope=parameters|partial|full`、`allowSeedance`、`costConfirmed`。参数调整不调引擎；部分从 HyperFrames 起排队，全量从 video-use 起排队；既有 UUID 幂等语义不变。 |
+
+`engineStage=planning` 仅表示已持久化并生成当前方案；进入后台引擎调度时任务为 `generating`，仅在阶段事件成功后才可展示对应阶段已完成。
+
+### V2.8 B36 四引擎调度契约（代码验收完成，部署验证待执行）
+
+不新增并行进度端点：Web 继续轮询 `GET /api/v1/clipping/tasks/{taskId}` 与既有 `GET /api/v1/expert-runs/{runId}/events`。任务进入引擎调度后 `status=generating`；阶段事件 payload 将为 `{ stage, status, message, occurredAt }`，其中 `stage=video_use|seedance|hyperframes|remotion|draft`，`status=queued|running|skipped|succeeded|failed`。消息为展示安全文本，禁止返回命令、路径、凭据、Prompt、原始 LLM/第三方响应。
+
+未配置或健康检查失败的本地引擎必须返回明确的失败/跳过事件，绝不将 Mock、占位或计划状态写为 succeeded。Seedance 默认关闭，仅当服务端开关、请求 `allowSeedance=true`、用户成本确认及服务端密钥同时成立才允许执行。
+
+## V2.7 Skill 目录 scope 视图（已发布，B34）
+
+`GET /api/v1/skills` 扩展可选的 `scope` 查询参数，不新增迁移、权限码或审计动作。
+`scope=mine` 是默认值，保持既有用户级 `ai_skills` 列表和仅本人可见的 Prompt 行为；
+`platform` 与 `all` 仅通过 JWT 角色为 owner/admin 的服务端校验，member/viewer 即使拥有 `ai.skills.read` 也返回 403。
+
+| scope | 返回内容 |
+| --- | --- |
+| `mine` | 当前用户、当前租户未删除的用户 Skill，兼容既有字段与 Prompt。 |
+| `platform` | 启用且未删除的平台 `skills` 目录：key/name/category/description/riskLevel/requiredPermission/inputSchema/status。 |
+| `all` | `{ platformSkills, memberSkills }`；成员摘要仅含 id/name/isActive/memberName/createdAt/updatedAt，限当前租户 active 成员，绝不含 Prompt 或 scopes。 |
+
+非法 scope 返回 422。平台目录没有租户私有字段，成员摘要通过当前 JWT tenant_id 过滤，跨租户数据不返回。
+
+## V2.7 快速剪辑对话式优化（已发布，B29-B32）
+
+`033` 迁移新增 `clipping_materials` 素材登记；上传、删除分别写
+`media_file_uploaded`、`media_file_deleted` 审计。素材仅当前用户可见，响应中的
+`storagePath` 是后续创建 `quick-edit` Skill Run 时可回填的 `media_location`，不是目录浏览接口。
+ffprobe 元数据提取失败不阻塞登记，相关字段返回 `null`。`034` 迁移新增
+`skill_run_revised` 审计动作；方案详情同时在 `SkillRunView.Actions` 和兼容的
+`GET /api/v1/expert-runs/{id}/actions` 中输出结构化字段。
+
+| 端点 | 权限 | 契约要点 |
+| --- | --- | --- |
+| `POST /api/v1/clipping/materials` | `media.write` | `multipart/form-data`，`file`（浏览器上传）与 `filePath`（服务端允许根目录内的既有文件）二选一；两者同时/均未提供、路径不存在或文件超过 2GB → 422；路径模式未启用或越过允许根目录 → 403。成功 201 返回 `ClippingMaterialView`：`id/fileName/contentType/fileSize/durationSeconds?/width?/height?/storagePath/createdAt`。上传文件落在服务端素材目录；不要向客户端枚举或暴露素材根目录。 |
+| `GET /api/v1/clipping/materials` | `media.read` | 返回当前用户、当前租户未删除素材，按 `createdAt` 倒序；返回 `ClippingMaterialView[]`。 |
+| `DELETE /api/v1/clipping/materials/{materialId}` | `media.write` | 仅软删除当前用户素材；不存在、已删除或非本人 → 404；成功 200。 |
+| `POST /api/v1/skills/runs/{runId}/revise` | `ai.run` + `media.read` | 请求 `{ instruction, idempotencyKey }`，其中 `idempotencyKey` 为 UUID 必填，`instruction` 可为空（回退默认时长）。仅 `pending_actions` 且 `draft_generate` 尚未确认的运行可修订；非法键 422、运行不可见 404、已确认或终态 409；同键重放当前 `SkillRunView`，不重复生成事件/审计。成功 200，方案动作会输出新的 `segments/audio/totalDuration`。 |
+| `POST /api/v1/clipping/chat` | `ai.run` + `media.read` | 请求 `{ message, context? }`，`context` 为客户端持有的无状态对象 `{ step, materials?, goal?, planGenerated? }`；`step` 仅可为 `collecting_materials`、`generating_plan`、`reviewing`、`done`。成功 200 返回 `{ reply, suggestions, context }`，客户端必须原样回传返回的 `context`；空消息或非法步骤 422。该接口仅引导，不创建运行、不生成草稿、不落库。 |
+
+结构化方案动作字段：`segments` 为 `{ index, source, duration }[]`（`source` 仅素材文件名），
+`audio` 当前可为 `null`，`totalDuration` 为秒。前端应以这些字段渲染时间线；不读取动作
+`RequestJson`，也不依赖素材绝对路径。建议链路：上传/选取素材 → 将 `storagePath` 回填为
+`media_location` 创建 Skill Run → 显示动作方案 → 需要时调用 revise → 确认动作 → 用返回的
+`fileId` 获取 readToken 下载草稿。chat 的 `generating_plan`/`reviewing` 状态只负责引导，真正
+创建与确认仍调用 Skill Run 端点。
+
 ## V2.6 小红书个人级 Connector（已发布，B26）
 
 小红书个人级 Connector：`030` 迁移注册 `xhs` Provider（provider=`xhs_mcp`、connector_type=`social`），
@@ -658,8 +728,8 @@ B24/B25 不新建轮询端点。剪辑 MCP 端到端（真实 jianying-mcp 写�
 | `POST /api/v1/connector-authorizations/{id}/poll` | `connector.authorize` | 轮询扫码登录状态（调 `xhs_auth_status`）：未登录 202 + 会话视图；登录成功 200，创建/更新 personal 连接器（`auth_status=connected`、`credential_ref=local://xhs-sessions/{uuid}`）并写 `connector_authorize_completed` 审计；会话已结束 409；非本人/跨租户 404 |
 | `GET /api/v1/connector-authorizations/{id}` | `connector.authorize` | 既有：脱敏会话状态，非本人 404 |
 | `DELETE /api/v1/connector-authorizations/{id}` | `connector.authorize` | 既有：撤销；xhs 分支额外调用 `xhs_auth_logout`（本地 MCP 不可用不阻塞状态流转），重复撤销幂等 |
-| `GET /api/v1/connector-providers/xhs/notes/search?query=&limit=` | `connector.read` | 只读 L1。`query` 必填（空 422），`limit` 1-50 默认 10。连接器未授权（无 personal 已连接 xhs 实例）404。成功返回 `XhsNoteSummaryView[]`（`NoteId/Title/CoverUrl/AuthorName/Link`） |
-| `GET /api/v1/connector-providers/xhs/notes/detail?url=` | `connector.read` | 只读 L1。`url` 必填（空 422），连接器未授权 404。成功返回 `XhsNoteDetailView`（`NoteId/Title/Content/Images/Link`） |
+| `GET /api/v1/connector-providers/xhs/notes/search?query=&limit=` | `connector.read` | 只读 L1。`query` 必填（空 422），`limit` 1-50 默认 10。连接器未授权（无 personal 已连接 xhs 实例）404；MCP 调用或响应结构失败 502，返回安全提示。成功返回 `XhsNoteSummaryView[]`（`NoteId/Title/CoverUrl/AuthorName/Link`） |
+| `GET /api/v1/connector-providers/xhs/notes/detail?url=` | `connector.read` | 只读 L1。`url` 必填（空 422），连接器未授权 404；MCP 调用或响应结构失败 502，返回安全提示。成功返回 `XhsNoteDetailView`（`NoteId/Title/Content/Images/Link`） |
 | `GET /api/v1/connector-providers/xhs/auth-status` | `connector.read` | 连接器未授权 404；成功返回 `XhsAuthStatusView`（`LoggedIn/Message`） |
 | `POST /api/v1/connector-providers/xhs/notes/publish` | `ai.run` + `connector.write` | 创建 L2 发布动作。请求 `{ idempotencyKey?, type, title, content, mediaPaths, tags? }`：`type`=image（标题≤20 字符、正文≤1000 字、图片≤18）/video（恰 1 个文件），参数非法 422；连接器未授权 404；同键已用于其他运行类型 409。成功 201 返回 `XhsPublishActionView`（`ActionId/ActionType= xhs_publish/Status=pending/Title/Description/RiskLevel=L2`）；同键重复创建 200 重放既有动作。创建不写审计 |
 | `POST /api/v1/connector-providers/xhs/publish-actions/{actionId}/confirm` | `ai.run` + `connector.write` | 确认并执行发布。请求 `{ idempotencyKey }`（UUID 必填）。非法幂等键 422；动作不存在或非本人 404；已终态换键 409；同键重复确认重放首次结果（不重复发布）。确认后经本地 MCP `xhs_publish_content` 执行 → action `executed`/run `completed` + 写 `xhs_note_published` 审计（目标 `xhs_note`）；成功 200 返回 `{ actionId, status, message, noteId }`，消息「小红书笔记发布成功。」；发布失败 502、action/run `failed` |

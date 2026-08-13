@@ -23,7 +23,7 @@ public sealed class ConversationServices : IConversationServices
     private const int MaxLimit = 50;
     private const int HistoryCount = 20;
     private const int ContextBudget = 12000;
-    private const int AssistantContentMax = 2000;
+    private const int AssistantContentMax = 8000;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly HomeMindDbContext _db;
@@ -42,12 +42,28 @@ public sealed class ConversationServices : IConversationServices
     }
 
     /// <inheritdoc />
-    public async Task<ServiceResult> ListAsync(long userId, long tenantId, int limit, string? cursor, CancellationToken cancellationToken = default)
+    public async Task<ServiceResult> ListAsync(long userId, long tenantId, int limit, string? cursor, CancellationToken cancellationToken = default, long? expertId = null, string? expertCode = null)
     {
         if (limit <= 0) limit = 20;
         else if (limit > MaxLimit) limit = MaxLimit;
 
+        if (expertId is not null && !string.IsNullOrWhiteSpace(expertCode))
+            return new ServiceResult(422, "expertId and expertCode cannot be used together.", null, ApiErrorCodes.PreconditionFailed);
+
+        if (!string.IsNullOrWhiteSpace(expertCode))
+        {
+            var expert = await _db.Experts.SingleOrDefaultAsync(x =>
+                x.Code == expertCode.Trim()
+                && x.Status == "active"
+                && x.DeletedAt == null
+                && (x.TenantId == 1 || x.TenantId == tenantId)
+                && (x.OwnerUserId == null || x.OwnerUserId == userId), cancellationToken);
+            if (expert is null) return new ServiceResult(404, "The requested expert is not available.");
+            expertId = expert.Id;
+        }
+
         var query = _db.Conversations.Where(x => x.TenantId == tenantId && x.OwnerUserId == userId && x.DeletedAt == null);
+        if (expertId is not null) query = query.Where(x => x.ExpertId == expertId);
         if (TryDecodeCursor(cursor, out var updatedAt, out var id))
             query = query.Where(x => x.UpdatedAt < updatedAt || (x.UpdatedAt == updatedAt && x.Id < id));
 

@@ -17,7 +17,7 @@ public interface IConversationServices
     /// <param name="cursor">上次响应返回的游标，可空表示第一页。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>200 + <see cref="ConversationListView"/>。</returns>
-    Task<ServiceResult> ListAsync(long userId, long tenantId, int limit, string? cursor, CancellationToken cancellationToken = default);
+    Task<ServiceResult> ListAsync(long userId, long tenantId, int limit, string? cursor, CancellationToken cancellationToken = default, long? expertId = null, string? expertCode = null);
 
     /// <summary>创建会话；绑定专家时校验可见性并解析最新已发布版本。</summary>
     /// <param name="userId">当前用户标识。</param>

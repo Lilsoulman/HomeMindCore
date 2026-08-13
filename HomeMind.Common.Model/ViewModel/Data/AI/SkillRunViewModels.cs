@@ -1,9 +1,26 @@
+using HomeMind.Common.Model.ViewModel.Data.Media;
+
 namespace HomeMind.Common.Model.ViewModel.Data.AI;
 
 /// <summary>Skill 运行创建请求体。</summary>
 /// <param name="IdempotencyKey">幂等键，可为空；为空时由服务端生成。</param>
 /// <param name="InputJson">Skill 输入参数 JSON，如 {"media_location":"...","instruction":"..."}。</param>
-public sealed record SkillRunCreateRequest(string? IdempotencyKey, string InputJson);
+public sealed record SkillRunCreateRequest(string? IdempotencyKey, string InputJson, long? TaskId = null);
+
+/// <summary>思维导图 Skill 运行创建请求体。</summary>
+/// <param name="IdempotencyKey">幂等键，可为空；为空时由服务端生成。</param>
+/// <param name="Markdown">待在浏览器端转换渲染的 markdown，最多 100000 个字符。</param>
+public sealed record MindmapRunCreateRequest(string? IdempotencyKey, string Markdown);
+
+/// <summary>思维导图 Skill 运行展示安全摘要，不返回 markdown 原文。</summary>
+/// <param name="Id">运行主键。</param>
+/// <param name="Status">运行状态，成功时为 completed。</param>
+/// <param name="CharacterCount">markdown 字符数。</param>
+/// <param name="FirstHeading">首个一级标题，不存在时为 null。</param>
+/// <param name="ResultSummary">展示摘要。</param>
+/// <param name="CreatedAt">创建时间（UTC）。</param>
+/// <param name="FinishedAt">完成时间（UTC）。</param>
+public sealed record MindmapRunView(long Id, string Status, int CharacterCount, string? FirstHeading, string ResultSummary, DateTime CreatedAt, DateTime? FinishedAt);
 
 /// <summary>确认 Skill 运行动作（draft_generate）的请求体。</summary>
 /// <param name="IdempotencyKey">UUID 幂等键，重复提交只返回首次执行结果，不重复登记草稿文件。</param>
@@ -12,7 +29,7 @@ public sealed record ConfirmSkillRunActionRequest(string IdempotencyKey);
 /// <summary>修订 Skill 运行剪辑方案（B31，修改创作目标重新生成方案）的请求体。</summary>
 /// <param name="Instruction">新的创作目标和指令；空串表示清除指令（回退默认时长）。</param>
 /// <param name="IdempotencyKey">UUID 幂等键，同一修订键只生成一次 plan_revised 事件与审计。</param>
-public sealed record ReviseSkillRunRequest(string Instruction, string IdempotencyKey);
+public sealed record ReviseSkillRunRequest(string Instruction, string IdempotencyKey, string? ReworkScope = null, bool AllowSeedance = false, bool CostConfirmed = false);
 
 /// <summary>Skill 运行视图（SourceType=skill）；只展示展示安全字段，不包含素材绝对路径、草稿路径或 Prompt。</summary>
 /// <param name="Id">运行主键。</param>
@@ -22,7 +39,7 @@ public sealed record ReviseSkillRunRequest(string Instruction, string Idempotenc
 /// <param name="FinishedAt">完成时间（UTC），可为空。</param>
 /// <param name="Events">运行事件时间线。</param>
 /// <param name="Actions">待确认动作列表。</param>
-public sealed record SkillRunView(long Id, string Status, string? ResultSummary, DateTime CreatedAt, DateTime? FinishedAt, IReadOnlyList<SkillRunEventView> Events, IReadOnlyList<SkillRunActionView> Actions);
+public sealed record SkillRunView(long Id, string Status, string? ResultSummary, DateTime CreatedAt, DateTime? FinishedAt, IReadOnlyList<SkillRunEventView> Events, IReadOnlyList<SkillRunActionView> Actions, string? EngineStage = null, int? Version = null, IReadOnlyList<ClippingTaskVersionView>? VersionHistory = null);
 
 /// <summary>Skill 运行事件视图。</summary>
 /// <param name="Sequence">事件序号。</param>

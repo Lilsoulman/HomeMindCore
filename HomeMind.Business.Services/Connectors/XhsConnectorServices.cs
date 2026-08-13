@@ -35,10 +35,19 @@ public sealed class XhsConnectorServices : IXhsConnectorServices
     {
         if (string.IsNullOrWhiteSpace(query)) return new ServiceResult(422, "搜索关键词不能为空。");
         var effectiveLimit = limit <= 0 ? DefaultLimit : Math.Min(limit, MaxLimit);
-        if (!await IsAuthorizedAsync(userId, tenantId, cancellationToken))
+        var connector = await GetAuthorizedConnectorAsync(userId, tenantId, cancellationToken);
+        if (connector is null)
             return new ServiceResult(404, "小红书连接器未授权或不可用。");
 
-        var result = await _xhs.SearchNotesAsync(query.Trim(), effectiveLimit, cancellationToken);
+        XhsSearchResult result;
+        try
+        {
+            result = await _xhs.SearchNotesAsync(query.Trim(), effectiveLimit, connector.CredentialRef!, cancellationToken);
+        }
+        catch (McpClientException)
+        {
+            return new ServiceResult(502, "小红书服务暂时不可用，请稍后重试。");
+        }
         var views = result.Notes.Select(note => new XhsNoteSummaryView
         {
             NoteId = note.NoteId,
@@ -54,10 +63,23 @@ public sealed class XhsConnectorServices : IXhsConnectorServices
     public async Task<ServiceResult> GetNoteDetailAsync(long userId, long tenantId, string url, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(url)) return new ServiceResult(422, "笔记链接不能为空。");
-        if (!await IsAuthorizedAsync(userId, tenantId, cancellationToken))
+        var connector = await GetAuthorizedConnectorAsync(userId, tenantId, cancellationToken);
+        if (connector is null)
             return new ServiceResult(404, "小红书连接器未授权或不可用。");
 
-        var detail = await _xhs.GetNoteDetailAsync(url.Trim(), cancellationToken);
+        XhsNoteDetail detail;
+        try
+        {
+            detail = await _xhs.GetNoteDetailAsync(url.Trim(), connector.CredentialRef!, cancellationToken);
+        }
+        catch (XhsNoteDetailException error)
+        {
+            return new ServiceResult(error.StatusCode, error.Message);
+        }
+        catch (McpClientException)
+        {
+            return new ServiceResult(502, "小红书服务暂时不可用，请稍后重试。");
+        }
         return new ServiceResult(200, "查询成功。", new XhsNoteDetailView
         {
             NoteId = detail.NoteId,
@@ -71,15 +93,24 @@ public sealed class XhsConnectorServices : IXhsConnectorServices
     /// <inheritdoc />
     public async Task<ServiceResult> GetAuthStatusAsync(long userId, long tenantId, CancellationToken cancellationToken = default)
     {
-        if (!await IsAuthorizedAsync(userId, tenantId, cancellationToken))
+        var connector = await GetAuthorizedConnectorAsync(userId, tenantId, cancellationToken);
+        if (connector is null)
             return new ServiceResult(404, "小红书连接器未授权或不可用。");
 
-        var status = await _xhs.GetAuthStatusAsync(cancellationToken);
+        XhsAuthStatus status;
+        try
+        {
+            status = await _xhs.GetAuthStatusAsync(connector.CredentialRef!, cancellationToken);
+        }
+        catch (McpClientException)
+        {
+            return new ServiceResult(502, "小红书服务暂时不可用，请稍后重试。");
+        }
         return new ServiceResult(200, "查询成功。", new XhsAuthStatusView { LoggedIn = status.LoggedIn, Message = status.Message });
     }
 
     /// <summary>校验本人小红书连接器已授权：当前租户 + personal 作用域 + 本人 owner + connected 状态。</summary>
-    private async Task<bool> IsAuthorizedAsync(long userId, long tenantId, CancellationToken cancellationToken)
+    private async Task<WorkspaceConnector?> GetAuthorizedConnectorAsync(long userId, long tenantId, CancellationToken cancellationToken)
     {
         var connector = await (from item in _db.WorkspaceConnectors
                                join provider in _db.ConnectorProviders on item.ConnectorProviderId equals provider.Id
@@ -91,6 +122,6 @@ public sealed class XhsConnectorServices : IXhsConnectorServices
                                      && item.AuthStatus == WorkspaceConnectorAuthStatus.Connected
                                      && provider.Code == XhsProviderCode
                                select item).FirstOrDefaultAsync(cancellationToken);
-        return connector is not null;
+        return connector;
     }
 }

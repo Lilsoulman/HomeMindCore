@@ -23,12 +23,20 @@ public sealed class SkillsController : ApiControllerBase
     /// <param name="skillServices">AI 技能业务服务。</param>
     public SkillsController(IAiSkillServices skillServices) => _skillServices = skillServices;
 
-    /// <summary>列出当前租户内可见的 AI 技能。</summary>
-    /// <remarks>权限：<c>ai.skills.read</c>。</remarks>
+    /// <summary>列出当前租户内的用户 Skill，或供开发端查看的平台/聚合目录。</summary>
+    /// <remarks>权限：<c>ai.skills.read</c>。scope=mine（默认）仅返回本人用户 Skill；platform/all 仅 owner/admin 可查询。</remarks>
+    /// <param name="scope">视图范围：mine、platform 或 all；默认 mine。</param>
     /// <returns>技能列表的统一响应。</returns>
     [Authorize(Policy = PermissionNames.AiSkillsRead)]
     [HttpGet]
-    public async Task<ActionResult<ApiResponse<object>>> List() => ToResponse(await WithUserAsync((user, token) => _skillServices.ListAsync(user.UserId, user.TenantId, token)));
+    public async Task<ActionResult<ApiResponse<object>>> List(string? scope = null) =>
+        ToResponse(await WithUserAsync((user, token) => (scope ?? "mine").ToLowerInvariant() switch
+        {
+            "mine" => _skillServices.ListAsync(user.UserId, user.TenantId, token),
+            "platform" => _skillServices.ListPlatformAsync(user.TenantId, user.Role, token),
+            "all" => _skillServices.ListAllAsync(user.TenantId, user.Role, token),
+            _ => Task.FromResult(new ServiceResult(422, "scope 仅支持 mine、platform 或 all。"))
+        }));
 
     /// <summary>创建一个新技能，归属当前用户与租户。</summary>
     /// <remarks>权限：<c>ai.skills.write</c>。</remarks>

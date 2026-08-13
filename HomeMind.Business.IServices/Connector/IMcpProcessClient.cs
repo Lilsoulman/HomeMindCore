@@ -10,6 +10,11 @@ namespace HomeMind.Business.IServices.Connector;
 /// </summary>
 public interface IMcpProcessClient
 {
+    /// <summary>读取 MCP Server 原始工具清单，返回 <c>tools/list</c> 的 result 节点。</summary>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>工具清单原始响应；进程不可用或协议错误时抛出异常。</returns>
+    Task<JsonObject?> ListToolsAsync(CancellationToken cancellationToken = default);
+
     /// <summary>调用 MCP Server 的 <c>tools/call</c>，返回工具 result.content 首个 text 条目解析后的 JSON 节点。</summary>
     /// <param name="toolName">工具名称（如 xhs_search_note、create_draft）。</param>
     /// <param name="arguments">工具参数 JSON 对象；可为 null 表示无参数。</param>

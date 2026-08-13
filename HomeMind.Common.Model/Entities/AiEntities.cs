@@ -764,3 +764,47 @@ public static class ClippingMaterialStatus
     /// <summary>已删除（软删除）。</summary>
     public const string Deleted = "deleted";
 }
+
+/// <summary>V2.8 剪辑任务：承载可恢复的对话状态、运行绑定与方案版本历史。</summary>
+[Table("clipping_tasks")]
+public sealed class ClippingTask
+{
+    /// <summary>任务主键。</summary>
+    [Key, Column("id")] public long Id { get; set; }
+    /// <summary>所属租户标识。</summary>
+    [Column("tenant_id")] public long TenantId { get; set; }
+    /// <summary>关联的 Skill Run；生成方案前为空。</summary>
+    [Column("run_id")] public long? RunId { get; set; }
+    /// <summary>任务状态，取值参见 <see cref="ClippingTaskStatus"/>。</summary>
+    [Column("status")] public string Status { get; set; } = ClippingTaskStatus.Collecting;
+    /// <summary>已收集素材路径 JSON 数组。</summary>
+    [Column("materials_json")] public string Materials { get; set; } = "[]";
+    /// <summary>创作目标。</summary>
+    [Column("goal")] public string? Goal { get; set; }
+    /// <summary>当前展示安全方案 JSON。</summary>
+    [Column("current_plan_json")] public string? CurrentPlan { get; set; }
+    /// <summary>方案版本历史 JSON 数组，不包含引擎内部数据。</summary>
+    [Column("version_history_json")] public string VersionHistory { get; set; } = "[]";
+    /// <summary>当前公开引擎阶段，真实引擎未接入时仅为 planning。</summary>
+    [Column("engine_stage")] public string? EngineStage { get; set; }
+    /// <summary>任务创建者，仅本人可读写。</summary>
+    [Column("created_by_user_id")] public long CreatedByUserId { get; set; }
+    /// <summary>软删除时间。</summary>
+    [Column("deleted_at")] public DateTime? DeletedAt { get; set; }
+    /// <summary>创建时间（UTC）。</summary>
+    [Column("created_at")] public DateTime CreatedAt { get; set; }
+    /// <summary>更新时间（UTC）。</summary>
+    [Column("updated_at")] public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>剪辑任务状态常量。</summary>
+public static class ClippingTaskStatus
+{
+    public const string Collecting = "collecting";
+    public const string Generating = "generating";
+    public const string Reviewing = "reviewing";
+    public const string Modifying = "modifying";
+    public const string Rendering = "rendering";
+    public const string Done = "done";
+    public const string Failed = "failed";
+}

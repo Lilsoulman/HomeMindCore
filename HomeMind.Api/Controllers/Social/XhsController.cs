@@ -28,7 +28,7 @@ public sealed class XhsController : ApiControllerBase
         _publish = publish;
     }
 
-    /// <summary>按关键词搜索小红书笔记；连接器未授权返回 404。</summary>
+    /// <summary>按关键词搜索小红书笔记；连接器未授权返回 404，MCP 调用失败返回 502。</summary>
     /// <remarks>权限：<c>connector.read</c>。只读 L1 操作；响应不含登录态与凭据。</remarks>
     /// <param name="query">搜索关键词，必填。</param>
     /// <param name="limit">返回条数上限（1-50），默认 10。</param>
@@ -38,7 +38,7 @@ public sealed class XhsController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<object>>> SearchNotes([FromQuery] string query, [FromQuery] int limit = 0) =>
         ToResponse(await WithUserAsync((user, token) => _xhs.SearchNotesAsync(user.UserId, user.TenantId, query, limit, token)));
 
-    /// <summary>获取小红书笔记详情；连接器未授权返回 404。</summary>
+    /// <summary>获取小红书笔记详情；连接器未授权返回 404，MCP 调用失败返回 502。</summary>
     /// <remarks>权限：<c>connector.read</c>。只读 L1 操作；响应不含登录态与凭据。</remarks>
     /// <param name="url">笔记链接，必填。</param>
     /// <returns>笔记详情统一响应。</returns>
@@ -47,7 +47,7 @@ public sealed class XhsController : ApiControllerBase
     public async Task<ActionResult<ApiResponse<object>>> GetNoteDetail([FromQuery] string url) =>
         ToResponse(await WithUserAsync((user, token) => _xhs.GetNoteDetailAsync(user.UserId, user.TenantId, url, token)));
 
-    /// <summary>查询本人小红书连接器登录状态；连接器未授权返回 404。</summary>
+    /// <summary>查询本人小红书连接器登录状态；连接器未授权返回 404，MCP 调用失败返回 502。</summary>
     /// <remarks>权限：<c>connector.read</c>。响应不含登录态明文或凭据。</remarks>
     /// <returns>登录状态统一响应。</returns>
     [Authorize(Policy = PermissionNames.ConnectorRead)]

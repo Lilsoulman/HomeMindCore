@@ -3,11 +3,13 @@ using System.Text.RegularExpressions;
 using HomeMind.Business.IServices.AI;
 using HomeMind.Business.IServices.Expert;
 using HomeMind.Business.IServices.Family;
+using HomeMind.Business.IServices.Media;
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Model.Entities.Family;
 using HomeMind.Common.Model.Entities.Steward;
 using HomeMind.Common.Model.ViewModel.Common;
 using HomeMind.Common.Model.ViewModel.Data.AI;
+using HomeMind.Common.Model.ViewModel.Data.Media;
 using HomeMind.Common.Repository;
 using Microsoft.EntityFrameworkCore;
 
@@ -31,18 +33,20 @@ public sealed class SkillRunServices : ISkillRunServices
     private readonly IFamilyAuditLogger _audit;
     private readonly IClippingMcpClient _clippingMcp;
     private readonly IExpertFileServices _files;
+    private readonly IClippingPipelineServices _pipeline;
 
     /// <summary>构造 Skill 运行服务。</summary>
     /// <param name="db">数据库上下文。</param>
     /// <param name="audit">家庭域审计日志写入器，SkillRun 创建审计使用。</param>
     /// <param name="clippingMcp">剪辑 MCP 客户端，确认后生成 .draft 草稿内容。</param>
     /// <param name="files">专家文件服务，登记生成的草稿文件。</param>
-    public SkillRunServices(HomeMindDbContext db, IFamilyAuditLogger audit, IClippingMcpClient clippingMcp, IExpertFileServices files)
+    public SkillRunServices(HomeMindDbContext db, IFamilyAuditLogger audit, IClippingMcpClient clippingMcp, IExpertFileServices files, IClippingPipelineServices? pipeline = null)
     {
         _db = db;
         _audit = audit;
         _clippingMcp = clippingMcp;
         _files = files;
+        _pipeline = pipeline ?? new DisabledClippingPipelineServices();
     }
 
     /// <inheritdoc />
@@ -54,6 +58,11 @@ public sealed class SkillRunServices : ISkillRunServices
 
         var input = ReadSkillInput(request.InputJson);
         if (input is null) return new ServiceResult(422, "Skill 输入必须为合法 JSON 且包含非空的 media_location。");
+
+        var task = request.TaskId is long taskId
+            ? await _db.ClippingTasks.SingleOrDefaultAsync(x => x.Id == taskId && x.TenantId == tenantId && x.CreatedByUserId == userId && x.DeletedAt == null, cancellationToken)
+            : null;
+        if (request.TaskId is not null && task is null) return new ServiceResult(404, "请求的剪辑任务不存在。");
 
         var idempotencyKey = Guid.TryParse(request.IdempotencyKey, out var parsedKey) ? parsedKey.ToString() : Guid.NewGuid().ToString();
         var existing = await _db.AgentRuns.SingleOrDefaultAsync(
@@ -86,6 +95,17 @@ public sealed class SkillRunServices : ISkillRunServices
         _db.AgentRuns.Add(run);
         await _db.SaveChangesAsync(cancellationToken);
 
+        if (task is not null)
+        {
+            task.RunId = run.Id;
+            task.Status = "reviewing";
+            task.EngineStage = "planning";
+            task.CurrentPlan = planJson;
+            task.VersionHistory = JsonSerializer.Serialize(new[] { new { version = 1, plan = ToPlanJson(plan), change = "已生成初始方案", modifiedAt = now } }, JsonOptions);
+            task.UpdatedAt = now;
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
         _db.ExpertRunActions.Add(new ExpertRunAction
         {
             RunId = run.Id,
@@ -108,6 +128,8 @@ public sealed class SkillRunServices : ISkillRunServices
 
         await _audit.LogAsync(tenantId, userId, FamilyAuditActions.SkillRunCreated, FamilyAuditTargetTypes.SkillRun,
             run.Id, null, new { skill = skill.Key, segment_count = 1, total_duration = plan.TotalDuration }, null, run.Id, cancellationToken);
+        if (task is not null)
+            await _pipeline.QueueAsync(task.Id, tenantId, "video_use", false, false, cancellationToken);
         return new ServiceResult(201, run.ResultSummary, await ToViewAsync(run, cancellationToken));
     }
 
@@ -246,6 +268,8 @@ public sealed class SkillRunServices : ISkillRunServices
         var input = ReadSkillInput(run.Input);
         if (input is null) return new ServiceResult(422, "运行输入解析失败，不能修订。");
 
+        if (request.ReworkScope is not null && request.ReworkScope is not ("parameters" or "partial" or "full"))
+            return new ServiceResult(422, "重做范围必须为 parameters、partial 或 full。");
         var plan = BuildPlan(input.MediaLocation, request.Instruction?.Trim());
         var planJson = JsonSerializer.Serialize(ToPlanJson(plan), JsonOptions);
         var now = DateTime.UtcNow;
@@ -265,6 +289,21 @@ public sealed class SkillRunServices : ISkillRunServices
             UpdatedAt = now
         });
         await _db.SaveChangesAsync(cancellationToken);
+        var task = await _db.ClippingTasks.SingleOrDefaultAsync(x => x.RunId == run.Id && x.TenantId == tenantId && x.CreatedByUserId == userId && x.DeletedAt == null, cancellationToken);
+        if (task is not null)
+        {
+            var history = JsonSerializer.Deserialize<List<ClippingTaskVersionEntry>>(task.VersionHistory, JsonOptions) ?? [];
+            history.Add(new ClippingTaskVersionEntry(history.Count + 1, ToPlanJson(plan), request.Instruction?.Trim() ?? "已修改方案", now));
+            task.Status = "reviewing";
+            task.EngineStage = "planning";
+            task.CurrentPlan = planJson;
+            task.VersionHistory = JsonSerializer.Serialize(history, JsonOptions);
+            task.UpdatedAt = now;
+            await _db.SaveChangesAsync(cancellationToken);
+            var reworkScope = request.ReworkScope ?? InferReworkScope(request.Instruction);
+            if (reworkScope != "parameters")
+                await _pipeline.QueueAsync(task.Id, tenantId, reworkScope == "full" ? "video_use" : "hyperframes", request.AllowSeedance, request.CostConfirmed, cancellationToken);
+        }
         await _audit.LogAsync(tenantId, userId, FamilyAuditActions.SkillRunRevised, FamilyAuditTargetTypes.SkillRun,
             run.Id, null, new { run_id = run.Id, segment_count = 1, total_duration = plan.TotalDuration }, null, run.Id, cancellationToken);
         return new ServiceResult(200, "剪辑方案已修订。", await ToViewAsync(run, cancellationToken));
@@ -407,6 +446,8 @@ public sealed class SkillRunServices : ISkillRunServices
             .Where(x => x.RunId == run.Id && x.TenantId == run.TenantId && x.ActionType == "draft_generate")
             .OrderBy(x => x.Id)
             .ToListAsync(cancellationToken);
+        var task = await _db.ClippingTasks.SingleOrDefaultAsync(x => x.RunId == run.Id && x.TenantId == run.TenantId && x.CreatedByUserId == run.UserId && x.DeletedAt == null, cancellationToken);
+        var history = task is null ? null : JsonSerializer.Deserialize<List<ClippingTaskVersionEntry>>(task.VersionHistory, JsonOptions);
         return new SkillRunView(
             run.Id,
             run.Status,
@@ -414,7 +455,10 @@ public sealed class SkillRunServices : ISkillRunServices
             run.CreatedAt,
             run.FinishedAt,
             events.Select(x => new SkillRunEventView(x.Sequence, x.EventType, ReadMessage(x.Payload), x.CreatedAt)).ToArray(),
-            actions.Select(ToActionView).ToArray());
+            actions.Select(ToActionView).ToArray(),
+            task?.EngineStage,
+            history?.Count,
+            history?.Select(x => new ClippingTaskVersionView(x.Version, x.Plan, x.Change, x.ModifiedAt)).ToArray());
     }
 
     /// <summary>从动作的剪辑方案读取片段序列与总时长生成动作视图（B30 结构化输出）；内容非法时回退为默认值。</summary>
@@ -448,6 +492,19 @@ public sealed class SkillRunServices : ISkillRunServices
     }
 
     private sealed record SkillInput(string MediaLocation, string? Instruction);
+    private sealed record ClippingTaskVersionEntry(int Version, object Plan, string Change, DateTime ModifiedAt);
     private sealed record SkillPlanInfo(string MediaLocation, string? Instruction, string SourceName, int TotalDuration);
     private sealed record SkillPlanData(IReadOnlyList<SkillPlanSegmentView> Segments, object? Audio, int TotalDuration);
+
+    /// <summary>依据修改文本在未显式指定时推断重做粒度。</summary>
+    private static string InferReworkScope(string? instruction) => instruction?.Contains("全量", StringComparison.Ordinal) == true || instruction?.Contains("重新剪", StringComparison.Ordinal) == true
+        ? "full" : instruction?.Contains("片头", StringComparison.Ordinal) == true || instruction?.Contains("转场", StringComparison.Ordinal) == true || instruction?.Contains("标题", StringComparison.Ordinal) == true
+            ? "partial" : "parameters";
+
+    /// <summary>供既有直接构造测试使用的禁用流水线，避免测试触发后台进程。</summary>
+    private sealed class DisabledClippingPipelineServices : IClippingPipelineServices
+    {
+        public Task<ServiceResult> QueueAsync(long taskId, long tenantId, string startStage, bool allowSeedance, bool costConfirmed, CancellationToken cancellationToken = default) => Task.FromResult(new ServiceResult(202, "剪辑引擎任务已排队。"));
+        public Task<int> ProcessNextAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+    }
 }

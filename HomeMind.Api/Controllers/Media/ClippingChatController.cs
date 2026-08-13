@@ -18,10 +18,16 @@ namespace HomeMind.Api.Controllers.Media;
 public sealed class ClippingChatController : ApiControllerBase
 {
     private readonly IClippingChatServices _chat;
+    private readonly IClippingTaskServices _tasks;
 
     /// <summary>构造剪辑对话引导控制器。</summary>
     /// <param name="chat">剪辑对话引导服务。</param>
-    public ClippingChatController(IClippingChatServices chat) => _chat = chat;
+    /// <param name="tasks">剪辑任务查询服务。</param>
+    public ClippingChatController(IClippingChatServices chat, IClippingTaskServices tasks)
+    {
+        _chat = chat;
+        _tasks = tasks;
+    }
 
     /// <summary>处理一条剪辑对话消息：按回传上下文推进引导步骤，返回模板回复与 suggestions 快捷操作。</summary>
     /// <remarks>权限：<c>ai.run</c> + <c>media.read</c>。上下文步骤非法或消息为空返回 422。</remarks>
@@ -32,6 +38,15 @@ public sealed class ClippingChatController : ApiControllerBase
     [HttpPost("chat")]
     public async Task<ActionResult<ApiResponse<object>>> Chat(ClippingChatRequest request) =>
         ToResponse(await WithUserAsync((user, token) => _chat.ChatAsync(user.UserId, user.TenantId, request, token)));
+
+    /// <summary>查询本人剪辑任务，用于刷新或重进页面后恢复任务状态和版本历史。</summary>
+    /// <param name="taskId">剪辑任务主键。</param>
+    /// <returns>展示安全任务视图；不可见任务返回 404。</returns>
+    [Authorize(Policy = PermissionNames.AiRun)]
+    [Authorize(Policy = PermissionNames.MediaRead)]
+    [HttpGet("tasks/{taskId:long}")]
+    public async Task<ActionResult<ApiResponse<object>>> GetTask(long taskId) =>
+        ToResponse(await WithUserAsync((user, token) => _tasks.GetAsync(user.UserId, user.TenantId, taskId, token)));
 
     /// <summary>在用户上下文就绪时执行给定的业务回调，否则返回 401。</summary>
     /// <param name="action">执行业务逻辑的回调。</param>

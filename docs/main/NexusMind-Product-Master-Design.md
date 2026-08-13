@@ -5,7 +5,7 @@
 > **维护规则：** 需求、范围、领域模型或跨端契约发生变化时，先更新本文件；确认后，同一变更必须同步更新本文档指定的前端、后端实施文档。  
 > **当前阶段：** V2.4 家庭与个人连接器、Web 治理设计基线（承接 V2.3）。
 > **版本语义：** V2.4 = V2.3 + 家庭级/个人级 Connector 边界 + 用户/成员治理 + Web 用户端与开发端 V1；先完成契约和数据迁移，再进入实现。
-> **最后更新：** 2026-08-06
+> **最后更新：** 2026-08-12
 
 ## 1. 产品定位
 
@@ -386,6 +386,65 @@ Home Assistant（统一设备模型、自动化执行、状态同步）
 
 V1 与第二阶段优先采用 `NexusMind → SmartHome Connector → Home Assistant → 设备生态`。这利用 HA 对跨厂商设备的统一能力，避免 NexusMind 重复实现 Zigbee、Matter、MQTT 或厂商云协议。只有 HA 无法覆盖且存在明确用户价值时，才为米家、华为或其他生态增加直连 Adapter；该 Adapter 仍必须位于 SmartHome Connector 之后，不能改变 Agent、Expert、Skill 或权限模型。
 
+### HA MCP Server 技术分析与选型（第二阶段）
+
+第二阶段采用 `NexusMind Agent → SmartHome Connector → HA MCP Server → Home Assistant`，而不是由 Agent 或业务服务直调 HA REST/WebSocket API。MCP Server 只负责把 HA 的底层协议和资源模型转换成 Tool；NexusMind Connector 继续是租户、成员、设备范围、风险分级、确认、幂等、审计和面向产品的标准能力模型的唯一事实来源。
+
+```text
+Expert / Skill
+  ↓（仅调用已授权的 Connector Tool）
+SmartHome Connector：解析家庭/空间/设备、权限复验、Run Action、幂等与审计
+  ↓（MCP Client：stdio 优先，受控 HTTP 为后续选项）
+HA MCP Server：会话、HA Token、Tool Schema、协议适配、重连
+  ↓（REST + WebSocket）
+Home Assistant：状态、服务、设备/区域注册表、自动化、媒体与统计
+```
+
+**开源实现的可复用模式**：
+
+| 项目 | 可学习模式 | 对 NexusMind 的结论 |
+| --- | --- | --- |
+| `zorak1103/ha-mcp` | client → handler → MCP → config 分层；WebSocket 承担实时状态/服务调用，REST 承担自动化 CRUD；独立 HA Bearer Token 与指数退避重连 | 作为协议适配、分层和错误恢复的首要参考；不直接照搬约 70 个面向 LLM 的底层工具 |
+| `max-rousseau/mcp-hass` | FastMCP + DI；REST 管状态与服务，WebSocket 管区域/设备/实体注册表；stdio/HTTP 双 transport；Token 感知的响应裁剪 | 作为部署、DI、双协议分工和上下文窗口治理参考 |
+| `slhad/aha-mcp` | TypeScript、环境变量最小配置；`RESOURCES_TO_TOOLS` 将资源转为独立 Tool | 仅在客户端无法良好支持资源或需要少量固定实体 Tool 时采用；默认不暴露每个实体 Tool，避免 Tool 数爆炸和配置泄露 |
+| `homeassistant-ai/ha-mcp` | 搜索式 Tool 发现；`search/read/write/delete` 四类代理 Tool；按写入风险授予不同权限 | 作为 NexusMind Tool 目录、按风险分域与本地小模型兼容性的首要参考 |
+
+**推荐选型**：不直接把任一项目作为 NexusMind 的业务 Connector，而是以 `zorak1103/ha-mcp` 为 HA 协议适配参考实现，吸收 `homeassistant-ai/ha-mcp` 的搜索式发现和读/写/删除分域，以及 `mcp-hass` 的 DI、响应裁剪和双 transport 设计。理由是 NexusMind 已有 Connector Tool、Workspace Connector、Permission Grant、Run Action 与审计模型；直接暴露第三方的 70–84 个 HA 工具会绕开设备标准化、空间授权和 L1/L2/L3 确认策略。
+
+**Tool 定义与发现**：NexusMind 对 Agent 暴露稳定的产品级 Tool，名称使用动词-对象语义，例如 `smart_home.search_resources`、`smart_home.get_device_state`、`smart_home.control_device`、`smart_home.run_scene`、`smart_home.manage_automation`。`description` 必须写明可见范围、是否改变外部状态、风险等级、何时需要确认及不得猜测实体 ID；`inputSchema` 必须以 `workspace_connector_id`、受控 `room_id`/`device_id`/`capability` 和标准化参数为主，禁止让模型提交原始 HA entity ID、service 名或自由 Topic。输入/输出 schema 与 MCP `name`、`description`、`inputSchema` 对齐，并额外定义结果大小上限、游标/limit、`dry_run`（仅适用于可解释的写操作）和可机器读取的错误码。
+
+默认采用两级发现：先由 `smart_home.search_resources` 按空间、设备类型、能力和关键词返回少量标准化候选，再调用具体读写 Tool。这样保留 HA 的广泛能力而不把全部 Tool Schema、实体状态或长属性塞入模型上下文；对 N97 本地小模型尤其有价值。`RESOURCES_TO_TOOLS` 仅作为兼容模式，允许为用户明确固定的少数场景/设备生成别名 Tool，别名仍映射回上述稳定 Tool，不进入权限事实层。
+
+**认证、授权与凭据**：每个 `Workspace Connector` 对应一个最小权限 HA Long-Lived Access Token；Token 仅由家庭侧 MCP Server 使用。NexusMind 数据库的 `credential_ref` 只保存 Vault/本机安全存储引用、Token 指纹、创建/轮换/失效时间和连接健康，绝不保存明文 Token、HA URL 查询参数或 MCP 进程环境变量。家庭共用连接器由 owner/admin 完成一次受控录入；个人连接器不得复用家庭 Token。请求执行时依次复验 NexusMind 当前租户、成员权限和设备/空间范围，再由 MCP Server 以 Bearer Token 调 HA；HA Token 权限不能替代 NexusMind 的授权、L2/L3 确认、幂等键和审计。令牌失效返回可恢复的 `reauthorization_required`，不得在日志、Run Event 或模型上下文中回显。
+
+**通信与部署**：HA MCP Server 内部采用混合协议：REST 适合快照状态、服务目录、自动化 CRUD、媒体/统计等请求-响应操作；WebSocket 适合 HA 认证会话、服务调用、注册表读取、订阅状态变化与低延迟同步。连接管理需具备初始化握手、请求超时、取消传播、stderr/诊断隔离、指数退避（含抖动）重连、断线后订阅恢复和健康状态上报；写操作在连接不确定或超时后不能盲目重试，必须依赖 NexusMind 的 Action 幂等记录和执行结果查询。
+
+N97 单机/家庭局域网部署默认使用 `stdio`：由 NexusMind Agent 以受限服务账户拉起同机 MCP 子进程，HA URL 与 Token 通过本机密钥存储或受保护环境注入，标准输入输出仅承载 MCP JSON-RPC。它最小化端口暴露、CORS 和额外身份认证，适合单家庭单 Agent。只有需要多个受控进程、容器或远程 NexusMind Agent 共享 HA MCP 时才启用 Streamable HTTP；此时 MCP Server 必须位于家庭内网或 mTLS/VPN 后，并增加 NexusMind 服务身份认证、会话绑定、Origin/Host 校验、速率限制和网络最小可达性。Docker Compose 可将 HA、HA MCP Server、NexusMind Agent 同部署，但 HA Token 必须以 secret 挂载，不能写入镜像、compose 明文或应用配置文件。
+
+**错误处理与验收边界**：将 HA 的认证失败、实体不存在、服务校验失败、限流、连接中断和超时映射为稳定 Connector 错误；对用户只展示可行动的信息，对 Run 记录保存脱敏诊断。状态订阅只更新 NexusMind 标准化 `DeviceState`，不能直接成为“已执行成功”的证据；写 Action 必须以 HA 确认响应或后续状态验证完成。首个切片只交付发现、读取、受控开关/调节、场景执行和健康同步；自动化 CRUD、摄像头/媒体、历史统计等高宽度能力在 Tool 搜索、响应裁剪、权限和审计验证后逐步开放。
+
+### Hermes Agent / Studio 融合决策（V2.5 参考架构）
+
+Hermes Agent 与 Hermes Studio 的源码学习结论详见 `docs/main/NexusMind-Hermes-MCP-Fusion-Analysis.md`。NexusMind 只吸收运行机制与交互模式，不移植 Python Agent 或 React Studio；现有 .NET Connector、Flutter、Run Action、L1/L2/L3、家庭知识和审计继续作为产品事实源。
+
+**P0 立即参考：**
+
+- HA 工具面保持小而稳定：Agent 只看到 `smart_home.search_resources`、`smart_home.get_state`、`smart_home.control_device`、`smart_home.run_scene`，不得看到原始 HA entity ID、任意 service 或自由 `data` JSON；HA MCP Server 的底层 Tool 由 Adapter 映射，不因 Server 动态增 Tool 而自动扩权；
+- HA 实时状态采用 WebSocket `state_changed` 思路，但事件必须先经实体映射、白名单、冷却/去重和 `DeviceSyncService` 写标准化 `DeviceState`，不得直接把高频事件逐条交给 Agent；
+- MCP Client 增加 initialize、tools/list、tools/call、Schema Manifest 缓存、`tools/list_changed`、超时、指数退避、工具撤销和脱敏错误；N97 默认 stdio，MCP 与 REST 只作为 Adapter 内的主备模式，不能并行注册两套 Agent Tool；
+- 审批卡借鉴 Hermes 的 action/context/once/session/always/deny 表达，但 NexusMind 仅将 once 映射为本次 Action；session/always 只能形成结构化、可过期、可撤销的 L1 Grant，L2/L3 永远逐项确认。确认事实保存在 MySQL，Flutter 本地状态和事件重放缓存都不是审计事实源。
+
+**P1 近期规划：**
+
+- 每次 Expert Run 创建冻结的 `Context Snapshot`，引用家庭知识、成员个人偏好、决策历史、设备摘要、Expert/Skill 版本和召回来源；Run 期间后台记忆写入不改变当前快照，确需采纳新输入时生成 snapshot version；
+- 记忆分层映射为：个人偏好（类似 USER.md）、家庭知识/决策（类似 MEMORY.md）、版本化 Skill（程序性记忆）、云端 Conversation Message + N97 本地派生检索索引（历史）；Markdown/SQLite 均不得取代 MySQL 产品事实；
+- Run 完成、上下文压缩前或会话结束时可由低成本本地模型后台复盘，但只生成带 evidence/confidence/risk 的 `Memory Candidate` / `Skill Candidate`。敏感事实、冲突事实、成员身份与平台级 Skill 不得由后台模型直接写入或覆盖；
+- Skill 治理采用成功 Run、用户纠正、使用遥测、来源保护、read-before-write、验证回放和版本化发布。每 15 个完成 Run 或每 7 天触发治理 review 可作为 NexusMind 可配置默认值，不宣称为 Hermes 当前固定机制。
+
+**P2 长期参考：**多 Agent Crew 与 Workflow DAG 只借鉴角色/persona/model、环检测、拓扑分层、同层并行和节点状态视图；NexusMind 后端的 Expert Group 版本、成员权限交集、Run Step/Event 和预算仍是编排事实源，Flutter/Web 不执行 DAG。
+
+**实施顺序（V2.5 HA 主线）**：`H1 MCP 会话基线 → H2 HA MCP 只读发现/状态 → H3 WebSocket 实时同步 → H4 受控设备写入与确认 → H5 审批体验增强 → M1 Context Snapshot → M2 Memory Candidate`。HA Token 只保存在 N97 Secret/Vault；任何写操作超时均进入 `result_unknown` 并通过状态回读确认，不盲目自动重试。
+
 ### Adapter 与设备能力规范
 
 每个厂商或协议均实现同一 Adapter 契约：连接测试、设备发现、读取标准化状态、执行标准化命令、订阅/接收状态变更。Adapter 负责把厂商字段转换为 NexusMind 的 Device Capability，业务层不感知 `prop.power`、`switch_led`、HA Entity ID 或 Zigbee Topic。
@@ -445,24 +504,26 @@ Skill 按**产物形态**分级，决定其承载端（与「附件选择/上传
 
 **产品目标**：把「探店/日常拍摄素材 → 可编辑剪映草稿」的重复劳动用对话完成。产物是剪映 .draft 草稿文件，可在剪映中继续编辑或渲染，**不做一键成片**；草稿为本地文件、可编辑可丢弃、不对外发布。
 
-**用户表达与执行链路（V2.7 对话式优化）**：
+**用户表达与执行链路（V2.8 四引擎架构）**：
 
 ```text
 用户："帮我剪一下探店视频"
   ↓
-快速剪辑工作台（分步对话式引导：素材 → 创作目标 → 方案 → 确认 → 导出）
+对话入口 / 快速剪辑工作台（分步对话式引导：素材 → 创作目标 → 方案 → 确认 → 导出）
   ↓
-chat 引导接口（无状态 context 推进 + 规则意图匹配 + 模板回复，只引导不执行）
+chat 引导接口（无状态 context 推进 + 规则意图匹配 + 模板回复，只引导不执行；V2.8 起由 clipping_tasks 持久化承接，见「对话状态持久化」）
   ↓
 素材：浏览器上传（服务端落盘 + ffprobe 提取时长/分辨率，登记 clipping_materials）或本机/NAS 路径（服务端校验）
   ↓
 对话达成目标 → POST /skills/quick-edit/runs 创建 Skill Run（复用 B24 链路）
   ↓
-确定性方案生成（片段序列/音频/时长）→ 结构化视图（B30）渲染为时间线
+四引擎流水线生成方案（video-use 粗剪 → 可选 Seedance 2.0 → HyperFrames 包装 → 可选 Remotion，详见「四引擎协作架构」）
   ↓
-不满意 → POST /skills/runs/{runId}/revise 修订指令重新生成方案（B31）
+结构化方案（B30）渲染为时间线
   ↓
-确认 → 剪辑 MCP 生成 .draft → RegisterGeneratedFileAsync 登记（复用 B25 链路）
+不满意 → 修改指令增量更新方案（7 维度映射 + 3 粒度，演进自 B31 revise，见「修改与调整」）
+  ↓
+确认 → jianying-mcp 生成 .draft → RegisterGeneratedFileAsync 登记（复用 B25 链路）
   ↓
 返回"草稿已生成，打开剪映即可编辑"
 ```
@@ -470,9 +531,36 @@ chat 引导接口（无状态 context 推进 + 规则意图匹配 + 模板回复
 **Skill 输入契约**：
 
 - `素材位置`：本机/NAS 目录路径或 URI（视频/音频文件或目录），或浏览器上传的素材（经服务端登记为 `clipping_materials`，ffprobe 提取元数据，上传后回填可访问路径）；
-- `创作目标和指令`：自然语言，如时长、画幅比例、配乐、字幕等要求；方案生成后可通过修订接口（B31）调整指令重新生成。
+- `创作目标和指令`：自然语言，如时长、画幅比例、配乐、字幕等要求；方案生成后可通过修改指令（增量修改机制，演进自 B31 revise）调整并重新生成。
 
-**剪辑 MCP 工具契约**（jianying-mcp / capcut-mate，FFmpeg 为后台依赖）：
+**四引擎协作架构（V2.8 覆盖既有执行链路）**：
+
+| 引擎 | 职责 | 触发条件 | 部署方式 | 成本 |
+| --- | --- | --- | --- | --- |
+| video-use | 素材理解与粗剪：转写音频 → LLM 理解内容 → 生成 EDL → ffmpeg 执行粗剪 | 所有剪辑任务的第一步 | 本地 / 云端 | 低（开源；转写依赖 ElevenLabs Scribe 或本地 Whisper） |
+| Seedance 2.0 | 生成式内容填补：缺失空镜头、风格化填充片段 | 素材缺失视觉内容且用户需要补充时（默认关闭） | 云端 API | 高（约 15 元/条），仅必要时启用 |
+| HyperFrames | 包装与动效：片头、标题卡、转场、浮动标签、数据卡片 | 需要视觉包装时 | 本地 | 低（开源，`npx hyperframes` 命令执行） |
+| Remotion | 复杂组件化场景：多说话人切换、品牌模板复用、复杂互动 | 场景复杂度超出 HyperFrames 能力时 | 本地 | 商业化需付费（个人/小型组织免费，自动化场景 $0.01/次） |
+
+协作流程：
+
+```text
+用户输入 → 剪辑需求
+  ↓
+第 1 层：video-use（理解与粗剪）——转写音频、提取元数据、LLM 生成 EDL、ffmpeg 执行粗剪
+  ↓
+第 2 层：判断是否需要 Seedance 2.0——素材缺失空镜头 → 生成 5-15 秒补充片段；素材满足 → 跳过
+  ↓
+第 3 层：HyperFrames（包装与动效）——片头标题卡、片尾、转场、浮动标签、数据卡片
+  ↓
+第 4 层：判断是否需要 Remotion——多说话人切换、复杂时间线 → 使用 Remotion；简单编排 → 跳过
+  ↓
+成品：.draft 文件 + 方案时间线数据
+```
+
+已实施的「确定性方案生成 + 剪辑 MCP」链路（B24/B25）降级为四引擎流水线中的最后一步（jianying-mcp 写入 .draft）；方案生成方式随引擎切片演进，方案确认/幂等/审计链路不变。
+
+**剪辑 MCP 工具契约**（jianying-mcp / capcut-mate，FFmpeg 为后台依赖；四引擎流水线的最终落盘步骤）：
 
 | 工具 | 输入 | 输出 |
 | --- | --- | --- |
@@ -480,17 +568,70 @@ chat 引导接口（无状态 context 推进 + 规则意图匹配 + 模板回复
 | `add_audio_segment` | audio_url | 音频已写入草稿 |
 | `export_draft` | — | .draft 文件路径 |
 
-**确认与风险**：生成剪辑方案摘要（片段数/音频/时长）后经用户确认再写入草稿；草稿为本地可编辑可丢弃文件、不对外发布，属低风险操作，运行记录与审计留痕。素材读取需 `media.read` 权限（新权限码，与后端设计对齐时确认）。
+**修改与调整（增量修改机制，V2.8）**：用户在方案审核阶段可通过自然语言提出修改，支持以下调整维度：
+
+| 用户反馈类型 | 示例 | 对应操作 |
+| --- | --- | --- |
+| 片段时长调整 | "探店2剪短一点，5秒就够了" | 修改特定片段的 duration |
+| 顺序调整 | "把探店3放前面" | 重新排序片段 |
+| 风格切换 | "换轻松一点的音乐" | 修改 style 参数（HyperFrames 重新生成包装） |
+| 标题文案修改 | "标题改成'周末探店日记'" | 修改片头文本（HyperFrames 重新生成片头） |
+| 节奏调整 | "加快节奏，剪成20秒" | 调整全局 speed / target_duration |
+| 指定片段删除 | "把探店4那段删掉" | 删除特定片段 |
+| 新增素材 | "在片尾加一张店铺照片" | 追加素材片段 |
+| 重新生成 | "重新生成方案" | 全量重做流水线 |
+
+修改指令按粒度分级执行，避免任何修改都重跑完整流水线：
+
+| 模式 | 触发词示例 | 执行方式 | 性能开销 |
+| --- | --- | --- | --- |
+| 参数调整 | "把 A 剪短一点" | 仅修改受影响参数（方案数据），不触达引擎 | 低（秒级） |
+| 部分重做 | "片头换一种风格" | 仅重新执行相关引擎（如 HyperFrames 重新生成片头） | 中（数秒） |
+| 全量重做 | "重新生成方案" | 完整流水线重新执行 | 高（数十秒） |
+
+指令由 Agent 解析为结构化操作再执行，例如：
+
+| 用户输入 | 意图解析 | 目标工具 |
+| --- | --- | --- |
+| "素材2剪短到5秒" | `{ action: "modify_duration", target: "seg_2", new_value: 5 }` | 直接修改方案数据 |
+| "换成轻松风格" | `{ action: "change_style", new_style: "casual" }` | HyperFrames 重新生成包装 |
+| "片头字体改一下" | `{ action: "modify_title", new_text: "..." }` | HyperFrames 重新生成片头 |
+| "重新生成方案" | `{ action: "regenerate" }` | 完整流水线重新执行 |
+
+执行链路沿用既有修订接口（B31 `revise`）扩展修改语义，不新增并行端点；每次修改写 `plan_revised` 事件与 `skill_run_revised` 审计，版本历史见「对话状态持久化」。
+
+**对话状态持久化（clipping_tasks，V2.8+ 切片）**：
+
+新增 `clipping_tasks` 会话状态表（BIGINT 主键同现有约定）：`tenant_id`、`run_id`（可空，关联 Expert Run）、`status`（`collecting/generating/reviewing/modifying/rendering/done/failed`）、`materials`、`goal`、`current_plan`、`version_history`、`draft_path`、`created_by`、软删除。
+
+- **V2.8 决策**：明确覆盖 B32「不落库、不新建会话表」——B32 无状态 chat 引导（素材/目标收集阶段）保留为前置引导；进入方案生成后由 `clipping_tasks` 承接持久化状态，`POST /api/v1/clipping/chat` 语义升级为携带 `task_id` 引用任务，`version_history` 记录每次修改（version、plan、change 描述、modified_at）支持版本标记与回退；
+- 版本回退能力在「版本回退/断点恢复」成为明确用户价值时启用，当前切片先落地持久化与版本标记；
+- 任务创建、修改与终态写 `family_audit_logs` 审计（复用既有审计链路）。
+
+**确认与风险**：生成剪辑方案摘要（片段数/音频/时长）后经用户确认再写入草稿；草稿为本地可编辑可丢弃文件、不对外发布，**导出维持 L1 低风险**（与已注册 `quick-edit`/L1 一致，不升 L2），方案确认与每次修改均审计留痕。素材读取需 `media.read` 权限。
 
 **跨端契约**：
 
 - 移动端：无入口、不承载该能力（复杂 Skill 不在移动端范围）；能力 Tab 仅保留既有只读运行记录入口；
-- Web 端：完整流程——快速剪辑工作台（`/app/media/quick-edit`）升级为分步对话式引导（素材 → 创作目标 → 方案 → 确认 → 导出）：素材支持浏览器上传（素材卡片展示时长/分辨率）或路径输入；对话经 chat 引导接口（B32）推进；对话达成目标后创建 Skill Run → 轮询至方案（结构化时间线渲染，B30）→ 可修订重新生成（B31）→ Action 确认 → .draft 生成文件下载（复用 `/app/runs/:id` 现有 readToken 下载能力）；
-- 服务端：SkillExecutor 首个实现——Skill 独立执行（`POST /api/v1/skills/{skillCode}/runs`，SourceType=skill 的 AgentRun，不绑定专家，同场景工作流先例）、剪辑 MCP 客户端、`media.read`/`media.write` 权限、素材登记（B29）、结构化方案视图（B30）、方案修订（B31）、chat 引导（B32）、产物经 `RegisterGeneratedFileAsync` 登记。
+- Web 端：完整流程——快速剪辑工作台（`/app/media/quick-edit`）升级为剪辑对话页（对话式引导 + 素材卡片 + 方案时间线 + 修改历史 + 确认按钮）：入口 A 为对话触发（Agent 识别「帮我剪视频」类意图 → 跳转剪辑对话页进入素材收集），入口 B 为快速剪辑卡片；素材支持浏览器上传（素材卡片展示文件名/时长/分辨率，首版不生成缩略图）或路径输入；对话经 chat 引导接口（B32，V2.8 起携带 `task_id`）推进；对话达成目标后创建 Skill Run → 轮询至方案（结构化时间线渲染，B30；方案时间线为示意性可视化，非真实视频预览）→ 修改指令增量更新（V2.8 增量修改机制）→ Action 确认 → .draft 生成文件下载（复用 `/app/runs/:id` 现有 readToken 下载能力）；
+- 服务端：SkillExecutor 首个实现——Skill 独立执行（`POST /api/v1/skills/{skillCode}/runs`，SourceType=skill 的 AgentRun，不绑定专家，同场景工作流先例）、四引擎流水线调度（video-use/HyperFrames/Remotion 本机、Seedance 2.0 云端可选）、剪辑 MCP 客户端、`media.read`/`media.write` 权限、素材登记（B29）、结构化方案视图（B30）、方案修订（B31 演进为增量修改）、chat 引导（B32）、`clipping_tasks` 会话状态持久化（V2.8+ 切片）、产物经 `RegisterGeneratedFileAsync` 登记。
 
-**验收标准**：对话输入素材位置与创作指令 → 返回 .draft 路径；ffprobe 元数据解析正确；草稿可在剪映打开编辑；运行/审计完整。
+**B35 实施状态（2026-08-13）**：`clipping_tasks` 持久化任务已发布：chat 回传 taskId、刷新可经任务查询恢复、quick-edit Run 绑定任务并记录初始方案，方案 revise 追加版本历史；公开 `engineStage=planning`、版本号与展示安全 versionHistory，供 Web P5 联调。真实四引擎执行与阶段事件未发布，不以占位状态模拟其完成。
 
-**待决**（留待后端设计）：jianying-mcp / capcut-mate 具体项目选型与剪映版本兼容；剪辑 MCP 部署形态（需部署于可访问素材目录与剪映草稿目录的主机，符合本地优先原则）——两者为后端 B24/B25 切片的前置依赖。
+**B36 实施方案（已确认，2026-08-13）**：四引擎采用可替换的本地进程适配器，不将任一第三方仓库、CLI 输出或草稿路径直接暴露给 Web。`video-use` 是本项目的流水线适配器名称，不绑定未验证的同名仓库：首版固定为本机 `ffmpeg` + `ffprobe` + 已配置 LLM 生成 EDL，转写能力仅在明确配置本地 Whisper CLI 后启用；未配置转写时允许跳过转写，但不得虚构字幕或粗剪成功。HyperFrames 采用已核验的 `HyperFrames/hyperframes`，部署目录与 commit 固定在运行环境配置中，经 `npx` 子进程调用；Remotion 采用官方 CLI 适配器，只有部署目录、包锁定与健康探测均通过时才启用。Seedance 为云端适配器，默认 `enabled=false`，每个任务必须同时满足用户请求中的 `allowSeedance=true`、显式成本确认和服务端密钥配置，任一条件缺失即跳过。
+
+**执行边界与公开事件**：提交引擎任务后状态进入 `generating`，公开阶段只能是 `video_use`、`seedance`、`hyperframes`、`remotion`、`draft`、`reviewing`、`failed`，每个事件仅包含阶段、状态（`queued/running/skipped/succeeded/failed`）、可展示说明和时间；不得包含命令行、绝对路径、凭据、原始 LLM 输出或第三方响应。适配器健康探测、进程启动或执行失败必须产生 `failed` 事件并令任务进入 `failed`，不产生 `succeeded` 或草稿产物。参数调整只更新方案与版本；部分重做仅提交受影响阶段及其下游；全量重做从 `video_use` 重启。所有调度须异步运行，任务查询及既有 Run events 轮询提供进度，首次不引入 WebSocket。
+
+**部署门禁**：B36 不自动下载、安装或启用任何引擎。环境管理员必须逐个配置命令、工作目录、超时、版本/commit 与健康检查；启动时仅记录可用性，缺少本地依赖的引擎保持 disabled。Seedance 密钥只由安全配置提供且不写入数据库、日志或 API。B36 的真实验收必须使用非敏感本地样片，验证至少一个真实 `video_use`/HyperFrames/Remotion 进程的成功事件；在此之前只能验证“未配置即明确失败或跳过”的安全语义。
+
+**验收标准**：对话输入素材位置与创作指令 → 四引擎流水线生成方案 → 修改指令增量更新方案 → 确认后返回 .draft 路径；ffprobe 元数据解析正确；草稿可在剪映打开编辑；运行/审计完整、修改版本可追溯。
+
+**待决**（留待后端设计）：
+
+- jianying-mcp / capcut-mate 具体项目选型与剪映版本兼容；剪辑 MCP 部署形态（需部署于可访问素材目录与剪映草稿目录的主机，符合本地优先原则）；
+- 四引擎适配器的部署目录、锁定版本/commit、硬件资源与超时值由部署环境确认；video-use 的 EDL 依赖当前 AI 配置，Whisper 转写保持可选；
+- Seedance 2.0 的实际供应商账户、单条价格、预算上限与隐私协议由部署环境确认；产品门禁已固定为默认关闭且逐任务用户授权、成本确认和安全密钥齐备后方可调用；
+- `clipping_tasks` 的切片排期（V2.8+）与 B32 无状态 chat 的共存边界。
 
 **B24 实施状态（2026-08-08）**：`029` 迁移新建平台级 `skills` 目录表（tenant_id=1）并注册 `quick-edit`（media / L1 / media.read），`family_audit_logs` CHECK 扩展 `skill_run_created`/`skill_action_confirmed`/`skill_draft_registered` 与 `skill_run`/`skill_draft`；`POST /api/v1/skills/{skillCode}/runs`（`ai.run` + `media.read`）已发布：确定性方案生成（指令时长提取 1-600 秒、默认 15 秒、单片段方案）+ `draft_generate` Action（L1）+ `skill_run_created` 审计；`dotnet build` 0 errors/0 CS1591、`dotnet test` 全绿 165/165、真实 MySQL 029 顺序迁移已在本机验证。剪辑 MCP 选型与部署形态仍为 B25（Action 确认 → 剪辑 MCP 写入草稿 → 生成文件登记 → readToken 下载）前置依赖。
 
@@ -523,6 +664,8 @@ POST /api/v1/skills/mindmap/runs 创建 Skill Run（SourceType=skill，同步完
 **转换位置决策**：转换由浏览器端 markmap-lib 执行，服务端零转换依赖。否决服务端 node 子进程（部署耦合 node 运行时、进程管理、Windows 引号处理）与 C# 重实现（偏离 markmap 语义、维护成本高）。服务端只保存输入与审计。
 
 **Skill 输入契约**：`markdown` 文本（≤ 100,000 字符，超限 422）；`.md` 文件由浏览器本地读取为文本，不上传服务端文件。
+
+**B33 实施状态（2026-08-13）**：`036` 迁移（因已有未提交的 `035_xhs_content_creator_expert` 占用编号而顺序避让）注册平台级 `mindmap`（productivity / L1 / `mindmap.read`）；`POST /api/v1/skills/mindmap/runs` 已发布。服务端同步创建 SourceType=skill 的 completed AgentRun，记录 markdown 输入，返回字符数与首个一级标题摘要，写 `skill_run_created` 审计；无 Action、无确认、无服务端导图转换依赖。`mindmap.read` 授予 owner/admin/member，viewer 不含；定向测试覆盖创建、摘要、幂等、422、隔离与审计。
 
 **风险与边界**：L1 只读、无 Action、无确认；`mindmap.read` 权限（owner/admin/member，viewer 不含）；markdown 全文存 Run RequestJson（家庭租户隔离），输入不写日志、响应不返回 Prompt。
 
@@ -589,7 +732,14 @@ POST /api/v1/skills/mindmap/runs 创建 Skill Run（SourceType=skill，同步完
 
 | 日期 | 主题 | 本文变更 | 前端同步 | 后端同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 2026-08-09 | V2.7 Skill 目录查看（用户端/开发端） | Web 端补「查看 Skill」能力：用户端 `/app/skills` 仅查看本人用户级技能（ai_skills）；开发端 `/console/experts` 新增 Skill Tab——平台级目录（skills，key/分类/风险/权限/输入 schema）+ 租户成员技能（名称/状态，Prompt 不回显）；`GET /api/v1/skills?scope=mine\|platform\|all`（默认 mine 向后兼容，对齐 /experts 先例；修正既有「GET /api/v1/skills 即平台目录」的文档偏差——实际为用户级列表，平台目录此前无列表接口；platform/all 仅 owner/admin 角色校验，member/viewer 即使持 `ai.read` 也 403，平台级 Skill 目录不可被成员查询）；无新迁移、无新权限码（`ai.skills.read`） | 已同步 Web 端文档（§4 路由/§6.9/§8/§10） | 已同步后端总设计（§19） | 待排期 |
+| 2026-08-12 | Hermes Agent / Studio × MCP 融合分析 | 新增 V2.5 参考架构：HA 四个产品级 Tool、WebSocket state_changed 过滤/冷却、MCP Manifest 生命周期、审批 scope 对 L1/L2/L3 的安全映射、冻结 Context Snapshot、Memory/Skill Candidate、Skill Curator 与 Crew/DAG 边界；详细源码分析写入 `NexusMind-Hermes-MCP-Fusion-Analysis.md`。校准 Studio 实际为 React/TypeScript，且当前源码无固定“15 任务周期”机制，15 Run/7 天仅作为 NexusMind 可配置建议 | 后续 Flutter 增强 `ConfirmationCard`，不移植 Studio React 组件 | 后续按 H1-H5、M1-M2 切片落地，复用现有 Adapter/Run/Confirmation/Family Knowledge | 已同步设计，待排期 |
+| 2026-08-12 | HA MCP Server 技术分析与小红书暂停 | 新增 §6.4「HA MCP Server 技术分析与选型」：确立 `Agent → SmartHome Connector → HA MCP Server → HA` 边界、`zorak1103/ha-mcp` 为协议适配参考并组合其他三项目的发现/DI/部署模式；默认 N97 stdio、REST+WebSocket 混合、搜索式两级工具发现、HA Token 引用化管理、读写风险分域和重连/幂等边界。小红书 Connector 已交付能力维持现状；因平台警告，暂停其新增功能、真实发布联调和扩展性开发，直至另行解除 | 无前端变更 | HA MCP 进入第二阶段设计待实现；不变更已存在 xhs API/数据 | 已同步 |
+| 2026-08-12 | H2 HA MCP 只读适配 | `HomeAssistantMcpAdapter` 已以 `ha_list_entities`/`ha_get_state` 完成只读发现与状态映射；仅在 Adapter 内部保留原始实体标识，复用既有设备标准模型。写操作在 H2 明确拒绝，运行模式默认 REST 回退，未扩张 Agent 或移动端工具面 | 无前端变更 | 下一切片实施 WebSocket `state_changed` 过滤、冷却、去重与断线重订阅 | 已同步 |
+| 2026-08-12 | H3 HA WebSocket 实时同步 | `IHomeAssistantEventSubscriber`/后台宿主以 Vault 密钥鉴权并订阅 `state_changed`；事件经域/实体白名单、ignore、冷却与去重，只由 `DeviceSyncService` 写入标准 `DeviceState` 和自动化回调，断线后退避重订阅。默认关闭，无新增对外 API、DTO 或 Agent 工具 | 无前端变更 | 下一切片实施 H4 受控设备写入、确认、幂等和状态回读；真实 HA WebSocket/Vault 联调待部署环境验证 | 已同步 |
+| 2026-08-09 | V2.8 视频剪辑模块完整设计 | 落地「视频剪辑模块设计」：§7.1 执行链路改为四引擎协作架构（video-use 转写+EDL+ffmpeg 粗剪 → Seedance 2.0 可选生成填充 → HyperFrames 包装动效 → Remotion 可选复杂场景 → jianying-mcp 写 .draft），已实施「确定性方案生成 + 剪辑 MCP」链路降级为流水线末段，方案生成方式随引擎切片演进、确认/幂等/审计链路不变；新增「修改与调整」7 维度映射与增量修改 3 粒度（参数调整/部分重做/全量重做，B31 revise 演进）；新增 `clipping_tasks` 会话状态持久化表（V2.8+ 切片，覆盖 B32「不落库」决策，chat 引导语义升级为 task_id 引用）；导出风险维持 L1 不变（不升 L2）；素材登记沿用 B29 `clipping_materials`（主键以现有 BIGINT 约定为准） | 已同步 Web 端文档（§4 路由/§5 交互/§6.3 修改指令、修改历史与引擎进度）与移动端计划表（V2.8 仍仅 Web 端）；移动端总设计边界已覆盖无需变更 | 已同步后端总设计（§16 V2.8 演进设计）与开发计划（V2.8 基线条目 + B35+ 切片排期） | 待排期 |
+| 2026-08-09 | xhs 真实 MCP 部署验证与校准 | 小红书个人级 Connector 真实接入前置完成：`tools/xhs-mcp` 本地部署（xhs-mcp 0.8.11 + overrides 强制 node-fetch@2.7.0 修复 ERR_REQUIRE_ESM）；扫码登录 → 幂等发起授权（已登录跳过浏览器流程）→ poll 落库 → 搜索端到端验证成功；StdioMcpProcessClient 四项修复（**UTF-8 无 BOM 输入**——根因：BOM 导致 node MCP 收到后 JSON 解析失败、永不应答；超时后进程重建防流冲突；stderr 后台排空防死锁；WorkingDirectory 配置）；XhsMcpClient 搜索解析校准（feeds + noteCard 嵌套）；`dotnet test` 214/214 全绿 | 无前端契约变化 | 已同步后端总设计（§17 部署验证实施状态）与开发计划（部署验证项状态） | 已同步 |
+| 2026-08-13 | V2.7 Skill 目录查看（B34） | `GET /api/v1/skills?scope=mine\|platform\|all` 已发布：默认 mine 保持本人用户级技能和 Prompt 行为；platform 返回启用的平台目录；all 返回平台目录加当前租户 active 成员的脱敏技能摘要，不含 Prompt/scopes。platform/all 在服务端按 JWT 角色限 owner/admin，member/viewer 返回 403；无新迁移、权限码或审计动作 | 已同步前端 API 集成文档 | 已同步后端总设计（§19）与开发计划 | 已完成 |
+| 2026-08-13 | V2.8 B36 四引擎调度 | 已交付本地优先的可替换适配器与后台调度：未配置、健康检查失败或执行失败均写脱敏 `failed` 事件并终止任务，绝不伪造成功；Seedance 默认关闭且需逐任务成本确认、全局开关和安全密钥。真实引擎尚待部署环境样片验收 | Web 轮询任务与既有 Run events；不新增移动端入口 | 同步 §16 的适配器、状态、失败和部署门禁；定向测试与服务测试全绿 | 代码验收完成，部署验证待执行 |
 | 2026-08-09 | V2.7 思维导图 Skill（设计基线） | 新增「生成思维导图」Skill（Web 端）：输入 markdown → 客户端 markmap-lib 转换渲染交互视图（缩放/折叠）→ 导出 SVG/PNG/自包含 HTML；转换在浏览器执行、服务端零转换依赖（否决 node 子进程部署耦合与 C# 重实现）；`mindmap.read` 权限（owner/admin/member）+ `POST /api/v1/skills/mindmap/runs`（SourceType=skill、同步 completed、`skill_run_created` 审计、无 Action/确认）；移动端无入口；本地 `core/scripts/md2mindmap.mjs` 为同源离线工具 | 已同步 Web 端文档（思维导图工作台页面） | 已同步后端总设计（§18） | 待排期 |
 | 2026-08-09 | V2.5 B25 剪辑执行与文件登记 | 快速剪辑确认执行链路落地：`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`（`ai.run` + `media.read`）确认 `draft_generate` 动作 → 剪辑 MCP 客户端（确定性 Mock `MockClippingMcpClient`，不访问素材目录、不产生真实文件路径）生成 .draft 草稿内容 → `RegisterGeneratedFileAsync` 登记为 Ready 生成文件（附件到 run）→ 下载复用既有 readToken 端点（10 分钟）；`skill_action_confirmed`/`skill_draft_registered` 审计；无新迁移；剪辑 MCP 真实项目选型与部署形态（jianying-mcp/capcut-mate，需可访问素材与剪映草稿目录的主机）转为部署环境验证项，不阻塞 B24/B25 收口 | 待同步 Web 端文档（快速剪辑工作台确认与下载流程接入 7.8 契约） | 已同步后端总设计（§16 B25 实施状态）与开发计划（B25 已完成，V2.5 收口） | 已同步 |
 | 2026-08-09 | V2.6 剪映真实 MCP 接入（B28） | `JianyingMcpClient` 实现 `IClippingMcpClient`（`create_draft` + 读取草稿字节流，SkillRunServices 契约零改动）；`IClippingMcpClient` DI 配置驱动（`Mcp:Clients:Jianying:Enabled` 默认 Mock 回退，开启后经真实 jianying-mcp stdio 生成草稿）；真实草稿生成端到端按部署环境验证（本机网络限制致 Python 3.13 依赖安装受阻，已记录，待环境就绪执行） | 无前端契约变化（草稿下载流程不变） | 已同步后端总设计（§17 B28 实施状态）与开发计划（B28 已完成，下一步为部署环境验证项） | 已同步 |
@@ -789,7 +939,8 @@ V2.3 个人生活专家后端切片（B15 收藏基线、B16 注册与翻牌、B
 - 确定家庭成员生命周期状态机的管理权限、终态更正流程和数据保留期限；
 - 定义年费续费钩子，包括权益、宽限期、到期降级、提醒和支付回调边界；
 - 确定推送聚合策略的具体窗口、摘要频率、成员偏好与 L2/L3 升级规则；
-- 确定个人生活专家的 OCR 截图识别能力进入后续版本的具体排期与第三方依赖（短视频生成已排期 V2.5 快速剪辑，见 §7.1）。
+- 确定个人生活专家的 OCR 截图识别能力进入后续版本的具体排期与第三方依赖（短视频生成已排期 V2.5 快速剪辑，见 §7.1）；
+- 完成视频剪辑四引擎的部署环境配置与样片验收：锁定本地依赖版本、资源与超时，并核验 Seedance 账户预算和隐私协议（见 §7.1）。
 - 确定可画、飞书、钉钉等 Productivity/Future Connector Provider 的接入排期（影响专家对话框的可选连接器列表）。（小红书已作为首个内容发布类个人级 Connector 落地：B26 授权与搜索、B27 发布已完成，见 §12。）
 
 ## 12. V2.4 家庭与个人连接器、Web 治理

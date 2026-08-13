@@ -23,6 +23,7 @@ public sealed class StdioMcpProcessClient : IMcpProcessClient
     private Process? _process;
     private StreamWriter? _writer;
     private StreamReader? _reader;
+    private StreamReader? _stderrReader;
     private int _nextId;
 
     /// <summary>构造本地 stdio MCP 进程客户端。</summary>
@@ -45,6 +46,41 @@ public sealed class StdioMcpProcessClient : IMcpProcessClient
             if (result["isError"]?.GetValue<bool>() == true)
                 throw new McpClientException(ReadContentText(result) ?? "MCP 工具执行失败。");
             return JsonNode.Parse(ReadContentText(result) ?? "null");
+        }
+        catch
+        {
+            // 超时/取消/异常后进程状态不可信（stdout 可能残留未完成读操作），终止并重建进程；
+            // 部署校准 2026-08-09：WaitAsync 取消不会取消底层 StreamReader.ReadLineAsync，流被占用导致后续调用冲突
+            lock (_processLock)
+            {
+                TryKillProcess();
+            }
+            throw;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<JsonObject?> ListToolsAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await EnsureStartedAsync(cancellationToken);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+            return await SendAsync("tools/list", new JsonObject(), timeout.Token) as JsonObject;
+        }
+        catch
+        {
+            lock (_processLock)
+            {
+                TryKillProcess();
+            }
+            throw;
         }
         finally
         {
@@ -72,12 +108,14 @@ public sealed class StdioMcpProcessClient : IMcpProcessClient
             {
                 FileName = _options.CommandFileName,
                 Arguments = _options.Arguments,
+                WorkingDirectory = _options.WorkingDirectory,
                 UseShellExecute = false,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true,
-                StandardInputEncoding = Encoding.UTF8,
+                // 部署校准 2026-08-09：输入流必须无 BOM——Encoding.UTF8 默认带 EF BB BF，node MCP Server 收到后 JSON 解析失败、永不响应
+                StandardInputEncoding = new UTF8Encoding(false),
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8
             };
@@ -91,6 +129,9 @@ public sealed class StdioMcpProcessClient : IMcpProcessClient
             }
             _writer = _process.StandardInput;
             _reader = _process.StandardOutput;
+            _stderrReader = _process.StandardError;
+            // 部署校准 2026-08-09：stderr 管道必须持续排空，否则缓冲写满会导致 MCP 进程（如 xhs-mcp 的 Puppeteer 日志）阻塞死锁
+            _ = Task.Run(() => DrainStderrAsync());
         }
         await SendAsync("initialize", new JsonObject
         {
@@ -98,6 +139,22 @@ public sealed class StdioMcpProcessClient : IMcpProcessClient
             ["capabilities"] = new JsonObject(),
             ["clientInfo"] = new JsonObject { ["name"] = "nexusmind-backend", ["version"] = "1.0.0" }
         }, cancellationToken);
+        // 部署校准 2026-08-10：MCP 协议要求 initialize 成功后发送 notifications/initialized 通知；
+        // FastMCP（python SDK）收到前 tools/list 返回空、tools/call 报 -32602（xhs-mcp 的 node SDK 不强制，此前未暴露）
+        await SendNotificationAsync("notifications/initialized", new JsonObject(), cancellationToken);
+    }
+
+    /// <summary>发送一条 JSON-RPC 通知（无 id、不等待响应）；用于握手后通知服务器初始化完成。</summary>
+    private async Task SendNotificationAsync(string method, JsonObject parameters, CancellationToken cancellationToken)
+    {
+        var notification = new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["method"] = method,
+            ["params"] = parameters
+        };
+        await _writer!.WriteLineAsync(notification.ToJsonString(JsonOptions)).WaitAsync(cancellationToken);
+        await _writer.FlushAsync(cancellationToken);
     }
 
     /// <summary>发送一条 JSON-RPC 请求并读取匹配 id 的响应；工具结果返回 result 节点，进程退出或响应超时抛异常。</summary>
@@ -147,6 +204,23 @@ public sealed class StdioMcpProcessClient : IMcpProcessClient
         return null;
     }
 
+    /// <summary>持续读取并丢弃 MCP 进程 stderr，防止管道缓冲写满阻塞进程。</summary>
+    private async Task DrainStderrAsync()
+    {
+        try
+        {
+            while (_stderrReader is not null && await _stderrReader.ReadLineAsync() is not null) { }
+        }
+        catch (ObjectDisposedException)
+        {
+            // 进程已清理，读取结束。
+        }
+        catch (IOException)
+        {
+            // 进程退出导致的管道中断，无需处理。
+        }
+    }
+
     /// <summary>终止并清理 MCP 进程及其管道；幂等。</summary>
     private void TryKillProcess()
     {
@@ -165,5 +239,6 @@ public sealed class StdioMcpProcessClient : IMcpProcessClient
         _process = null;
         _writer = null;
         _reader = null;
+        _stderrReader = null;
     }
 }

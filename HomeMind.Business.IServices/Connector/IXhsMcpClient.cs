@@ -13,15 +13,24 @@ public interface IXhsMcpClient
     /// <exception cref="McpClientException">本地 MCP 进程不可用或调用失败时抛出。</exception>
     Task<XhsAuthStatus> GetAuthStatusAsync(CancellationToken cancellationToken = default);
 
+    Task<XhsAuthStatus> GetAuthStatusAsync(string credentialRef, CancellationToken cancellationToken = default) =>
+        GetAuthStatusAsync(cancellationToken);
+
     /// <summary>触发扫码登录：请求 MCP 生成登录二维码；登录结果经 <see cref="GetAuthStatusAsync"/> 轮询。</summary>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>登录提示信息（二维码展示方式随 MCP 实现而定）。</returns>
     /// <exception cref="McpClientException">本地 MCP 进程不可用或调用失败时抛出。</exception>
     Task<XhsLoginHint> TriggerLoginAsync(CancellationToken cancellationToken = default);
 
+    Task<XhsLoginHint> TriggerLoginAsync(string credentialRef, CancellationToken cancellationToken = default) =>
+        TriggerLoginAsync(cancellationToken);
+
     /// <summary>登出小红书账号并清理本机登录会话；撤销授权时调用，失败不阻塞授权状态流转。</summary>
     /// <param name="cancellationToken">取消令牌。</param>
     Task LogoutAsync(CancellationToken cancellationToken = default);
+
+    Task LogoutAsync(string credentialRef, CancellationToken cancellationToken = default) =>
+        LogoutAsync(cancellationToken);
 
     /// <summary>按关键词搜索小红书笔记（只读）。</summary>
     /// <param name="query">搜索关键词。</param>
@@ -31,6 +40,9 @@ public interface IXhsMcpClient
     /// <exception cref="McpClientException">本地 MCP 进程不可用或调用失败时抛出。</exception>
     Task<XhsSearchResult> SearchNotesAsync(string query, int limit, CancellationToken cancellationToken = default);
 
+    Task<XhsSearchResult> SearchNotesAsync(string query, int limit, string credentialRef, CancellationToken cancellationToken = default) =>
+        SearchNotesAsync(query, limit, cancellationToken);
+
     /// <summary>获取笔记详情（只读）。</summary>
     /// <param name="url">笔记链接。</param>
     /// <param name="cancellationToken">取消令牌。</param>
@@ -38,10 +50,16 @@ public interface IXhsMcpClient
     /// <exception cref="McpClientException">本地 MCP 进程不可用或调用失败时抛出。</exception>
     Task<XhsNoteDetail> GetNoteDetailAsync(string url, CancellationToken cancellationToken = default);
 
+    Task<XhsNoteDetail> GetNoteDetailAsync(string url, string credentialRef, CancellationToken cancellationToken = default) =>
+        GetNoteDetailAsync(url, cancellationToken);
+
     /// <summary>发布图文或视频笔记（对外动作，调用方负责 L2 确认与审计）。</summary>
     /// <param name="input">发布参数（标题/正文/媒体/标签）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>发布结果。</returns>
     /// <exception cref="McpClientException">本地 MCP 进程不可用或调用失败时抛出。</exception>
     Task<XhsPublishResult> PublishAsync(XhsPublishInput input, CancellationToken cancellationToken = default);
+
+    Task<XhsPublishResult> PublishAsync(XhsPublishInput input, string credentialRef, CancellationToken cancellationToken = default) =>
+        PublishAsync(input, cancellationToken);
 }

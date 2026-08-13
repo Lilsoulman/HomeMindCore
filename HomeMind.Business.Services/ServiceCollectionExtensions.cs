@@ -16,6 +16,7 @@ using HomeMind.Business.Services.Connectors.Adapters;
 using HomeMind.Business.Services.Connectors.Bridge;
 using HomeMind.Business.Services.SmartHome;
 using HomeMind.Business.IServices.Dashboard;
+using Microsoft.Extensions.Logging;
 using HomeMind.Business.Services.Dashboard;
 using HomeMind.Business.IServices.Family;
 using HomeMind.Business.Services.Family;
@@ -63,10 +64,38 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IConnectorSyncQueue, ChannelConnectorSyncQueue>();
         services.AddSingleton<IConnectorSecretReferenceValidator, ConfigurationConnectorSecretReferenceValidator>();
         services.AddSingleton<IConnectorSecretResolver, HashiCorpVaultConnectorSecretResolver>();
-        services.AddScoped<IDeviceAdapter, HomeAssistantAdapter>();
-        services.AddScoped<IDeviceDiscovery, HomeAssistantAdapter>();
-        services.AddScoped<IDeviceCommandExecutor, HomeAssistantAdapter>();
+        var homeAssistantMcp = new HomeAssistantMcpOptions
+        {
+            Mode = "rest_fallback",
+            ServerName = "home-assistant",
+            Enabled = false,
+            Process = new McpProcessOptions()
+        };
+        services.AddSingleton<IMcpClientManager>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var options = config.GetSection("Mcp:Clients:HomeAssistant").Get<HomeAssistantMcpOptions>() ?? homeAssistantMcp;
+            return new McpClientManager(_ => options.Enabled
+                ? new StdioMcpClientSession(new StdioMcpProcessClient(options.Process))
+                : new MockMcpClientSession());
+        });
+        services.AddScoped<HomeAssistantAdapter>();
+        services.AddScoped<HomeAssistantMcpAdapter>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var options = config.GetSection("Mcp:Clients:HomeAssistant").Get<HomeAssistantMcpOptions>() ?? homeAssistantMcp;
+            return new HomeAssistantMcpAdapter(sp.GetRequiredService<IMcpClientManager>(), sp.GetRequiredService<HomeMind.Common.Repository.HomeMindDbContext>(), options);
+        });
+        services.AddScoped<IDeviceAdapter>(sp => (IDeviceAdapter)SelectHomeAssistantAdapter(sp, homeAssistantMcp));
+        services.AddScoped<IDeviceDiscovery>(sp => (IDeviceDiscovery)SelectHomeAssistantAdapter(sp, homeAssistantMcp));
+        services.AddScoped<IDeviceCommandExecutor>(sp => (IDeviceCommandExecutor)SelectHomeAssistantAdapter(sp, homeAssistantMcp));
         services.AddScoped<DeviceSyncService>();
+        services.AddScoped<IHomeAssistantEventSubscriber>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            var options = config.GetSection("Mcp:Clients:HomeAssistant").Get<HomeAssistantMcpOptions>() ?? homeAssistantMcp;
+            return new HomeAssistantEventSubscriber(sp.GetRequiredService<IConnectorSecretResolver>(), sp.GetRequiredService<DeviceSyncService>(), options);
+        });
         services.AddScoped<CommandRelayService>();
         services.AddScoped<IExpertFileServices, ExpertFileServices>();
         services.AddScoped<IPptxBuilder, OpenXmlPptxBuilder>();
@@ -87,11 +116,18 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConversationServices, ConversationServices>();
         services.AddScoped<IExpertSelfServeServices, ExpertSelfServeServices>();
         services.AddScoped<ISkillRunServices, SkillRunServices>();
+        services.AddScoped<IMindmapRunServices, MindmapRunServices>();
         // B29 快速剪辑素材登记：上传/路径登记 + ffprobe 元数据；素材仅本人可见可删。
         services.AddScoped<IFfprobeExtractor, FfprobeExtractor>();
         services.AddScoped<IClippingMaterialServices, ClippingMaterialServices>();
         // B32 剪辑对话引导：无状态 context 推进 + 规则意图匹配 + 模板回复；只引导不执行。
         services.AddScoped<IClippingChatServices, ClippingChatServices>();
+        services.AddScoped<IClippingTaskServices, ClippingTaskServices>();
+        services.AddScoped<IClippingPipelineServices, ClippingPipelineServices>();
+        services.AddScoped<IClippingEngine>(sp => new ConfiguredClippingEngine("video_use", sp.GetRequiredService<IConfiguration>().GetSection("Clipping:Engines:VideoUse").Get<ClippingEngineOptions>() ?? new ClippingEngineOptions()));
+        services.AddScoped<IClippingEngine>(sp => new ConfiguredClippingEngine("seedance", sp.GetRequiredService<IConfiguration>().GetSection("Clipping:Engines:Seedance").Get<ClippingEngineOptions>() ?? new ClippingEngineOptions()));
+        services.AddScoped<IClippingEngine>(sp => new ConfiguredClippingEngine("hyperframes", sp.GetRequiredService<IConfiguration>().GetSection("Clipping:Engines:HyperFrames").Get<ClippingEngineOptions>() ?? new ClippingEngineOptions()));
+        services.AddScoped<IClippingEngine>(sp => new ConfiguredClippingEngine("remotion", sp.GetRequiredService<IConfiguration>().GetSection("Clipping:Engines:Remotion").Get<ClippingEngineOptions>() ?? new ClippingEngineOptions()));
         // 剪映 MCP 客户端：默认 Mock（无本地 jianying-mcp 环境回退，测试用）；Mcp:Clients:Jianying:Enabled=true 时切换真实 stdio 实现。
         services.AddScoped<IClippingMcpClient>(sp =>
         {
@@ -114,9 +150,22 @@ public static class ServiceCollectionExtensions
         {
             var config = sp.GetRequiredService<IConfiguration>();
             return config.GetValue<bool>("Mcp:Clients:Xhs:Enabled")
-                ? new XhsMcpClient(sp.GetRequiredService<IMcpProcessClient>())
+                ? new XhsMcpClient(sp.GetRequiredService<IMcpProcessClient>(), sp.GetRequiredService<ILogger<XhsMcpClient>>())
                 : new MockXhsMcpClient();
         });
         return services;
+    }
+
+    /// <summary>按运行模式选择唯一的 Home Assistant 底层适配器，避免向业务层暴露双实现。</summary>
+    private static object SelectHomeAssistantAdapter(IServiceProvider serviceProvider, HomeAssistantMcpOptions defaults)
+    {
+        var options = serviceProvider.GetRequiredService<IConfiguration>().GetSection("Mcp:Clients:HomeAssistant").Get<HomeAssistantMcpOptions>() ?? defaults;
+        return options.Mode.ToLowerInvariant() switch
+        {
+            "mcp" => serviceProvider.GetRequiredService<HomeAssistantMcpAdapter>(),
+            "rest_fallback" => serviceProvider.GetRequiredService<HomeAssistantAdapter>(),
+            "disabled" => throw new InvalidOperationException("Home Assistant 连接器已禁用。"),
+            _ => throw new InvalidOperationException("Home Assistant MCP 运行模式无效。")
+        };
     }
 }

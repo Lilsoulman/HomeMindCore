@@ -100,6 +100,41 @@ public class ConversationServicesTests
         Assert.Equal(1, list.Items[0].Id);
     }
 
+    [Fact]
+    public async Task List_Filters_By_Visible_Expert_Code()
+    {
+        await using var db = NewDb("list-expert-code");
+        var audit = new FakeAuditLogger();
+        SeedBase(db);
+        SeedExpert(db, expertId: 10, tenantId: TenantId, ownerUserId: null, code: "xhs-content-creator");
+        SeedExpert(db, expertId: 11, tenantId: TenantId, ownerUserId: null);
+        db.Conversations.AddRange(
+            new ConversationEntity { Id = 1, TenantId = TenantId, OwnerUserId = UserId, Title = "xhs", ExpertId = 10, ExpertVersionId = 1001, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow },
+            new ConversationEntity { Id = 2, TenantId = TenantId, OwnerUserId = UserId, Title = "other", ExpertId = 11, ExpertVersionId = 1101, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync();
+        var services = NewServices(db, audit);
+
+        var result = await services.ListAsync(UserId, TenantId, 20, null, default, expertCode: "xhs-content-creator");
+
+        var list = Assert.IsType<ConversationListView>(result.Data);
+        Assert.Single(list.Items);
+        Assert.Equal(1, list.Items[0].Id);
+    }
+
+    [Fact]
+    public async Task List_Rejects_Combined_Expert_Filters()
+    {
+        await using var db = NewDb("list-expert-filter-conflict");
+        var audit = new FakeAuditLogger();
+        SeedBase(db);
+        var services = NewServices(db, audit);
+
+        var result = await services.ListAsync(UserId, TenantId, 20, null, default, expertId: 10, expertCode: "xhs-content-creator");
+
+        Assert.Equal(422, result.StatusCode);
+        Assert.Equal(ApiErrorCodes.PreconditionFailed, result.Code);
+    }
+
     /// <summary>列表游标分页：25 条时首页 20 条带游标，次页 5 条无重复。</summary>
     [Fact]
     public async Task List_Paginates_By_Cursor_Without_Duplicates()
@@ -383,9 +418,9 @@ public class ConversationServicesTests
         db.Users.Add(new User { Id = UserId, DisplayName = "用户1", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
     }
 
-    private static void SeedExpert(HomeMindDbContext db, long expertId, long tenantId, long? ownerUserId)
+    private static void SeedExpert(HomeMindDbContext db, long expertId, long tenantId, long? ownerUserId, string? code = null)
     {
-        db.Experts.Add(new ExpertEntity { Id = expertId, TenantId = tenantId, OwnerUserId = ownerUserId, Code = $"e{expertId}", Name = $"专家{expertId}", Category = "test", ExpertType = ownerUserId is null ? "builtin" : "custom", Status = "active", Description = "测试专家" });
+        db.Experts.Add(new ExpertEntity { Id = expertId, TenantId = tenantId, OwnerUserId = ownerUserId, Code = code ?? $"e{expertId}", Name = $"专家{expertId}", Category = "test", ExpertType = ownerUserId is null ? "builtin" : "custom", Status = "active", Description = "测试专家" });
         db.ExpertVersions.Add(new ExpertVersion { Id = expertId * 100 + 1, TenantId = tenantId, ExpertId = expertId, Version = 1, Status = "published", Persona = "人设", Methodology = "方法论", PromptTemplate = "模板", EstimatedCredits = 1 });
     }
 

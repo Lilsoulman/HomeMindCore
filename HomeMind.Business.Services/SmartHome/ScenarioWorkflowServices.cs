@@ -29,14 +29,17 @@ public sealed class ScenarioWorkflowServices : IScenarioWorkflowServices
 
     private readonly HomeMindDbContext _db;
     private readonly CommandRelayService _relay;
+    private readonly DeviceSyncService? _deviceSync;
 
     /// <summary>构造场景工作流服务。</summary>
     /// <param name="db">数据库上下文。</param>
     /// <param name="relay">命令转发桥接服务，健康检查通过后转发设备命令。</param>
-    public ScenarioWorkflowServices(HomeMindDbContext db, CommandRelayService relay)
+    /// <param name="deviceSync">设备同步桥接服务，用于写入后的状态回读。</param>
+    public ScenarioWorkflowServices(HomeMindDbContext db, CommandRelayService relay, DeviceSyncService? deviceSync = null)
     {
         _db = db;
         _relay = relay;
+        _deviceSync = deviceSync;
     }
 
     /// <inheritdoc />
@@ -275,7 +278,9 @@ public sealed class ScenarioWorkflowServices : IScenarioWorkflowServices
                 reference,
                 new DeviceCommand(connector.Id, device.Id, step.Capability, step.Value.Clone(), userId, actionId, idempotencyKey),
                 cancellationToken);
-            return new StepResult(result.Succeeded, result.Succeeded ? "success" : "failed", result.ErrorCode, result.Message);
+            if (result.Succeeded && _deviceSync is not null && !string.IsNullOrWhiteSpace(result.StateJson))
+                await _deviceSync.ApplyStateChangedAsync(tenantId, connector.Id, device.ExternalId!, result.StateJson, DateTime.UtcNow, cancellationToken);
+            return new StepResult(result.Succeeded, result.Succeeded ? "success" : result.Status, result.ErrorCode, result.Message);
         }
         catch (ConnectorAdapterException error)
         {

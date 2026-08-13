@@ -55,7 +55,9 @@ namespace HomeMind.Api
             services.AddHomeMindData(_configuration);
             services.AddHomeMindBusinessServices();
             services.AddHostedService<AutomationWorker>();
+            services.AddHostedService<HomeAssistantEventWorker>();
             services.AddHostedService<AgentRuntimeWorker>();
+            services.AddHostedService<ClippingPipelineWorker>();
             services.AddSingleton<TokenService>();
             services.AddSingleton<HomeMind.Common.Infrastructure.SecretProtector>();
             services.AddScoped<AccessTokenValidator>();

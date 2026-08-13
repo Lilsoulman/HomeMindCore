@@ -248,6 +248,9 @@ public sealed class AgentRunProcessor : IAgentRunProcessor
         try
         {
             using var document = JsonDocument.Parse(json);
+            if (document.RootElement.TryGetProperty("reply", out var reply)
+                && reply.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(reply.GetString()))
+                return reply.GetString()!;
             if (document.RootElement.TryGetProperty("summary", out var summary)
                 && summary.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(summary.GetString()))
                 return summary.GetString()!;

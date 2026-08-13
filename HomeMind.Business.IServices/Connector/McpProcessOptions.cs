@@ -9,6 +9,9 @@ public sealed class McpProcessOptions
     /// <summary>命令行参数（如 "xhs-mcp mcp"），与 CommandFileName 拼接启动。</summary>
     public string Arguments { get; init; } = "";
 
+    /// <summary>进程工作目录（可空）；xhs-mcp 等本地 MCP 需在其部署目录下运行以命中本地数据与性能基线。</summary>
+    public string? WorkingDirectory { get; init; }
+
     /// <summary>单次工具调用（含进程启动与握手）超时秒数，默认 30 秒。</summary>
     public int TimeoutSeconds { get; init; } = 30;
 }

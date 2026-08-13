@@ -110,6 +110,24 @@ public sealed class DeviceSyncService
         await _db.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>写入已通过订阅边界过滤的设备状态，并在状态实际变化时触发自动化回调。</summary>
+    public async Task<bool> ApplyStateChangedAsync(long tenantId, long connectorId, string externalId, string stateJson, DateTime sampledAt, CancellationToken cancellationToken)
+    {
+        var device = await _db.SmartHomeDevices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.WorkspaceConnectorId == connectorId && x.ExternalId == externalId && x.DeletedAt == null, cancellationToken);
+        if (device is null) return false;
+
+        var previousState = await _db.DeviceStates.Where(x => x.DeviceId == device.Id).OrderByDescending(x => x.SampledAt).Select(x => x.State).FirstOrDefaultAsync(cancellationToken);
+        if (string.Equals(previousState, stateJson, StringComparison.Ordinal)) return false;
+
+        var now = DateTime.UtcNow;
+        device.LastSeenAt = sampledAt;
+        device.UpdatedAt = now;
+        _db.DeviceStates.Add(new DeviceState { DeviceId = device.Id, State = stateJson, SampledAt = sampledAt, CreatedAt = now });
+        await _db.SaveChangesAsync(cancellationToken);
+        await _automation.HandleDeviceStateChangeAsync(tenantId, device.Id, stateJson, sampledAt, cancellationToken);
+        return true;
+    }
+
     private async Task<SmartHomeSpace> FindOrCreateSpaceAsync(long tenantId, string? name, CancellationToken cancellationToken)
     {
         var normalizedName = string.IsNullOrWhiteSpace(name) ? "未分配空间" : name.Trim();

@@ -154,14 +154,22 @@ public sealed class XhsPublishServices : IXhsPublishServices
             }
             else
             {
-                var result = await _xhs.PublishAsync(input, cancellationToken);
-                if (result.Succeeded)
+                var connector = await GetAuthorizedConnectorAsync(userId, tenantId, cancellationToken);
+                if (connector is null)
                 {
-                    noteId = result.NoteId;
+                    failureMessage = "小红书连接器未授权或不可用。";
                 }
                 else
                 {
-                    failureMessage = result.Message;
+                    var result = await _xhs.PublishAsync(input, connector.CredentialRef!, cancellationToken);
+                    if (result.Succeeded)
+                    {
+                        noteId = result.NoteId;
+                    }
+                    else
+                    {
+                        failureMessage = result.Message;
+                    }
                 }
             }
         }
@@ -220,7 +228,12 @@ public sealed class XhsPublishServices : IXhsPublishServices
     /// <summary>校验本人小红书连接器已授权：当前租户 + personal 作用域 + 本人 owner + connected 状态。</summary>
     private async Task<bool> IsAuthorizedAsync(long userId, long tenantId, CancellationToken cancellationToken)
     {
-        var connector = await (from item in _db.WorkspaceConnectors
+        return await GetAuthorizedConnectorAsync(userId, tenantId, cancellationToken) is not null;
+    }
+
+    private async Task<WorkspaceConnector?> GetAuthorizedConnectorAsync(long userId, long tenantId, CancellationToken cancellationToken)
+    {
+        return await (from item in _db.WorkspaceConnectors
                                join provider in _db.ConnectorProviders on item.ConnectorProviderId equals provider.Id
                                where item.TenantId == tenantId
                                      && item.BindingScope == "personal"
@@ -230,7 +243,6 @@ public sealed class XhsPublishServices : IXhsPublishServices
                                      && item.AuthStatus == WorkspaceConnectorAuthStatus.Connected
                                      && provider.Code == XhsProviderCode
                                select item).FirstOrDefaultAsync(cancellationToken);
-        return connector is not null;
     }
 
     /// <summary>复验运行权限快照：快照缺失视为存量运行放行；xhs 发布为 personal 快照，仅校验归属。</summary>

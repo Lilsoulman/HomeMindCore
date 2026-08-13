@@ -1,4 +1,6 @@
 using HomeMind.Business.Services.Media;
+using HomeMind.Common.Repository;
+using Microsoft.EntityFrameworkCore;
 using HomeMind.Common.Model.ViewModel.Data.Media;
 using Xunit;
 
@@ -11,7 +13,14 @@ namespace HomeMind.Business.Services.Tests;
 /// </summary>
 public class ClippingChatServicesTests
 {
-    private readonly ClippingChatServices _services = new();
+    private readonly ClippingChatServices _services;
+
+    public ClippingChatServicesTests()
+    {
+        var db = new HomeMindDbContext(new DbContextOptionsBuilder<HomeMindDbContext>()
+            .UseInMemoryDatabase($"hm-b32-{Guid.NewGuid()}").Options);
+        _services = new ClippingChatServices(db);
+    }
 
     /// <summary>剪辑意图消息进入引导：无素材时提示上传或填写路径。</summary>
     [Fact]
@@ -122,5 +131,18 @@ public class ClippingChatServicesTests
         var result = await _services.ChatAsync(10, 1, new ClippingChatRequest("帮我剪视频", new ClippingChatContext("unknown_step", null, null, null)), default);
 
         Assert.Equal(422, result.StatusCode);
+    }
+
+    /// <summary>V2.8：首次对话创建持久化任务，后续携带 taskId 可恢复同一任务。</summary>
+    [Fact]
+    public async Task Chat_Creates_And_Resumes_Persisted_Task()
+    {
+        var first = await _services.ChatAsync(10, 1, new ClippingChatRequest("帮我剪视频", null), default);
+        var firstResponse = Assert.IsType<ClippingChatResponse>(first.Data);
+        Assert.True(firstResponse.TaskId > 0);
+
+        var resumed = await _services.ChatAsync(10, 1, new ClippingChatRequest("继续", firstResponse.Context, firstResponse.TaskId), default);
+        Assert.Equal(200, resumed.StatusCode);
+        Assert.Equal(firstResponse.TaskId, Assert.IsType<ClippingChatResponse>(resumed.Data).TaskId);
     }
 }

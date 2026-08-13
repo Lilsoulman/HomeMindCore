@@ -103,6 +103,19 @@ public class XhsConnectorServicesTests
         Assert.Equal(404, unauthorized.StatusCode);
     }
 
+    [Fact]
+    public async Task GetDetail_When_Bridge_Rejects_Incomplete_Link_Returns_422()
+    {
+        await using var db = NewDb("xhs-detail-incomplete-link");
+        SeedAuthorizedConnector(db);
+        var services = CreateServices(db, new InvalidDetailXhsClient());
+
+        var result = await services.GetNoteDetailAsync(10, 1, "https://www.xiaohongshu.com/explore/note", default);
+
+        Assert.Equal(422, result.StatusCode);
+        Assert.Equal("该笔记链接缺少访问令牌，请从小红书复制完整分享链接后重试。", result.Message);
+    }
+
     /// <summary>登录状态查询仅在授权连接器下返回。</summary>
     [Fact]
     public async Task AuthStatus_Requires_Authorized_Connector()
@@ -116,6 +129,34 @@ public class XhsConnectorServicesTests
         Assert.Equal(200, result.StatusCode);
         var view = ReadData<XhsAuthStatusView>(result);
         Assert.True(view.LoggedIn);
+    }
+
+    /// <summary>MCP 登录状态调用失败时返回安全的 502，而不是落入全局 90000 异常响应。</summary>
+    [Fact]
+    public async Task AuthStatus_When_Mcp_Fails_Returns_Safe_502()
+    {
+        await using var db = NewDb("xhs-auth-status-mcp-failure");
+        SeedAuthorizedConnector(db);
+        var services = CreateServices(db, new FailingAuthStatusXhsClient());
+
+        var result = await services.GetAuthStatusAsync(10, 1, default);
+
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("小红书服务暂时不可用，请稍后重试。", result.Message);
+    }
+
+    /// <summary>MCP 搜索调用失败时返回安全的 502，不伪装为成功空数组。</summary>
+    [Fact]
+    public async Task Search_When_Mcp_Fails_Returns_Safe_502()
+    {
+        await using var db = NewDb("xhs-search-mcp-failure");
+        SeedAuthorizedConnector(db);
+        var services = CreateServices(db, new FailingSearchXhsClient());
+
+        var result = await services.SearchNotesAsync(10, 1, "旅行", 10, default);
+
+        Assert.Equal(502, result.StatusCode);
+        Assert.Equal("小红书服务暂时不可用，请稍后重试。", result.Message);
     }
 
     private static XhsConnectorServices CreateServices(HomeMindDbContext db, IXhsMcpClient xhs) => new(db, xhs);
@@ -159,4 +200,37 @@ public class XhsConnectorServicesTests
 
     private static T ReadData<T>(HomeMind.Common.Model.ViewModel.Common.ServiceResult result) =>
         System.Text.Json.JsonSerializer.Deserialize<T>(System.Text.Json.JsonSerializer.Serialize(result.Data))!;
+
+    private sealed class FailingSearchXhsClient : IXhsMcpClient
+    {
+        public Task<XhsAuthStatus> GetAuthStatusAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsLoginHint> TriggerLoginAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task LogoutAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsSearchResult> SearchNotesAsync(string query, int limit, CancellationToken cancellationToken = default) =>
+            throw new McpClientException("429 rate limit; cookie=private-session");
+        public Task<XhsNoteDetail> GetNoteDetailAsync(string url, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsPublishResult> PublishAsync(XhsPublishInput input, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class FailingAuthStatusXhsClient : IXhsMcpClient
+    {
+        public Task<XhsAuthStatus> GetAuthStatusAsync(CancellationToken cancellationToken = default) =>
+            throw new McpClientException("MCP process unavailable; credential=private-session");
+        public Task<XhsLoginHint> TriggerLoginAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task LogoutAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsSearchResult> SearchNotesAsync(string query, int limit, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsNoteDetail> GetNoteDetailAsync(string url, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsPublishResult> PublishAsync(XhsPublishInput input, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
+
+    private sealed class InvalidDetailXhsClient : IXhsMcpClient
+    {
+        public Task<XhsAuthStatus> GetAuthStatusAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsLoginHint> TriggerLoginAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task LogoutAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsSearchResult> SearchNotesAsync(string query, int limit, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+        public Task<XhsNoteDetail> GetNoteDetailAsync(string url, CancellationToken cancellationToken = default) =>
+            throw new XhsNoteDetailException(422, "该笔记链接缺少访问令牌，请从小红书复制完整分享链接后重试。");
+        public Task<XhsPublishResult> PublishAsync(XhsPublishInput input, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    }
 }

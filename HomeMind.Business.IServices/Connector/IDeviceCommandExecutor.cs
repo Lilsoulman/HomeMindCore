@@ -17,7 +17,7 @@ public sealed record DeviceCommand(long ConnectorId, long DeviceId, string Capab
 /// <param name="Status">执行状态，executed / failed。</param>
 /// <param name="ErrorCode">失败错误码。</param>
 /// <param name="Message">面向用户的中文说明。</param>
-public sealed record DeviceCommandResult(bool Succeeded, string Status, string? ErrorCode = null, string? Message = null);
+public sealed record DeviceCommandResult(bool Succeeded, string Status, string? ErrorCode = null, string? Message = null, string? StateJson = null);
 
 /// <summary>设备命令执行契约。业务层只依赖本接口，不感知具体厂商实现。</summary>
 public interface IDeviceCommandExecutor

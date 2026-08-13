@@ -537,6 +537,21 @@ row_version（与既有 Enable/Run 一致）。
 
 **V2.7 对话式优化**：Web 端工作台升级为分步对话式引导——素材支持浏览器上传（`clipping_materials` 登记 + ffprobe 元数据）或路径输入；对话经无状态 chat 引导接口推进（只引导不执行）；方案以结构化视图渲染为时间线；支持修订指令重新生成方案（B29-B32）。
 
+**V2.8 演进设计（B35/B36 已发布）**：产品总设计 §7.1 已确认「视频剪辑模块完整设计」——
+
+- **四引擎协作架构**：方案生成改为流水线——第 1 层 video-use（转写音频 → LLM 生成 EDL → ffmpeg 执行粗剪，所有任务第一步）；第 2 层 Seedance 2.0（可选，素材缺失空镜头时生成 5-15 秒补充片段，云端 API 约 15 元/条，**默认关闭**、用户确认后启用，与本地优先原则的平衡为待决项）；第 3 层 HyperFrames（片头/片尾/转场/浮动标签/数据卡片等包装动效）；第 4 层 Remotion（可选，多说话人切换/品牌模板等复杂场景）；最终由 jianying-mcp 写入 .draft。已实施的「确定性方案生成 + 剪辑 MCP」（B24/B25）降级为流水线末段，方案确认/幂等/审计链路不变；
+- **增量修改机制**：方案审核阶段支持 7 维度修改（片段时长/顺序/风格/标题/节奏/删除/新增素材）与 3 级粒度执行——参数调整（仅改方案数据，秒级）、部分重做（仅重跑相关引擎，如 HyperFrames 重新生成片头）、全量重做（完整流水线）。沿用 B31 `revise` 扩展修改语义，不新增并行端点；每次修改写 `plan_revised` 事件与 `skill_run_revised` 审计；
+- **对话状态持久化（clipping_tasks，V2.8+ 切片）**：新增 `clipping_tasks` 会话状态表（BIGINT 主键同现有约定；tenant_id、run_id 可空、status=collecting/generating/reviewing/modifying/rendering/done/failed、materials、goal、current_plan、version_history、draft_path、created_by、软删除），**覆盖 B32「不落库、不新建会话表」决策**——B32 无状态 chat 保留为素材/目标收集前置引导，进入方案生成后由 `clipping_tasks` 承接持久化状态，`POST /api/v1/clipping/chat` 语义升级为携带 `task_id` 引用；`version_history` 记录每次修改（version、plan、change 描述、modified_at）支持版本标记与回退（回退能力待「版本回退/断点恢复」成为明确用户价值时启用）；任务创建/修改/终态写 `family_audit_logs` 审计；
+- **风险等级维持 L1 不变**（导出不升 L2，与已注册 `quick-edit`/L1 一致）。
+
+**B35 实施状态（2026-08-13）**：`037` 迁移新建 `clipping_tasks`；chat 首次调用创建并回传 `taskId`，后续仅本人同租户可恢复；新增 `GET /api/v1/clipping/tasks/{taskId}`。quick-edit Run 请求可选 `taskId`，创建方案时绑定 run、持久化 current_plan 与版本 1，revise 追加版本；`SkillRunView` 对已绑定任务输出 `engineStage`、`version`、`versionHistory`。当前仅发布公开 `planning` 状态，**不调用或模拟** video-use/Seedance/HyperFrames/Remotion；真实四引擎调度、阶段事件、部分/全量重做为下一切片。
+
+**B36 实施状态（2026-08-13）**：已新增 `IClippingEngine` 适配器契约及调度服务，所有实现由命名配置注册。受控本地进程统一执行健康探测、超时和 stderr 排空；未配置、健康检查失败或执行失败均将任务置 `failed` 并只写脱敏失败事件，绝不调用 Mock 或占位结果伪造成功。`Seedance` 仅在全局开关、请求 `allowSeedance=true`、成本确认和服务端安全密钥均满足时调用；默认全部引擎关闭。`dotnet build` 通过，B36 定向测试 2/2 与服务测试 245/245 通过；真实引擎仅可在部署环境使用非敏感样片验收，未验证前不得启用。
+
+任务状态为 `generating → reviewing|failed`，阶段事件复用 `RunEvents` 并新增展示安全 payload `{ stage, status, message, occurredAt }`；stage 限 `video_use|seedance|hyperframes|remotion|draft`，status 限 `queued|running|skipped|succeeded|failed`。每个失败均写 `failed` 事件和任务失败原因（脱敏），不得继续写成功事件或登记草稿。`POST /skills/runs/{runId}/revise` 识别参数调整、部分重做、全量重做：参数调整不调引擎；部分重做只排受影响 stage 与下游；全量重做从 `video_use` 开始。执行转入后台队列，查询仍使用 `GET /clipping/tasks/{taskId}` 与既有 `GET /expert-runs/{id}/events` 轮询；本切片不引入 WebSocket。
+
+运行配置新增 `Clipping:Engines`：每个本地引擎必须有 `Enabled`、`CommandFileName`、`Arguments`、`WorkingDirectory`、`TimeoutSeconds`、`HealthCheckArguments` 和 `Version`；启动期健康检查失败则标记 unavailable。默认全部关闭，特别是 `Seedance:Enabled=false`；密钥仅由部署环境安全配置注入。B36 无新业务权限，沿用 `ai.run` + `media.read`。
+
 ### 16.1 领域与执行
 
 - **SkillRun**：`POST /api/v1/skills/{skillCode}/runs` 创建 SourceType=skill 的 AgentRun（不关联 Expert，`expert_id` 为空，与 scenario 同惯例），输入参数（素材位置、创作目标和指令）与剪辑方案写入 `RequestJson`/`ResultJson`，复用既有权限快照与 UUID 幂等键；
@@ -583,6 +598,7 @@ row_version（与既有 Enable/Run 一致）。
 | B30 | 方案 Action 视图输出结构化 `segments`/`audio`/`total_duration`（数据取自方案 RequestJson） | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（结构化视图测试）；无新迁移 |
 | B31 | `POST /skills/runs/{runId}/revise`（`ai.run` + `media.read`）：`pending_actions` 且未确认可修订、替换方案 RequestJson、`plan_revised` 事件、`skill_run_revised` 审计（`034` CHECK 扩展）、幂等重放 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（状态机/幂等重放/409/422/404）；真实 MySQL 034 顺序迁移本机验证 |
 | B32 | `POST /api/v1/clipping/chat`：无状态 context 校验推进、规则式意图匹配、模板回复 + suggestions；只引导不执行；不落库 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（意图匹配/状态机/非法步进 422）；无新迁移 |
+| B36 | 四引擎异步调度、受控进程配置与健康门禁、任务/Run 阶段事件，revise 的参数调整/部分重做/全量重做语义；Seedance 默认关闭且逐任务成本确认 | 单元测试覆盖未配置失败不伪成功、Seedance 四重门禁、事件序列、部分/全量重做范围与跨用户 404；真实本地引擎仅在部署环境以样片验证，未通过不标记完成 |
 
 字段级契约发布后同步 `docs/api-implementation.md` 与 `docs/frontend-api-integration.md`。
 
@@ -653,6 +669,10 @@ row_version（与既有 Enable/Run 一致）。
 
 **B28 实施状态（2026-08-09）**：`JianyingMcpClient` 发布——实现 `IClippingMcpClient.GenerateDraftAsync`：解析方案 JSON（素材名拼草稿名）→ 调用 `create_draft`（draft_name/width 1920/height 1080/fps 30）→ 按 MCP 返回草稿目录读取 draft.json 字节流返回；草稿路径不可读抛 `McpClientException`（调用方按登记失败 502 处理）；素材片段装配与最终 draft.json 内容以部署的 jianying-mcp 版本工具契约为准（部署验证时校准）。`IClippingMcpClient` DI 改为配置驱动：`Mcp:Clients:Jianying:Enabled=false` 默认回退 `MockClippingMcpClient`（测试与无环境回退），true 时经 `uv --directory <repo>/jianyingdraft run server.py` 真实 stdio 调用（SAVE_PATH/OUTPUT_PATH 由 MCP 进程环境提供）；`appsettings.json` 增 `Mcp:Clients:Jianying`（Enabled/CommandFileName=uv/Arguments/TimeoutSeconds=60）。SkillRunServices 零改动（契约保持返回字节流）。`dotnet build` 0 errors/0 CS1591（22 个警告均为既有存量），`dotnet test` 全绿 190/190（既有全保留）；真实 MySQL 无需新迁移。**本机 jianying-mcp 部署验证受阻**：已克隆 `D:\HomeMind\tools\jianying-mcp`（README 确认启动命令与环境变量）、winget 安装 uv 0.12.2 成功；本机无 Python 3.13 且 `uv python install 3.13`/`uv sync` 因网络限制（releases.astral.sh 与 github.com 下载不可达）挂起，依赖安装无法完成——待网络/环境就绪后执行真实草稿生成端到端。
 
+**B28 部署校准实施状态（2026-08-09）**：jianying-mcp 部署与真实草稿生成端到端已在本机验证完成（网络受限解除）。前置部署：安装 uv 0.12.3（`C:\Users\15953\.local\bin` 入用户 PATH）、`uv sync` 完成依赖安装（自动下载 Python 3.13.15 + 47 包，`.venv` 创建）、部署目录创建 `.env`（`SAVE_PATH=D:/HomeMind/tools/jianying-mcp/draft` 草稿中间数据、`OUTPUT_PATH=剪映草稿目录 com.lveditor.draft`；`.env` 已入该仓库 .gitignore）。**契约校准（以部署的 jianying-mcp 版本为据）**：① 启动命令校准为 `uv run python jianyingdraft/server.py`——原 `uv run mcp` 是 mcp CLI 无子命令（实测 exit 2 仅打印 Usage，不进入 stdio 监听）；`appsettings.json` 增 `WorkingDirectory`（`load_dotenv` 依赖工作目录加载 `.env`）；② `create_draft` 返回 `{draft_id,draft_name,width,height,fps}` 且**不返回路径**——`JianyingMcpClient` 重写为完整装配链路（对齐 §16.1 设计契约）：create_draft → create_track（video 轨 video1）→ add_video_segment（media_location 绝对路径素材、`0s-{时长}s`，`Path.GetFullPath` 归一后端相对路径）→ export_draft（返回 `output_path`，直落剪映草稿箱，产出 `draft_content.json`+`draft_meta_info.json`）→ 读取 draft_content.json 字节留档登记（SkillRunServices 仍零改动，文件名/`application/json` 契约不变）；③ 素材经绝对路径引用（export 不复制素材进草稿），剪映本机可打开、跨机不可用（本地优先产品可接受）；④ 工具返回兼容裸 dict（create_draft）与 `{success,message,data}`（create_track/add_video_segment/export_draft），失败均抛 `McpClientException`（502）。`Mcp:Clients:Jianying` 启用（Enabled=true、CommandFileName=uv、Arguments=run python jianyingdraft/server.py、WorkingDirectory=D:\HomeMind\tools\jianying-mcp、TimeoutSeconds=120）。**追加校准（2026-08-10 端到端验证）**：⑤ `StdioMcpProcessClient` 补发 `notifications/initialized` 通知——MCP 协议生命周期要求，FastMCP（python SDK）收到前 `tools/list` 返回空、`tools/call` 报 -32602（xhs-mcp 的 node SDK 不强制，此前未暴露；jianying 首次 confirm 即失败定位）；⑥ `JianyingMcpClient` 装配前经 `parse_media_info` 探测素材实际时长，`add_video_segment` 的 target 取 min(方案时长, 素材时长)——jianying-mcp 契约硬性约束 target 不得超出素材本身时长（超长返回「参数错误: 素材所占的轨道时长…超出素材本身时长…」），而方案时长来自用户指令（1-600 秒）不感知素材实际时长，探测失败回退方案时长（不阻断装配）。`dotnet build` 0 errors/0 CS1591、`dotnet test` 全绿（SkillRunServicesTests 走 Mock 不受影响）；真实端到端（路径模式登记素材→run→方案→confirm→剪映草稿箱生成 `quick_edit_{素材名}` 草稿（draft_content.json+draft_meta_info.json+material、素材绝对路径引用）→readToken 下载 draft_content.json 与草稿箱逐字节一致→`skill_action_confirmed`/`skill_draft_registered` 双审计落库）已通过。
+
+**xhs 真实 MCP 部署验证实施状态（2026-08-09）**：真实 xhs-mcp 扫码授权/搜索端到端已在本机验证完成。前置部署：`D:\HomeMind\tools\xhs-mcp`（xhs-mcp 0.8.11，package.json overrides 强制 node-fetch@2.7.0 修复 0.8.x 打包产物 ERR_REQUIRE_ESM——CJS 入口 require 了 ESM-only 的 node-fetch v3；Chromium 127 已就绪）；`appsettings.json` 启用 `Mcp:Clients:Xhs`（CommandFileName=node、Arguments=本地 dist 绝对路径 + mcp、WorkingDirectory=tools/xhs-mcp、TimeoutSeconds=180——外部页面加载波动下 90s 不足）。端到端：浏览器人工扫码登录（cookie 由 xhs-mcp 本机持久管理）→ 授权发起（新增幂等检查：`GetAuthStatusAsync` 已登录时跳过 `xhs_auth_login` 浏览器流程，避免每次发起都弹浏览器）→ `PollAuthorizationAsync` 落库 personal 连接器 + 完成审计 → `GET /connector-providers/xhs/notes/search` 返回真实笔记（NoteId/Title/Cover/Author 完整解析）。**StdioMcpProcessClient 四项校准**：① 输入流 `new UTF8Encoding(false)` 无 BOM——`Encoding.UTF8` 默认带 EF BB BF 前缀，node MCP Server 收到后 JSON 解析失败、消息被丢弃、永不响应（根因；Node spawn/msys 管道无 BOM 故正常）；② 调用异常/超时后 kill 进程重建——`WaitAsync` 取消不取消底层 `StreamReader.ReadLineAsync`，残留读占用 stdout 流导致后续调用 "stream is currently in use"；③ stderr 后台排空——`RedirectStandardError=true` 但无人读取，管道缓冲写满致 MCP 进程阻塞死锁；④ `McpProcessOptions` 增加 `WorkingDirectory`。**契约校准**：`XhsMcpClient.SearchNotesAsync` 支持真实返回 `feeds` 数组 + `noteCard{displayTitle,user.nickName,cover.urlDefault}` 嵌套（保留平铺结构兼容）。`dotnet test` 全绿 214/214（幂等发起授权断言同步更新）。真实发布端到端（L2 确认链路）与 jianying 部署验证仍按部署环境待验证。
+
 ## 18. V2.7 思维导图 Skill（Skill 独立执行，零转换依赖）
 
 思维导图 Skill 输入为 markdown 文本，产物为浏览器端交互视图与可导出文件。转换是确定性纯函数，由 Web 端 markmap-lib 执行，服务端零新增运行时依赖（否决 node 子进程：部署耦合、进程管理与 Windows 引号处理；否决 C# 重实现：偏离 markmap 语义、维护成本高）。服务端只负责 Skill 目录、权限、Run 记录与审计。
@@ -680,7 +700,7 @@ row_version（与既有 Enable/Run 一致）。
 
 | 切片 | 范围 | 最小验收 |
 | --- | --- | --- |
-| B33 | `035` 迁移（skills 注册 mindmap + `mindmap.read` 权限）、`POST /api/v1/skills/mindmap/runs`（SourceType=skill、同步 completed、摘要生成、`skill_run_created` 审计、幂等重放/422/404） | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（创建/同步完成/摘要/幂等重放/超限 422/未知 Skill 422/跨租户 404/审计）；真实 MySQL 035 顺序迁移本机验证 |
+| B33 | `036` 迁移（因既有 `035_xhs_content_creator_expert` 占号，顺序避让）注册 mindmap + `mindmap.read` 权限、`POST /api/v1/skills/mindmap/runs`（SourceType=skill、同步 completed、摘要生成、`skill_run_created` 审计、幂等重放/422/404） | `dotnet test --filter FullyQualifiedName~MindmapRunServicesTests` 通过 4/4；真实 MySQL 036 顺序迁移待部署环境验证 |
 
 ## 19. V2.7 Skill 目录查看（scope 视图）
 
@@ -699,4 +719,43 @@ row_version（与既有 Enable/Run 一致）。
 
 | 切片 | 范围 | 最小验收 |
 | --- | --- | --- |
-| B34 | `GET /api/v1/skills` 扩展 scope（默认 mine 行为不变/platform/all）、平台目录与成员技能脱敏视图（all 不含 Prompt）、角色校验（platform/all 仅 owner/admin，member/viewer 持 `ai.read` 也 403） | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（默认 mine 不变/平台目录列表/成员技能脱敏无 Prompt/member 持 ai.read 查 platform/all 仍 403/跨租户 404）；无新迁移 |
+| B34 | `GET /api/v1/skills` 已扩展 scope（默认 mine 行为不变/platform/all）、平台目录与成员技能脱敏视图（all 不含 Prompt）、角色校验（platform/all 仅 owner/admin，member/viewer 持 `ai.skills.read` 也 403） | `dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b34-verify` 0 errors；`dotnet test --filter FullyQualifiedName~AiSkillCatalogServicesTests` 通过 3/3；无新迁移 |
+
+## 20. V2.5 HA MCP、审批与分层记忆参考架构
+
+详细源码分析见 `NexusMind-Hermes-MCP-Fusion-Analysis.md`。本节只定义后续实现边界；当前没有发布新 API、迁移或代码。
+
+### 20.1 HA MCP Adapter 与事件同步
+
+- 新增 transport-neutral `IMcpClientSession`/`IMcpClientManager`：initialize、tools/list、tools/call、Tool Manifest 缓存与哈希、tools/list_changed、超时、指数退避、停泊/恢复、脱敏错误；现有 `StdioMcpProcessClient` 作为 stdio transport 实现继续复用，N97 默认 stdio；
+- `HomeAssistantMcpAdapter` 继续实现现有 `IDeviceAdapter`、`IDeviceDiscovery`、`IDeviceCommandExecutor`，业务服务不感知 MCP Tool 名；运行模式仅取 `mcp/rest_fallback/disabled`，主备切换不改变上层 Tool；
+- Agent Tool 固定为 `smart_home.search_resources/get_state/control_device/run_scene`；输入只接受 `workspace_connector_id` 和 NexusMind `room_id/device_id/capability`，Adapter 内部映射 entity_id/service，禁止任意 service 与自由 JSON；
+- 新增 `IHomeAssistantEventSubscriber`，HA WebSocket `state_changed` 经 entity/domain 白名单、ignore、cooldown、去重后进入 `DeviceSyncService`；断线重连必须恢复订阅，高频传感器事件不逐条唤醒 Agent；
+- 错误码基线：`ha_auth_failed`、`ha_entity_not_found`、`ha_service_not_allowed`、`ha_validation_failed`、`ha_timeout`、`ha_disconnected`、`ha_result_unknown`、`mcp_tool_unavailable`。写操作超时进入 `result_unknown`，不得盲重试。
+
+### 20.2 审批 Grant 与异步恢复
+
+- 复用 `ExpertRunAction`、`ConfirmationItem`、`ActionExecutionAudits`、`family_audit_logs`；创建确认后 Run 持久化为等待输入，确认 API 新请求恢复执行，不保持阻塞 HTTP/线程；
+- `Approve once` 为 Action 确认；run-scoped/preference-scoped Grant 只允许 L1，约束至少含 home/user/tool/resource/argument constraint/expiry/revocation；L2/L3 永远逐项确认；
+- Confirmation View 后续增加 tool、目标空间/设备、参数 diff、影响、可逆性、依据摘要和过期时间；任何展示先脱敏；
+- 执行前事务内复验 tenant、成员权限、设备状态、最终风险、过期与幂等；执行 Worker 与 outbox 在实现切片决定，不以 Flutter 本地状态作为事实。
+
+### 20.3 Context Snapshot 与 Memory Candidate
+
+- 新增 `IContextSnapshotServices`；每个 Run 冻结家庭知识、个人偏好、决策历史、设备摘要、Expert/Skill 版本及召回引用，运行中记忆写入不修改既有版本；
+- 建议表 `context_snapshots`：`run_id/version/expert_version_id/skill_versions_json/knowledge_refs_json/preference_refs_json/device_state_refs_json/content_hash/created_at`；
+- 新增 `IMemoryProvider`（默认本地实现）和 `MemoryReviewWorker`；Run 完成、上下文压缩前、会话结束只产生 `memory_candidates`，字段含 source_run、kind/key/value、confidence、evidence refs、risk/status/expiry；
+- USER 类个人偏好和家庭知识严格隔离；N97 SQLite FTS 只做可重建的本地派生索引，MySQL 保持事实源；中文 tokenizer、删除传播和本地加密为实施前置；
+- 后台 review 可使用本地低成本模型，但敏感/冲突事实、成员身份、健康/财务/安防和平台 Skill 不得自动写入或覆盖。
+
+### 20.4 切片与最小验收
+
+| 切片 | 范围 | 最小验收 |
+| --- | --- | --- |
+| H1 | MCP Session/Manager、Manifest cache、Mock Server | initialize/list/call、缓存失效、重连、工具撤销、脱敏、并发测试 |
+| H2 | HA MCP 只读发现/状态与标准化映射 | 已完成：`HomeAssistantMcpAdapter` 内部仅调用 `ha_list_entities`/`ha_get_state`，映射到既有 `DiscoveredDevice`/`AdapterDeviceState`；缺失工具拒绝为 `mcp_tool_unavailable`，写入一律 `mcp_read_only`；运行模式 `mcp/rest_fallback/disabled`，默认 REST 回退；定向 Mock 测试全绿 |
+| H3 | WebSocket state_changed 同步 | 已完成：`IHomeAssistantEventSubscriber` 经 Vault 密钥完成鉴权与订阅；域/实体白名单、ignore、冷却和去重后，仅调用 `DeviceSyncService.ApplyStateChangedAsync` 写 `DeviceState` 并触发既有自动化回调；后台宿主异常后退避重订阅，默认关闭以保持现有 REST/MCP 行为。定向状态幂等测试 5/5 通过，真实 HA WebSocket/Vault 联调待部署环境验证 |
+| H4 | control_device/run_scene 受控写入 | 已完成：复用既有 Run Action、确认中心与 UUID 执行审计；MCP Adapter 仅调用固定 `ha_control_device`，本地校验映射设备、能力和值白名单，禁止任意 service / 自由 JSON；成功后以 `ha_get_state` 回读并统一经 `DeviceSyncService` 写状态和触发自动化；写入或回读超时为 `result_unknown` / `ha_result_unknown`，不得自动重试。真实 HA MCP 写入联调待部署环境验证 |
+| H5 | Confirmation 结构化上下文与 L1 Grant | once/run preference、到期/撤销、L2/L3 不命中、审计与跨家庭隔离 |
+| M1 | context_snapshots | 创建/版本/哈希/引用隔离，Run 中记忆变化不改变当前 snapshot |
+| M2 | memory_candidates + review worker | evidence/confidence、敏感事实待确认、后台失败不影响主 Run、删除/租户隔离 |

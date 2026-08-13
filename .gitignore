@@ -34,5 +34,6 @@ nohup.out
 Thumbs.db
 
 # Local data files
+data/
 *.db
 *.sqlite

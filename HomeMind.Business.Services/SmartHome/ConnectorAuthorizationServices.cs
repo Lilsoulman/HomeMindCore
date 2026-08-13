@@ -75,19 +75,6 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
             if (!vaultCheck.IsVaultAvailable) return new ServiceResult(503, "Secret Vault 未配置或暂时不可用，无法发起授权。");
         }
 
-        XhsLoginHint? loginHint = null;
-        if (isXhs)
-        {
-            try
-            {
-                loginHint = await _xhs.TriggerLoginAsync(cancellationToken);
-            }
-            catch (McpClientException)
-            {
-                return new ServiceResult(503, "本地小红书 MCP 不可用，无法发起登录。");
-            }
-        }
-
         var state = GenerateRandomHex();
         var now = DateTime.UtcNow;
         var session = new ConnectorAuthorizationSession
@@ -98,7 +85,7 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
             InitiatorUserId = userId,
             StateHash = HashSha256(state),
             PkceVerifierRef = isXhs ? null : EncryptedPkcePrefix + Convert.ToBase64String(_protector.Encrypt(GeneratePkceVerifier())),
-            RedirectUri = isXhs ? XhsPollingRedirectUri : request.RedirectUri!.Trim(),
+            RedirectUri = isXhs ? $"{XhsPollingRedirectUri}/{GenerateRandomHex(16)}" : request.RedirectUri!.Trim(),
             Status = ConnectorAuthorizationSessionStatus.Pending,
             ExpiresAt = now.Add(SessionLifetime),
             CreatedAt = now,
@@ -106,6 +93,21 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
         };
         _db.ConnectorAuthorizationSessions.Add(session);
         await _db.SaveChangesAsync(cancellationToken);
+
+        XhsLoginHint? loginHint = null;
+        if (isXhs)
+        {
+            try
+            {
+                loginHint = await _xhs.TriggerLoginAsync(GetXhsCredentialRef(session), cancellationToken);
+            }
+            catch (McpClientException)
+            {
+                _db.ConnectorAuthorizationSessions.Remove(session);
+                await _db.SaveChangesAsync(cancellationToken);
+                return new ServiceResult(503, "本地小红书 MCP 不可用，无法生成登录二维码。");
+            }
+        }
 
         await _audit.LogAsync(tenantId, userId, FamilyAuditActions.ConnectorAuthorizeStarted, FamilyAuditTargetTypes.ConnectorAuthorization, session.Id,
             before: null, after: new { providerCode = provider.Code, expiresAt = session.ExpiresAt }, reason: "发起个人连接器授权。", relatedRunId: null, cancellationToken);
@@ -140,7 +142,7 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
         XhsAuthStatus auth;
         try
         {
-            auth = await _xhs.GetAuthStatusAsync(cancellationToken);
+            auth = await _xhs.GetAuthStatusAsync(GetXhsCredentialRef(session), cancellationToken);
         }
         catch (McpClientException)
         {
@@ -149,7 +151,7 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
         if (!auth.LoggedIn) return new ServiceResult(202, "等待扫码登录…", ToView(session, provider));
 
         var now = DateTime.UtcNow;
-        var credentialRef = $"local://xhs-sessions/{session.Id}-{GenerateRandomHex(8)}";
+        var credentialRef = GetXhsCredentialRef(session);
         var connector = await _db.WorkspaceConnectors.SingleOrDefaultAsync(x =>
             x.TenantId == session.TenantId && x.ConnectorProviderId == provider.Id &&
             x.BindingScope == "personal" && x.OwnerUserId == session.InitiatorUserId && x.DeletedAt == null, cancellationToken);
@@ -187,7 +189,8 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
             before: null, after: new { providerCode = provider.Code, connectorId = connector.Id }, reason: "本地扫码登录完成，连接器已绑定。", relatedRunId: null, cancellationToken);
 
         return new ServiceResult(200, "授权完成。", new AuthorizationSessionView(
-            session.Id, provider.Code, provider.Name, session.Status, session.ExpiresAt, RedirectUri: session.RedirectUri));
+            session.Id, provider.Code, provider.Name, session.Status, session.ExpiresAt,
+            RedirectUri: provider.Code == XhsProviderCode ? null : session.RedirectUri));
     }
 
     /// <inheritdoc />
@@ -284,7 +287,10 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
         {
             try
             {
-                await _xhs.LogoutAsync(cancellationToken);
+                var linkedConnector = await _db.WorkspaceConnectors.SingleOrDefaultAsync(x =>
+                    x.TenantId == tenantId && x.ConnectorProviderId == provider.Id && x.BindingScope == "personal" &&
+                    x.OwnerUserId == userId && x.DeletedAt == null, cancellationToken);
+                if (linkedConnector is not null) await _xhs.LogoutAsync(linkedConnector.CredentialRef!, cancellationToken);
             }
             catch (McpClientException)
             {
@@ -314,7 +320,17 @@ public sealed class ConnectorAuthorizationServices : IConnectorAuthorizationServ
     }
 
     private static AuthorizationSessionView ToView(ConnectorAuthorizationSession session, ConnectorProvider provider) =>
-        new(session.Id, provider.Code, provider.Name, session.Status, session.ExpiresAt, RedirectUri: session.RedirectUri);
+        new(session.Id, provider.Code, provider.Name, session.Status, session.ExpiresAt,
+            RedirectUri: provider.Code == XhsProviderCode ? null : session.RedirectUri);
+
+    private static string GetXhsCredentialRef(ConnectorAuthorizationSession session)
+    {
+        const string prefix = XhsPollingRedirectUri + "/";
+        var profileKey = session.RedirectUri.StartsWith(prefix, StringComparison.Ordinal)
+            ? session.RedirectUri[prefix.Length..]
+            : session.Id.ToString();
+        return $"local://xhs-sessions/{profileKey}";
+    }
 
     /// <summary>校验回调跳转地址是否命中配置白名单（ConnectorOAuth:AllowedRedirectUris 逗号分隔，精确匹配）。</summary>
     private bool IsAllowedRedirectUri(string redirectUri)

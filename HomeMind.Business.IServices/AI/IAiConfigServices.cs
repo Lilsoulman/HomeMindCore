@@ -24,4 +24,7 @@ public interface IAiConfigServices
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>未配置或已禁用均返回 false，否则返回 true。</returns>
     Task<bool> IsEnabledAsync(long userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Validate that AI generation has an enabled, complete runtime configuration.</summary>
+    Task<ServiceResult> EnsureRuntimeAvailableAsync(long userId, CancellationToken cancellationToken = default);
 }

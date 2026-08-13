@@ -18,10 +18,26 @@ namespace HomeMind.Api.Controllers.AI;
 public sealed class SkillRunsController : ApiControllerBase
 {
     private readonly ISkillRunServices _skillRuns;
+    private readonly IMindmapRunServices _mindmapRuns;
 
     /// <summary>构造 Skill 运行控制器。</summary>
-    /// <param name="skillRuns">Skill 运行服务。</param>
-    public SkillRunsController(ISkillRunServices skillRuns) => _skillRuns = skillRuns;
+    /// <param name="skillRuns">快速剪辑 Skill 运行服务。</param>
+    /// <param name="mindmapRuns">思维导图 Skill 运行服务。</param>
+    public SkillRunsController(ISkillRunServices skillRuns, IMindmapRunServices mindmapRuns)
+    {
+        _skillRuns = skillRuns;
+        _mindmapRuns = mindmapRuns;
+    }
+
+    /// <summary>创建同步完成的思维导图 Skill 运行；浏览器负责将 markdown 转换为交互式导图。</summary>
+    /// <remarks>权限：<c>ai.run</c> + <c>mindmap.read</c>。服务端不执行导图转换、不创建 Action，响应不返回 markdown 原文。</remarks>
+    /// <param name="request">请求体，包含 markdown（最多 100000 字符）与可选幂等键。</param>
+    /// <returns>展示安全摘要；输入非法或 Skill 未启用时返回 422。</returns>
+    [Authorize(Policy = PermissionNames.AiRun)]
+    [Authorize(Policy = PermissionNames.MindmapRead)]
+    [HttpPost("mindmap/runs")]
+    public async Task<ActionResult<ApiResponse<object>>> CreateMindmap(MindmapRunCreateRequest request) =>
+        ToResponse(await WithUserAsync((user, token) => _mindmapRuns.CreateAsync(user.UserId, user.TenantId, request, token)));
 
     /// <summary>创建 Skill 运行：解析平台 Skill 目录，确定性生成剪辑方案并产出待确认的 draft_generate 动作。</summary>
     /// <remarks>权限：<c>ai.run</c> + <c>media.read</c>。确认前不写入任何草稿；确认/幂等/审计复用既有链路。</remarks>
