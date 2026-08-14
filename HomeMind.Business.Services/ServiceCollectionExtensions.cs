@@ -31,6 +31,8 @@ using HomeMind.Business.Services.Identity;
 using HomeMind.Business.IServices.Conversation;
 using HomeMind.Business.Services.Connectors;
 using HomeMind.Business.Services.Conversation;
+using HomeMind.Business.IServices.Memory;
+using HomeMind.Business.Services.Memory;
 using HomeMind.Business.Services.Connectors.Mcp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -117,6 +119,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IExpertSelfServeServices, ExpertSelfServeServices>();
         services.AddScoped<ISkillRunServices, SkillRunServices>();
         services.AddScoped<IMindmapRunServices, MindmapRunServices>();
+        services.AddScoped<IMemoryCandidateServices, MemoryCandidateServices>();
+        services.AddScoped<ILearningMemoryServices, LearningMemoryServices>();
+        services.AddScoped<IMemoryReviewServices, MemoryReviewServices>();
         // B29 快速剪辑素材登记：上传/路径登记 + ffprobe 元数据；素材仅本人可见可删。
         services.AddScoped<IFfprobeExtractor, FfprobeExtractor>();
         services.AddScoped<IClippingMaterialServices, ClippingMaterialServices>();

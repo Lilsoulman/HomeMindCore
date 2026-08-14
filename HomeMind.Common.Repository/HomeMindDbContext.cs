@@ -1,6 +1,7 @@
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Model.Entities.Family;
 using HomeMind.Common.Model.Entities.Life;
+using HomeMind.Common.Model.Entities.Memory;
 using HomeMind.Common.Model.Entities.SmartHome;
 using HomeMind.Common.Model.Entities.Steward;
 using Microsoft.EntityFrameworkCore;
@@ -96,6 +97,10 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<ConfirmationItem> ConfirmationItems => Set<ConfirmationItem>();
     public DbSet<ConfirmationBatchRecord> ConfirmationBatchRecords => Set<ConfirmationBatchRecord>();
     public DbSet<PersonalFavorite> PersonalFavorites => Set<PersonalFavorite>();
+    public DbSet<MemoryCandidate> MemoryCandidates => Set<MemoryCandidate>();
+    public DbSet<MemoryReviewReceipt> MemoryReviewReceipts => Set<MemoryReviewReceipt>();
+    public DbSet<PersonalMemoryPreference> PersonalMemoryPreferences => Set<PersonalMemoryPreference>();
+    public DbSet<LearningMemoryRecord> LearningMemoryRecords => Set<LearningMemoryRecord>();
     public DbSet<TravelAttraction> TravelAttractions => Set<TravelAttraction>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
@@ -162,6 +167,12 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<ConfirmationBatchRecord>().Property(x => x.ResultJson).HasColumnType("json");
         modelBuilder.Entity<ConversationMessage>().HasIndex(x => new { x.ConversationId, x.RunId }).IsUnique();
         modelBuilder.Entity<ConversationMessage>().HasIndex(x => new { x.ConversationId, x.Id });
+        modelBuilder.Entity<MemoryCandidate>().Property(x => x.Confidence).HasPrecision(4, 3);
+        modelBuilder.Entity<MemoryCandidate>().Property(x => x.EvidenceRefsJson).HasColumnType("json");
+        modelBuilder.Entity<MemoryReviewReceipt>().HasIndex(x => x.SourceRunId).IsUnique();
+        modelBuilder.Entity<LearningMemoryRecord>().Property(x => x.Stability).HasPrecision(4, 3);
+        modelBuilder.Entity<LearningMemoryRecord>().HasIndex(x => x.CandidateId).IsUnique();
+        modelBuilder.Entity<LearningMemoryRecord>().HasIndex(x => new { x.HomeId, x.OwnerUserId, x.Status, x.LearnedAt });
     }
 
     private static void ConfigureStoreGeneratedTimestamps(ModelBuilder modelBuilder)

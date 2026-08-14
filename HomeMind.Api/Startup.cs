@@ -58,6 +58,7 @@ namespace HomeMind.Api
             services.AddHostedService<HomeAssistantEventWorker>();
             services.AddHostedService<AgentRuntimeWorker>();
             services.AddHostedService<ClippingPipelineWorker>();
+            services.AddHostedService<MemoryReviewWorker>();
             services.AddSingleton<TokenService>();
             services.AddSingleton<HomeMind.Common.Infrastructure.SecretProtector>();
             services.AddScoped<AccessTokenValidator>();
@@ -138,6 +139,7 @@ namespace HomeMind.Api
                         "Life" => "个人生活 / 偏好收藏",
                         "LifeRuns" => "个人生活 / 专家运行",
                         "Conversations" => "智能能力 / 专家与运行",
+                        "Memories" => "家庭上下文 / 学习记忆",
                         _ => "未分类"
                     }
                 });

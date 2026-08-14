@@ -77,6 +77,25 @@ public class AgentRunConversationTests
         Assert.Equal(409, other.StatusCode);
     }
 
+    /// <summary>Runs resolve the latest published Expert version, including a memory-enabled immutable successor.</summary>
+    [Fact]
+    public async Task Create_Uses_Latest_Memory_Enabled_Expert_Version()
+    {
+        await using var db = NewDb("run-latest-memory-version");
+        Seed(db);
+        db.ExpertVersions.Add(new ExpertVersion
+        {
+            Id = 1002, TenantId = TenantId, ExpertId = 10, Version = 2, Status = "published", Persona = "人设", Methodology = "方法论", PromptTemplate = "模板",
+            OutputSchema = "{\"type\":\"object\",\"properties\":{\"memoryCandidates\":{\"type\":\"array\"}}}", EstimatedCredits = 1
+        });
+        await db.SaveChangesAsync();
+
+        var result = await new AgentRunServices(db).CreateAsync(UserId, TenantId, Request(conversationId: 1, key: "66666666-6666-6666-6666-666666666666"), default);
+
+        Assert.Equal(201, result.StatusCode);
+        Assert.Equal(1002, (await db.AgentRuns.SingleAsync()).ExpertVersionId);
+    }
+
     private static AgentRunCreateRequest Request(long conversationId, string key) =>
         new("expert", 10, """{"messages":[{"role":"user","content":"你好"}]}""", key, conversationId);
 

@@ -66,6 +66,8 @@ public static class PermissionNames
     public const string MediaRead = "media.read";
     public const string MediaWrite = "media.write";
     public const string MindmapRead = "mindmap.read";
+    public const string MemoryRead = "memory.read";
+    public const string MemoryWrite = "memory.write";
 
     public static IReadOnlyCollection<string> All { get; } = new[]
     {
@@ -108,6 +110,8 @@ public static class PermissionNames
         ,MediaRead
         ,MediaWrite
         ,MindmapRead
+        ,MemoryRead
+        ,MemoryWrite
     };
 }
 
@@ -155,6 +159,8 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         ,PermissionNames.MediaRead
         ,PermissionNames.MediaWrite
         ,PermissionNames.MindmapRead
+        ,PermissionNames.MemoryRead
+        ,PermissionNames.MemoryWrite
     };
 
     private static readonly HashSet<string> ViewerPermissions = new(StringComparer.Ordinal)
@@ -175,6 +181,7 @@ public sealed class PermissionAuthorizationHandler : AuthorizationHandler<Permis
         ,PermissionNames.TenantRead
         ,PermissionNames.ConversationRead
         ,PermissionNames.ExpertMineRead
+        ,PermissionNames.MemoryRead
     };
 
     /// <summary>V2.4 B19 发布：owner/admin 专享权限，<c>member</c>/<c>viewer</c> 不得调用。</summary>

@@ -63,6 +63,10 @@ public sealed class ExpertCreateRequest
     [Description("工具策略 JSON；非法 JSON 返回 422。")]
     public string? ToolPolicyJson { get; init; }
 
+    /// <summary>Optional output JSON schema. Declaring <c>properties.memoryCandidates</c> opts this Expert into review-only memory proposals.</summary>
+    [Description("可选输出 JSON Schema；声明 properties.memoryCandidates 时才启用待审核记忆候选。")]
+    public string? OutputSchemaJson { get; init; }
+
     /// <summary>单次运行的预估积分消耗，默认 1。</summary>
     [Description("单次运行的预估积分消耗，默认 1。")]
     public decimal? EstimatedCredits { get; init; }
@@ -98,6 +102,10 @@ public sealed class ExpertUpdateRequest
     /// <summary>工具策略 JSON；非法 JSON 返回 422。</summary>
     [Description("工具策略 JSON；非法 JSON 返回 422。")]
     public string? ToolPolicyJson { get; init; }
+
+    /// <summary>Optional output JSON schema for the next immutable Expert version.</summary>
+    [Description("可选输出 JSON Schema；声明 properties.memoryCandidates 时才启用待审核记忆候选。")]
+    public string? OutputSchemaJson { get; init; }
 
     /// <summary>单次运行的预估积分消耗，默认 1。</summary>
     [Description("单次运行的预估积分消耗，默认 1。")]

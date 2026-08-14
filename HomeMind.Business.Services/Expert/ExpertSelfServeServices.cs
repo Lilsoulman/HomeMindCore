@@ -32,6 +32,8 @@ public sealed class ExpertSelfServeServices : IExpertSelfServeServices
             return new ServiceResult(422, "名称、分类、人设与提示词模板为必填项。");
         if (!string.IsNullOrWhiteSpace(request.ToolPolicyJson) && !IsValidJson(request.ToolPolicyJson))
             return new ServiceResult(422, "工具策略必须是合法 JSON。");
+        if (!string.IsNullOrWhiteSpace(request.OutputSchemaJson) && !IsValidJson(request.OutputSchemaJson))
+            return new ServiceResult(422, "输出契约必须是合法 JSON。");
 
         var code = await GenerateUniqueCodeAsync(tenantId, cancellationToken);
         var now = DateTime.UtcNow;
@@ -61,6 +63,7 @@ public sealed class ExpertSelfServeServices : IExpertSelfServeServices
             Methodology = string.IsNullOrWhiteSpace(request.Methodology) ? DefaultMethodology : request.Methodology.Trim(),
             PromptTemplate = request.PromptTemplate.Trim(),
             ToolPolicy = request.ToolPolicyJson,
+            OutputSchema = request.OutputSchemaJson,
             EstimatedCredits = request.EstimatedCredits ?? 1
         });
         await _db.SaveChangesAsync(cancellationToken);
@@ -82,6 +85,8 @@ public sealed class ExpertSelfServeServices : IExpertSelfServeServices
             return new ServiceResult(422, "名称、分类、人设与提示词模板为必填项。");
         if (!string.IsNullOrWhiteSpace(request.ToolPolicyJson) && !IsValidJson(request.ToolPolicyJson))
             return new ServiceResult(422, "工具策略必须是合法 JSON。");
+        if (!string.IsNullOrWhiteSpace(request.OutputSchemaJson) && !IsValidJson(request.OutputSchemaJson))
+            return new ServiceResult(422, "输出契约必须是合法 JSON。");
 
         var nextVersion = await _db.ExpertVersions.Where(v => v.ExpertId == expert.Id).MaxAsync(v => (int?)v.Version, cancellationToken) ?? 0;
         expert.Name = request.Name.Trim();
@@ -99,6 +104,7 @@ public sealed class ExpertSelfServeServices : IExpertSelfServeServices
             Methodology = string.IsNullOrWhiteSpace(request.Methodology) ? DefaultMethodology : request.Methodology.Trim(),
             PromptTemplate = request.PromptTemplate.Trim(),
             ToolPolicy = request.ToolPolicyJson,
+            OutputSchema = request.OutputSchemaJson,
             EstimatedCredits = request.EstimatedCredits ?? 1
         });
         await _db.SaveChangesAsync(cancellationToken);

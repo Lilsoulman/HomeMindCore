@@ -4,6 +4,7 @@ using HomeMind.Business.IServices.Agent;
 using HomeMind.Business.IServices.AI;
 using HomeMind.Business.IServices.Conversation;
 using HomeMind.Business.IServices.Expert;
+using HomeMind.Business.Services.Memory;
 using HomeMind.Common.Infrastructure;
 using HomeMind.Common.Model.Agent;
 using HomeMind.Common.Model.Entities;
@@ -196,6 +197,8 @@ public sealed class AgentRunProcessor : IAgentRunProcessor
     private async Task<string> BuildSystemPromptAsync(ExpertVersion version, CancellationToken cancellationToken)
     {
         var prompt = $"{version.Persona}\n{version.Methodology}\n{version.PromptTemplate}";
+        var memoryCandidateInstruction = MemoryCandidateOutputContract.GetPromptInstruction(version.OutputSchema);
+        if (memoryCandidateInstruction is not null) prompt += memoryCandidateInstruction;
         var skillIds = ExtractSkillIds(version.ToolPolicy);
         if (skillIds.Count > 0)
         {

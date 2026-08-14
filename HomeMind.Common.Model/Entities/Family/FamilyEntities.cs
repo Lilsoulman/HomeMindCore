@@ -203,6 +203,10 @@ public static class FamilyAuditActions
     public const string MediaFileDeleted = "media_file_deleted";
     /// <summary>快速剪辑方案被修订（修改创作目标重新生成）；由 Skill 运行服务写入（B31 消费）。</summary>
     public const string SkillRunRevised = "skill_run_revised";
+    /// <summary>记忆候选被接受并写入事实源。</summary>
+    public const string MemoryCandidateAccepted = "memory_candidate_accepted";
+    /// <summary>记忆候选被拒绝。</summary>
+    public const string MemoryCandidateRejected = "memory_candidate_rejected";
 }
 
 /// <summary>家庭上下文审计目标类型集合，决定 <see cref="FamilyAuditLog.TargetType"/> 的合法取值。</summary>
@@ -238,6 +242,10 @@ public static class FamilyAuditTargetTypes
     public const string XhsNote = "xhs_note";
     /// <summary>目标为快速剪辑素材登记（<see cref="HomeMind.Common.Model.Entities.ClippingMaterial"/>，上传/删除审计）。</summary>
     public const string ClippingMaterial = "clipping_material";
+    /// <summary>目标为待审核记忆候选。</summary>
+    public const string MemoryCandidate = "memory_candidate";
+    /// <summary>目标为已接受学习记忆投影。</summary>
+    public const string LearningMemory = "learning_memory";
 }
 
 /// <summary>家庭域审计记录实体；与管家动态、运行事件分离，专门承载 Family 域可审计动作。</summary>

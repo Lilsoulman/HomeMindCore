@@ -29,7 +29,7 @@ public class ExpertSelfServeTests
         await db.SaveChangesAsync();
         var services = new ExpertSelfServeServices(db);
 
-        var result = await services.CreateAsync(UserId, TenantId, Request(), default);
+        var result = await services.CreateAsync(UserId, TenantId, Request("{\"type\":\"object\",\"properties\":{\"memoryCandidates\":{\"type\":\"array\"}}}"), default);
 
         Assert.Equal(201, result.StatusCode);
         var view = Assert.IsType<ExpertDetailView>(result.Data);
@@ -43,6 +43,7 @@ public class ExpertSelfServeTests
         var version = await db.ExpertVersions.SingleAsync();
         Assert.Equal(1, version.Version);
         Assert.Equal("published", version.Status);
+        Assert.Contains("memoryCandidates", version.OutputSchema!);
     }
 
     /// <summary>两次创建的编码互不相同。</summary>
@@ -216,8 +217,8 @@ public class ExpertSelfServeTests
         Assert.Equal(404, prepared.StatusCode);
     }
 
-    private static ExpertCreateRequest Request() =>
-        new() { Name = "我的专家", Category = "test", Persona = "人设", PromptTemplate = "模板" };
+    private static ExpertCreateRequest Request(string? outputSchemaJson = null) =>
+        new() { Name = "我的专家", Category = "test", Persona = "人设", PromptTemplate = "模板", OutputSchemaJson = outputSchemaJson };
 
     private static HomeMindDbContext NewDb(string name) =>
         new(new DbContextOptionsBuilder<HomeMindDbContext>()
