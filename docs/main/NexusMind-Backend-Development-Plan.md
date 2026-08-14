@@ -2,7 +2,7 @@
 
 > **依据：** `NexusMind-Product-Master-Design.md`、`NexusMind-Backend-Development.md` 与 `D:\HomeMind\mobile\docs\main\NexusMind-Frontend-Development.md`。
 > **计划性质：** V2.3 的当前实施快照，只维护已完成、下一步和最小验收；产品决策及变更历史以产品总设计为准。
-> **最后更新：** 2026-08-13
+> **最后更新：** 2026-08-14
 
 ## 执行与回写规则
 
@@ -32,6 +32,9 @@
 - V2.7 思维导图 Skill（B33）已完成：`036` 迁移（因既有未跟踪 `035_xhs_content_creator_expert` 占号而顺序避让）注册 mindmap（`mindmap.read`，owner/admin/member，viewer 不含）；`POST /api/v1/skills/mindmap/runs` 同步 completed、摘要（字符数 + 首个一级标题）+ `skill_run_created` 审计；浏览器端 markmap-lib 转换渲染，服务端零转换依赖；定向测试 4/4 通过，真实 MySQL 迁移待部署环境验证。
 - 美团 AI Hub 三项生活服务 Skill 已完成产品与后端设计收敛（产品总设计 §7.3、后端设计 §21）：旅行 (`meituan-travel`) 是待平台许可/真实 Token 验证后的下一业务候选切片；跑腿 (`meituan-paotui`) 与分销推广/领券分别受账户交易和营销合规门禁阻塞，均未开发、未发布 API。
 - V2.7 已排期 Skill 目录查看（产品总设计变更记录、后端设计 §19）：`GET /api/v1/skills?scope=mine|platform|all`（默认 mine 向后兼容，对齐 /experts 先例；修正既有「GET /api/v1/skills 即平台目录」的表述偏差——实际为用户级列表）；platform/all 仅 owner/admin **角色**校验（member/viewer 持 `ai.read` 也 403），成员技能视图不含 Prompt；无新迁移；按 B34 切片实施。
+- V2.9 已排期剪辑体验重构（产品总设计 §7.1.1、后端设计 §16）：目标是「丢素材文件夹 → 说一句话 → 拿回可预览视频」。后端三个切片：B37 粗剪 mp4 产出（ffmpeg 渲染，`rendering` 阶段，产物登记 readToken 下载，`.draft` 降级进阶选项，默认关闭）**已完成验收**；B38 素材自动发现（素材根目录扫描，`source_type`/`directory_key`，`039` 迁移）；B39 自然语言对话解析（LLM 结构化参数，AI 禁用降级模板问卷）。确认/幂等/审计与 L1 风险不变；四引擎门禁不变。
+- V2.9 B37 粗剪 mp4 产出已完成本机验收：确认改为 202 排队、Worker 驱动 `rendering→done|failed` 与安全阶段事件；`FfmpegRenderService` 按已确认方案执行 ffmpeg trim+转码（1920×1080、时长按素材上限截断），mp4 经 `RegisterGeneratedFileAsync` 登记并复用 readToken 下载；渲染关闭或失败绝不伪造 `.draft` 成功。验收中修复了完成事件序号冲突、创建方案误入 B36 四引擎队列、运行时 `Clipping:Render` 配置解析（直读配置源）与登记 `size_bytes` 解析（PascalCase `SizeBytes`）四项问题。
+- M3 学习记忆库已完成产品与后端设计：在 M2 候选审核与事实源写入链路稳定后，以 `learning_memory_records` 建立受可见性约束的脱敏展示投影，发布只读列表/详情、`memory.read` 权限与 Web 导航 `route_key`；不复制 Prompt、完整证据、会话正文或 N97 派生索引，也不在 M3 增加直接改写记忆的接口。
 
 ## 已完成
 
@@ -68,10 +71,43 @@
 | V2.7 B32 chat 引导 | `IClippingChatServices`/`ClippingChatServices`（无状态 context 随请求回传：`collecting_materials → generating_plan → reviewing → done`，非法步进 422；规则式意图匹配——消息含剪辑关键词即进入快速剪辑引导；模板回复 + suggestions 引导按钮；只引导不执行，不落库）+ `ClippingChatController` 单条路由 `POST /api/v1/clipping/chat`（`ai.run` + `media.read`）；`api-implementation.md`/`frontend-api-integration.md`/后端开发设计/产品总设计同步 | `dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b32-verify` 通过（0 errors / 0 CS1591）；`dotnet test` 全绿（新增 ClippingChatServicesTests 9 项：意图匹配/状态机/非法上下文）；无新迁移 |
 | 032 存量字段中文备注补齐 | `database/032_field_comments.mysql.sql`：`ALTER TABLE ... MODIFY COLUMN ... COMMENT` 为 001-031 全部存量表字段统一补齐中文备注（76 张表、873 列，保留原列类型/可空性/默认值/自增与 CHECK，不引入 schema 漂移）；另修复 `033` 建表缺 COMMENT 缺陷（`clipping_materials` 15 列补注释并同步本机已执行表）；后续新迁移自带中文 COMMENT 为强制规范（计划「数据库字段中文备注规范」保留） | 真实 MySQL 032 顺序迁移已在本机执行验证：执行前后 information_schema 列属性（类型/可空/默认值/EXTRA）对比零差异、全库 0 字段缺失 COMMENT |
 | V2.7 真实库漂移修复（联调发现） | 全链路联调（上传→chat→run→方案→revise→confirm→下载）发现本机真实 MySQL 存在 B12-B25 时代的迁移缺口，已外科手术式补执行：`009` 的 `expert_run_actions.ck_action_type`（+`draft_generate`/`xhs_publish`）与 `ck_action_status`（+pending 等）、`011` 的 `expert_runs.ck_run_status`（+`pending_actions`）、`013` 全部 8 张表（expert_files/expert_file_objects/expert_file_attachments/team_run_templates/team_run_template_versions/team_runs/team_run_members/team_run_audits）、`ck_team_run_audit_action`（+`file_generated`）；这些缺口不影响本切片代码正确性（InMemory 测试不校验 CHECK），但真实库执行 Skill Run 创建/确认/登记前必须先补齐；建议后续按顺序迁移规范在干净环境复核 | 真实 MySQL 全链路联调通过：上传（201）→ chat（意图/目标推进）→ 创建 Run → 结构化方案（Segments/TotalDuration）→ revise（30→60 秒）→ confirm（fileId）→ readToken 下载（HTTP 200、Mock 剪映草稿 JSON） |
+| V2.9 B37 粗剪 mp4 产出 | `038` 迁移记录无结构变更（`037` 已允许 `rendering`）；`IClippingRenderService`/`ClippingRenderResult` 契约 + `FfmpegRenderService`（`Clipping:Render` 节直读配置源，关闭/不可用时绝不伪造产物；单素材方案 ffmpeg trim+转码输出 mp4 至渲染目录）；`ClippingPipelineServices.RenderAsync`（Rendering 任务 → 渲染 → `RegisterGeneratedFileAsync` 登记 → 动作/运行/任务统一终态，登记失败 502 语义、`render_failed` 安全事件）；`SkillRunServices` 创建不再入 B36 四引擎队列、确认时关联任务置 `rendering` 返回 202 并写 `render_queued` 事件（序号经 `NextSequenceAsync` 连续无冲突）；无新业务权限（沿用 `ai.run` + `media.read`）；`api-implementation.md`/`frontend-api-integration.md`/后端开发设计/产品总设计同步 | `dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b37-verify` 通过（0 errors）；`dotnet test` 全绿 254/254（新增 B37 渲染成功登记与失败不伪造 2 项）；真实 MySQL 无需新迁移；**本机全链路验收通过（2026-08-14）**：chat 获取 taskId → 携带创建 Run（不误入四引擎队列）→ 确认返回 202 → Worker 实际启动 ffmpeg（配置直读修复生效，事件 render running）→ 任务 `done`/Run `completed` → mp4 登记（3430836 字节）→ readToken 下载 HTTP 200 → ffprobe 验证 1920×1080、6.897 秒（素材全长 6.9 秒，60 秒目标被素材上限截断，trim 正确语义）；事件序号 1-6 连续无冲突；登记 `size_bytes` 解析修复（`SizeBytes` PascalCase）；首轮验收时 `ExpertFiles:Storage:Enabled=false` 导致登记失败已识别并恢复 `true`（渲染本身成功，仅登记被存储开关阻断） |
 
 ## 下一步
 
-2026-08-13 小红书部署预检：本地 `D:\\HomeMind\\tools\\xhs-mcp` 依赖完整，stdio MCP `initialize` 握手及只读 `xhs_auth_status` 调用成功；当前返回 `logged_out`，未发现可复用的有效登录态。下一步须由授权用户在本机人工扫码完成 personal Connector 授权，再验收真实搜索/详情；笔记发布仍保持 L2 逐项确认，未执行、不因本次预检而开放。四引擎的可执行命令、凭据和健康检查参数仍未配置，继续保持关闭。
+**V2.9 剪辑体验重构排期（产品总设计 §7.1.1、后端设计 §16，2026-08-14 排期）**：
+
+| 顺序 | 切片 | 范围 | 依赖 | 最小验收 |
+| --- | --- | --- | --- | --- |
+| 1 | B38 素材自动发现 | `039` 迁移 `clipping_materials` 加 `source_type`/`directory_key`；`IClippingMaterialScanServices` + 扫描 Worker（根目录递归、扩展名白名单、路径 hash 去重、ffprobe 元数据、最近修改时间窗）；目录不可达静默降级 | B37 已完成；素材根目录配置 | build 0 errors；test 全绿（扫描登记/去重/元数据/降级/owner 隔离）；真实目录新文件 60s 内出现 |
+| 2 | B39 自然语言对话解析 | `ClippingChatServices` LLM 解析分支（AI 启用时生效、结构化参数 schema 校验 422、写入 goal 直入方案生成、「已理解」确认卡）；失败/AI 禁用降级模板问卷；Prompt 不落日志 | AI 配置启用（既有 B18）；B32 chat 链路 | build 0 errors；test 全绿（解析成功/非法 422/禁用降级/超时降级/参数写入）；真实 LLM 解析验证 |
+
+执行规则：B37 已验收通过（2026-08-14 本机全链路验证渲染与登记）；按序推进 B38 → B39。每个切片完成后按「执行与回写规则」同步 `NexusMind-Backend-Development.md` 与 `docs/api-implementation.md`；Web 端切片（预览/扫描素材/解析确认卡）与移动端 B40 分别由 Web/移动端计划承接；四引擎门禁不变。
+
+**管家功能矩阵排期（产品总设计 §1.1 手脚 2，2026-08-14 确认，B41 起）**：
+
+| 顺序 | 切片 | 管家功能 | 范围 | 依赖 | 最小验收 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | B41-B42 | 家庭财务管家 | 账单 CSV/截图 OCR 导入解析 → 归类/双端去重 → 周报聚合 → 省钱建议（闲置订阅/重复扣款/涨价/超额）→ 确认卡 → 偏好沉淀；数据本地解析优先、不上云推理 | 文件上传链路（剪辑已跑通）；确认中心（B12）；知识库（B11）；成员（B9） | build 0 errors；test 全绿；30 天内主动发现 ≥3 个真实可省钱项且累计可省 > 产品月成本 |
+| 2 | B43 | 缴费管家 | 缴费单 OCR/手动建档 → 到期日历 → 提前 3 天/1 天两级提醒 → 缴后记录 → 年度费用趋势；与财务账单数据共享 | 财务 B41-B42（账单数据） | build 0 errors；test 全绿（建档/提醒/趋势）；真实缴费单 OCR 验收 |
+| 3 | B44 | 快递管家 | 快递100 官方 MCP Connector → 运单状态流 → 异常发现（滞留/无人签收/生鲜时效）→ 建议卡（改投驿站/催件）；个人连接隔离 | Connector 框架（B13+）；确认中心 | build 0 errors；test 全绿（状态流/异常判定/建议）；真实运单端到端 |
+| 4 | B45 | 宠物管家 | 宠物档案/疫苗/驱虫日历 + 消耗速度预测（买粮记录）→ 断粮/到期提醒 → 确认写日历或购物清单 | 财务 CSV 消耗数据；成员/日历 | build 0 errors；test 全绿（档案/日历/预测/提醒） |
+| 5 | B46 | 家庭日程协同管家 | 多成员日历聚合 → 冲突检测/空档建议/缴费证件到期提醒 → 确认卡；睡前明日预览 | 成员日历（已有）；确认中心 | build 0 errors；test 全绿（交叉/冲突/到期） |
+| 6 | B47 | 家庭回忆管家 | 照片视频归集分类（人物/时间/地点）→ 月度"家庭回忆"短视频 → 纪念日素材调用；复用剪辑产物链路 | 剪辑四引擎（B37-B40 验收后）；文件登记链路 | build 0 errors；test 全绿；真实样片生成 |
+| 7 | B48-B49 | 家庭健康关注管家 | 自建健康画像：基础档案（血型/过敏/慢病）+ 健康日历（疫苗/复查/体检/用药）+ 报告库（安诊儿/医院报告截图 PDF → OCR → 指标结构化 → 历次趋势）；到期提醒/趋势异常提示；**只记录提醒、不做诊断**；数据本地存储 | OCR 链路（财务 B41 复用）；本地存储 | build 0 errors；test 全绿（OCR 解析/画像/趋势/提醒）；真实报告导入验收 |
+| 8 | B50 | 家庭周末出游管家（MTR-2 协同） | 家庭上下文（日历空档/成员/偏好/预算）→ 美团酒旅方案摘要 + 原始供给 → 确认写日历/待办 → 外跳美团支付；出行反馈转个人偏好候选 | MTR-1a/MTR-1b 通过；日历 Action | L1 确认与幂等可追溯；仅用户点击才外跳；未确认交易不进家庭知识 |
+
+执行规则：**B41-B42 财务先行**（数据源最实、30 天省钱价值可见，且 OCR/上传/确认链路被后续切片复用）；B43 缴费、B44 快递、B45 宠物依次推进；B46 日程协同、B47 回忆依赖剪辑四引擎验收与既有日历；B48-B49 健康画像依赖 OCR 链路；B50 出游依赖 MTR-1a/MTR-1b 门禁。每个切片完成后按「执行与回写规则」同步 `NexusMind-Backend-Development.md` 与 `docs/api-implementation.md`；Web/移动端承接按端分级另行同步；健康数据为最高敏感等级，任何场景不落 Prompt、不上云推理、不进入家庭知识之外的共享面。
+
+**M3 学习记忆库（在 M2 后单独排期，不阻塞 B37-B39）**：
+
+| 切片 | 范围 | 前置依赖 | 最小验收 |
+| --- | --- | --- | --- |
+| M3 | 已实现 `039_learning_memory.mysql.sql`、`040_review_analyst_memory_candidates.mysql.sql`、Expert 输出 Schema 选择加入的 `MemoryReviewWorker`、审阅回执、候选审核服务、学习记忆只读 API、`memory.read/write` 与 Web 路由 | Worker 仅接受显式 `memoryCandidates` 结构化输出，不读取 Prompt/会话/自由摘要；`040` 以新不可变版本启用内置复盘分析师；回执防止重启后重复扫描 | 定向 InMemory 测试通过；真实 MySQL 039/040 迁移与 Worker 触发待部署验证 |
+
+M3 已向 Web 注册 `/app/memories`，并已在 `docs/api-implementation.md` 登记服务端路由；不得用模拟 DTO、LocalStorage 或前端缓存替代服务端事实源。真实 MySQL 039 迁移和 Worker 运行触发仍须在部署环境验收。
+
+2026-08-13 小红书部署预检：本地 `D:\HomeMind\tools\xhs-mcp` 依赖完整，stdio MCP `initialize` 握手及只读 `xhs_auth_status` 调用成功；当前返回 `logged_out`，未发现可复用的有效登录态。下一步须由授权用户在本机人工扫码完成 personal Connector 授权，再验收真实搜索/详情；笔记发布仍保持 L2 逐项确认，未执行、不因本次预检而开放。四引擎的可执行命令、凭据和健康检查参数仍未配置，继续保持关闭。
 
 2026-08-13 真实剪映与素材验收完成：修复素材上传 Controller 在异步复制前释放 `IFormFile` 流的问题；配置绝对素材/生成文件目录；`FfprobeExtractor` 兼容 ffprobe 将 duration 输出为字符串的 JSON。非敏感样片经真实 API 上传返回 7 秒、1920×1080；`quick-edit` Run 确认经真实 `jianying-mcp` 生成剪映草稿并登记生成文件（7477 字节）。服务测试全量 246/246 通过。下一步：保持四引擎关闭，待各受控引擎具备实际命令和凭据后，分别执行健康检查与阶段事件验收；xhs-mcp 真实搜索/发布仍独立待验收。
 

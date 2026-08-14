@@ -26,6 +26,7 @@ JSON 输入中的这些值。
 | 技能 | `GET /api/v1/skills?scope=mine\|platform\|all`、`POST /api/v1/skills`、`PUT/DELETE /api/v1/skills/{id}`；Skill 独立运行：`POST /api/v1/skills/{skillCode}/runs`、`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm`、`POST /api/v1/skills/runs/{runId}/revise`（`ai.run` + `media.read`，SourceType=skill，不绑定专家） |
 | 快速剪辑（B29-B32） | `POST/GET /api/v1/clipping/materials`、`DELETE /api/v1/clipping/materials/{materialId}`、`POST /api/v1/clipping/chat`；素材登记、无状态对话引导与 Skill Run 方案修订 |
 | 快速剪辑（V2.8 B35） | `GET /api/v1/clipping/tasks/{taskId}`；chat 返回持久化 `taskId`，quick-edit Run 可携带 `taskId` 并输出 `engineStage`、`version`、`versionHistory` |
+| 快速剪辑（V2.9 B37） | 沿用 `POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm` 与 `GET /api/v1/clipping/tasks/{taskId}`；确认后异步渲染 mp4，产物沿用 Expert File readToken 下载 |
 | AI 配置 | `GET/PUT /api/v1/ai/config`（B18 新增 `enabled` 字段，默认 `true`，切换开关不传 `apiKey` 即可保留密文）；`POST /api/v1/ai/{generate,chat,stream}`（B18 占位，启用 → 501，未启用 → 422 + `Code=42200`） |
 | 专家目录 | `GET /api/v1/experts?scope=basic\|mine\|all`（B21 起支持来源过滤，默认 basic 向后兼容；列表项含 `Source` 字段，不暴露他人 owner）、`GET /api/v1/experts/{id}`（他人自建/已软删 404）；自建专家（B21）：`POST /api/v1/experts`、`PUT/DELETE /api/v1/experts/{id}`（`expert.mine.write`，PUT 携带 RowVersion 乐观锁 409/40903，更新生成 version+1 已发布版本） |
 | 智能体运行时 / 专家运行 | `POST /api/v1/expert-runs`、`GET /api/v1/expert-runs/{id}`、`/events`、`/actions`、`/actions/{actionId}/confirm`、`/cancel`、`/retry`；`POST /api/v1/expert-runs/{id}/actions` 创建动作。路由名称为兼容性保留，但领域资源为 `AgentRun`。 |
@@ -675,6 +676,12 @@ B24/B25 不新建轮询端点。剪辑 MCP 端到端（真实 jianying-mcp 写�
 ### V2.8 B36 四引擎调度契约（代码验收完成，部署验证待执行）
 
 不新增并行进度端点：Web 继续轮询 `GET /api/v1/clipping/tasks/{taskId}` 与既有 `GET /api/v1/expert-runs/{runId}/events`。任务进入引擎调度后 `status=generating`；阶段事件 payload 将为 `{ stage, status, message, occurredAt }`，其中 `stage=video_use|seedance|hyperframes|remotion|draft`，`status=queued|running|skipped|succeeded|failed`。消息为展示安全文本，禁止返回命令、路径、凭据、Prompt、原始 LLM/第三方响应。
+
+### V2.9 B37 粗剪视频产出
+
+`POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm` 在关联 `clipping_tasks` 时仍要求既有 `ai.run` + `media.read`、L1 确认和 UUID 幂等键；成功接收后返回 202，将任务置为 `rendering`、运行置为 `running`。后台 Worker 以 ffmpeg 执行首版单素材 trim+转码，成功将 mp4 经 `RegisterGeneratedFileAsync` 登记并可使用既有 `POST /api/v1/expert-files/{fileId}/read-token` 下载；失败置任务/动作/运行为 `failed` 并写 `render_failed` 安全事件。`Clipping:Render:Enabled=false` 是默认值，关闭或不可用时绝不回退伪造 `.draft` 成功结果。
+
+2026-08-14 本机 B37 验收通过：chat 获取 taskId → 携带创建 Run（不再误入 B36 四引擎队列）→ 确认返回 202 → Worker 实际启动 ffmpeg（`FfmpegRenderService` 直读配置源，修复运行时 `Clipping:Render` 解析为关闭）→ 任务 `done`/Run `completed` → mp4 登记（3430836 字节，`size_bytes` 解析修复）→ readToken 下载 HTTP 200 → ffprobe 验证 1920×1080、6.897 秒（60 秒目标被素材全长截断，trim 正确语义）；完成阶段事件序号 1-6 连续无冲突。首轮验收发现登记失败根因为 `ExpertFiles:Storage:Enabled=false`（渲染本身成功），已恢复 `true`。渲染关闭或不可用时仍按契约写 `render` 阶段失败事件，绝不登记伪造 mp4。
 
 未配置或健康检查失败的本地引擎必须返回明确的失败/跳过事件，绝不将 Mock、占位或计划状态写为 succeeded。Seedance 默认关闭，仅当服务端开关、请求 `allowSeedance=true`、用户成本确认及服务端密钥同时成立才允许执行。
 

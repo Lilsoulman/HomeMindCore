@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Text.Json;
+using HomeMind.Business.IServices.Expert;
+using HomeMind.Business.IServices.Family;
+using HomeMind.Common.Model.Entities.Family;
 using HomeMind.Business.IServices.Media;
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Model.ViewModel.Common;
@@ -16,13 +19,19 @@ public sealed class ClippingPipelineServices : IClippingPipelineServices
     private readonly HomeMindDbContext _db;
     private readonly IReadOnlyDictionary<string, IClippingEngine> _engines;
     private readonly IConfiguration _configuration;
+    private readonly IClippingRenderService _render;
+    private readonly IExpertFileServices? _files;
+    private readonly IFamilyAuditLogger? _audit;
 
     /// <summary>构造剪辑流水线调度服务。</summary>
-    public ClippingPipelineServices(HomeMindDbContext db, IEnumerable<IClippingEngine> engines, IConfiguration configuration)
+    public ClippingPipelineServices(HomeMindDbContext db, IEnumerable<IClippingEngine> engines, IConfiguration configuration, IClippingRenderService render, IExpertFileServices? files = null, IFamilyAuditLogger? audit = null)
     {
         _db = db;
         _engines = engines.ToDictionary(x => x.Stage, StringComparer.Ordinal);
         _configuration = configuration;
+        _render = render;
+        _files = files;
+        _audit = audit;
     }
 
     /// <inheritdoc />
@@ -43,8 +52,9 @@ public sealed class ClippingPipelineServices : IClippingPipelineServices
     /// <inheritdoc />
     public async Task<int> ProcessNextAsync(CancellationToken cancellationToken = default)
     {
-        var task = await _db.ClippingTasks.OrderBy(x => x.UpdatedAt).FirstOrDefaultAsync(x => x.Status == ClippingTaskStatus.Generating && x.DeletedAt == null, cancellationToken);
+        var task = await _db.ClippingTasks.OrderBy(x => x.UpdatedAt).FirstOrDefaultAsync(x => (x.Status == ClippingTaskStatus.Generating || x.Status == ClippingTaskStatus.Rendering) && x.DeletedAt == null, cancellationToken);
         if (task is null || task.RunId is null) return 0;
+        if (task.Status == ClippingTaskStatus.Rendering) return await RenderAsync(task, cancellationToken);
         var startIndex = Array.IndexOf(Stages, task.EngineStage ?? "video_use");
         if (startIndex < 0) startIndex = 0;
         for (var index = startIndex; index < Stages.Length; index++)
@@ -74,6 +84,58 @@ public sealed class ClippingPipelineServices : IClippingPipelineServices
             await AddEventAsync(task, stage, "succeeded", "剪辑引擎处理完成。", cancellationToken);
         }
         return 0;
+    }
+
+    /// <summary>执行已确认方案的粗剪渲染，登记 mp4 后才将动作、运行和任务统一标为完成。</summary>
+    private async Task<int> RenderAsync(ClippingTask task, CancellationToken cancellationToken)
+    {
+        task.EngineStage = "render";
+        await AddEventAsync(task, "render", "running", "粗剪视频正在渲染。", cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var render = await _render.RenderAsync(task.CurrentPlan ?? string.Empty, cancellationToken);
+        long? fileId = null;
+        long sizeBytes = 0;
+        if (render.Succeeded && render.Content is { Length: > 0 } && !string.IsNullOrWhiteSpace(render.FileName) && _files is not null)
+        {
+            var registered = await _files.RegisterGeneratedFileAsync(task.CreatedByUserId, task.TenantId, render.FileName, "video/mp4", render.Content, task.RunId, cancellationToken);
+            if (registered.Succeeded)
+            {
+                using var document = JsonDocument.Parse(JsonSerializer.Serialize(registered.Data));
+                if (document.RootElement.TryGetProperty("fileId", out var id) && id.TryGetInt64(out var parsedId)) fileId = parsedId;
+                if (document.RootElement.TryGetProperty("SizeBytes", out var size) && size.TryGetInt64(out var parsedSize)) sizeBytes = parsedSize;
+            }
+            else render = new ClippingRenderResult(false, "粗剪视频登记失败，请稍后重试。");
+        }
+
+        var action = await _db.ExpertRunActions.SingleOrDefaultAsync(x => x.RunId == task.RunId && x.TenantId == task.TenantId && x.ActionType == "draft_generate", cancellationToken);
+        var audit = action is null ? null : await _db.ActionExecutionAudits.OrderByDescending(x => x.Id).FirstOrDefaultAsync(x => x.RunActionId == action.Id && x.Status == "executing", cancellationToken);
+        var run = await _db.AgentRuns.SingleAsync(x => x.Id == task.RunId && x.TenantId == task.TenantId, cancellationToken);
+        var now = DateTime.UtcNow;
+        var succeeded = fileId is not null;
+        task.Status = succeeded ? ClippingTaskStatus.Done : ClippingTaskStatus.Failed;
+        task.UpdatedAt = now;
+        if (action is not null)
+        {
+            action.Status = succeeded ? "executed" : "failed";
+            action.Result = JsonSerializer.Serialize(succeeded
+                ? (object)new { status = action.Status, mp4_file_id = fileId, size_bytes = sizeBytes }
+                : new { status = action.Status, error_code = "render_failed" });
+            action.UpdatedAt = now;
+        }
+        if (audit is not null) { audit.Status = succeeded ? "executed" : "failed"; audit.Result = action?.Result; audit.UpdatedAt = now; }
+        run.Status = succeeded ? "completed" : "failed";
+        run.FinishedAt = now;
+        run.ResultSummary = succeeded ? "粗剪视频已生成，可预览或下载。" : render.Message;
+        run.Result = JsonSerializer.Serialize(succeeded
+            ? (object)new { skill_run = "quick_edit", status = run.Status, mp4_file_id = fileId, size_bytes = sizeBytes }
+            : new { skill_run = "quick_edit", status = run.Status, error_code = "render_failed" });
+        await AddEventAsync(task, "render", succeeded ? "succeeded" : "failed", run.ResultSummary, cancellationToken);
+        await _db.SaveChangesAsync(cancellationToken);
+        if (succeeded && _audit is not null)
+            await _audit.LogAsync(task.TenantId, task.CreatedByUserId, FamilyAuditActions.SkillDraftRegistered, FamilyAuditTargetTypes.SkillDraft,
+                fileId, null, new { file_id = fileId, file_name = render.FileName, size_bytes = sizeBytes }, null, run.Id, cancellationToken);
+        return 1;
     }
 
     /// <summary>判断 Seedance 的全局开关、用户授权、成本确认与安全密钥四重门禁。</summary>

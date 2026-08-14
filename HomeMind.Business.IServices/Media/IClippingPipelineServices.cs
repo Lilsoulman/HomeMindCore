@@ -21,6 +21,26 @@ public interface IClippingPipelineServices
     Task<int> ProcessNextAsync(CancellationToken cancellationToken = default);
 }
 
+/// <summary>粗剪视频渲染服务契约；仅接受已确认的展示安全方案并返回可登记的 mp4 内容。</summary>
+public interface IClippingRenderService
+{
+    /// <summary>当前部署是否允许启动真实 ffmpeg 渲染。</summary>
+    bool IsEnabled { get; }
+
+    /// <summary>按剪辑方案渲染粗剪视频。</summary>
+    /// <param name="planJson">已确认的剪辑方案 JSON。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>渲染结果；失败时不包含文件内容或内部路径。</returns>
+    Task<ClippingRenderResult> RenderAsync(string planJson, CancellationToken cancellationToken = default);
+}
+
+/// <summary>粗剪视频渲染的展示安全结果。</summary>
+/// <param name="Succeeded">是否成功生成可登记的视频。</param>
+/// <param name="Message">可向客户端展示的脱敏说明。</param>
+/// <param name="FileName">成功时建议登记的文件名。</param>
+/// <param name="Content">成功时的 mp4 文件内容。</param>
+public sealed record ClippingRenderResult(bool Succeeded, string Message, string? FileName = null, byte[]? Content = null);
+
 /// <summary>单个剪辑引擎的受控执行契约。</summary>
 public interface IClippingEngine
 {

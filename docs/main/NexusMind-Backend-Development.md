@@ -548,7 +548,13 @@ row_version（与既有 Enable/Run 一致）。
 
 **B36 实施状态（2026-08-13）**：已新增 `IClippingEngine` 适配器契约及调度服务，所有实现由命名配置注册。受控本地进程统一执行健康探测、超时和 stderr 排空；未配置、健康检查失败或执行失败均将任务置 `failed` 并只写脱敏失败事件，绝不调用 Mock 或占位结果伪造成功。`Seedance` 仅在全局开关、请求 `allowSeedance=true`、成本确认和服务端安全密钥均满足时调用；默认全部引擎关闭。本机复验 `dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b36-deployment-verify` 为 0 errors，另有 `ScenarioWorkflowServices.cs` 既有 1 条 CS8604 警告；服务测试 246/246 通过；真实 MySQL `036_mindmap_skill`、`037_clipping_tasks` 已按顺序应用，`mindmap` 种子（1 条）与表字段备注已核验。非敏感样片经真实 API 上传已由 `D:\HomeMind\tools\ffmpeg\bin\ffprobe.exe` 提取为 7 秒、1920×1080，素材输入流生命周期、绝对存储目录及 JSON 字符串时长解析均已修复；真实 `jianying-mcp` 已经 UTF-8 无 BOM 客户端生成草稿并登记 7477 字节文件。所有四引擎配置仍保持关闭，须待逐引擎命令/凭据就绪后分别执行健康与阶段事件验收。
 
-**xhs 部署预检（2026-08-13）**：`D:\HomeMind\tools\xhs-mcp` 的 Node 依赖、stdio `initialize` 握手和只读 `xhs_auth_status` 均正常；当前状态为 `logged_out`。真实搜索/详情验证必须在授权用户人工扫码、服务端 Poll 落库 personal Connector 后执行；不自动发起登录，不执行 L2 发布确认或发布工具调用。
+**xhs 部署预检（2026-08-13）**：`D:\\HomeMind\\tools\\xhs-mcp` 的 Node 依赖、stdio `initialize` 握手和只读 `xhs_auth_status` 均正常；当前状态为 `logged_out`。真实搜索/详情验证必须在授权用户人工扫码、服务端 Poll 落库 personal Connector 后执行；不自动发起登录，不执行 L2 发布确认或发布工具调用。
+
+**V2.9 剪辑体验重构设计（B37-B39，2026-08-14）**：产品总设计 §7.1.1 已确认「剪辑体验重构」，目标是「丢素材文件夹 → 说一句话 → 拿回可预览视频」，确认/幂等/审计与 L1 风险不变。三个后端切片：
+
+- **B37 粗剪 mp4 产出（ffmpeg 渲染）**：`clipping_tasks.status` 增加 `rendering` 阶段（`generating → reviewing → rendering → done|failed`）；新增 `IClippingRenderService`/`FfmpegRenderService`：按方案时间线（`segments` 顺序/裁剪区间/总时长）生成 ffmpeg concat+trim 命令，输出 mp4 至配置渲染目录（`Clipping:Render:OutputPath`，默认 `data/clipping/rendered/`）；产物经既有 `RegisterGeneratedFileAsync` 登记为生成文件（复用 readToken 下载），`.draft` 保持既有 jianying-mcp 链路不变（降级为进阶选项，由 Web 端呈现）；渲染失败写 `failed` 事件 + 任务失败原因（脱敏）、可重试，绝不伪造成功；首版仅 concat+trim+转码（crf 默认），不引入滤镜/GPU；渲染默认关闭（`Clipping:Render:Enabled=false`），启用依赖 ffmpeg 可执行文件（`D:\HomeMind\tools\ffmpeg\bin\ffmpeg.exe` 已就绪）；`ClippingEngineOptions` 扩展 Render 配置节；无新业务权限（沿用 `ai.run` + `media.read`）；
+- **B38 素材自动发现（目录扫描）**：`clipping_materials` 增加 `source_type`（`upload|path|scan`）与 `directory_key`（`039` 迁移，EF 迁移仅建列不更新快照）；新增 `IClippingMaterialScanServices`：按 `Clipping:MaterialRootDirectories` 配置递归扫描，扩展名白名单（mp4/mov/avi/mkv/mp3/wav…），路径 hash 去重（重复扫描不重复登记），ffprobe 提取元数据，仅处理最近修改文件（如 7 天内）控制首扫成本；目录不可达静默降级；扫描 Worker 仿 `ClippingPipelineWorker` 周期执行；自动登记素材仅本人可见（沿用 owner 隔离）；
+- **B39 自然语言对话解析（LLM 结构化参数）**：`ClippingChatServices` 增加 LLM 解析分支——仅当 AI 配置启用（`/ai/config` enabled）时生效；一句话（「剪成 30 秒竖屏快节奏带字幕」）→ LLM 解析为结构化参数 `{ target_duration, aspect_ratio, style, subtitle, mood }` → schema 校验（非法值 422）→ 参数写入 `clipping_tasks.goal` 并直接进入方案生成；响应返回「已理解：30 秒 / 竖屏 / 快节奏 / 加字幕」确认卡；解析失败/超时/AI 禁用自动降级为既有 B32 模板问卷（不破坏既有链路）；Prompt 不落日志、不返回。
 
 任务状态为 `generating → reviewing|failed`，阶段事件复用 `RunEvents` 并新增展示安全 payload `{ stage, status, message, occurredAt }`；stage 限 `video_use|seedance|hyperframes|remotion|draft`，status 限 `queued|running|skipped|succeeded|failed`。每个失败均写 `failed` 事件和任务失败原因（脱敏），不得继续写成功事件或登记草稿。`POST /skills/runs/{runId}/revise` 识别参数调整、部分重做、全量重做：参数调整不调引擎；部分重做只排受影响 stage 与下游；全量重做从 `video_use` 开始。执行转入后台队列，查询仍使用 `GET /clipping/tasks/{taskId}` 与既有 `GET /expert-runs/{id}/events` 轮询；本切片不引入 WebSocket。
 
@@ -601,6 +607,9 @@ row_version（与既有 Enable/Run 一致）。
 | B31 | `POST /skills/runs/{runId}/revise`（`ai.run` + `media.read`）：`pending_actions` 且未确认可修订、替换方案 RequestJson、`plan_revised` 事件、`skill_run_revised` 审计（`034` CHECK 扩展）、幂等重放 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（状态机/幂等重放/409/422/404）；真实 MySQL 034 顺序迁移本机验证 |
 | B32 | `POST /api/v1/clipping/chat`：无状态 context 校验推进、规则式意图匹配、模板回复 + suggestions；只引导不执行；不落库 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（意图匹配/状态机/非法步进 422）；无新迁移 |
 | B36 | 四引擎异步调度、受控进程配置与健康门禁、任务/Run 阶段事件，revise 的参数调整/部分重做/全量重做语义；Seedance 默认关闭且逐任务成本确认 | 单元测试覆盖未配置失败不伪成功、Seedance 四重门禁、事件序列、部分/全量重做范围与跨用户 404；真实本地引擎仅在部署环境以样片验证，未通过不标记完成 |
+| B37 | `038` 无结构变更迁移（`037` 已含 `rendering`）；`IClippingRenderService`/`FfmpegRenderService`（已确认方案 → ffmpeg trim+转码 → mp4 → `RegisterGeneratedFileAsync` 登记 → readToken 下载）；关联剪辑任务的确认返回 202 并经 Worker 完成 `rendering→done|failed`、写安全事件；验收修复完成事件序号冲突和创建方案误入 B36 队列；`FfmpegRenderService` 直读配置源修复运行时 `Clipping:Render` 解析为关闭；渲染默认关闭，失败不伪造 `.draft` 成功 | `dotnet build HomeMind.Api/HomeMind.Api.csproj --no-restore -o .build/b37-verify` 通过（0 errors）；`dotnet test` 全绿 254/254；**本机全链路验收通过（2026-08-14）**：确认 202 排队 → Worker 实际启动 ffmpeg 渲染（配置直读生效）→ 任务 `done`/Run `completed` → mp4 登记 3430836 字节 → readToken 下载 200 → ffprobe 1920×1080、6.897 秒（60 秒目标被素材全长截断）；事件序号 1-6 连续；登记 `size_bytes` 解析修复；`ExpertFiles:Storage:Enabled` 恢复 `true`（首轮登记失败根因） |
+| B38 | 素材自动发现：`039` 迁移 `clipping_materials` 增加 `source_type`/`directory_key`；`IClippingMaterialScanServices` + 扫描 Worker（素材根目录递归扫描、扩展名白名单、路径 hash 去重、ffprobe 元数据、最近修改时间窗）；目录不可达静默降级 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（扫描登记/去重/元数据/不可达降级/owner 隔离）；真实目录扫描在部署环境验证（新文件 60s 内出现） |
+| B39 | 自然语言对话解析：`ClippingChatServices` LLM 解析分支（AI 启用时生效、结构化参数 schema 校验 422、写入 `clipping_tasks.goal` 直入方案生成、响应「已理解」确认卡）；解析失败/AI 禁用降级模板问卷；Prompt 不落日志 | `dotnet build` 0 errors / 0 CS1591；`dotnet test` 全绿（解析成功/非法参数 422/AI 禁用降级/超时降级/参数写入 goal/确认卡响应）；真实 LLM 解析在 AI 配置启用环境验证 |
 
 字段级契约发布后同步 `docs/api-implementation.md` 与 `docs/frontend-api-integration.md`。
 
@@ -746,9 +755,20 @@ row_version（与既有 Enable/Run 一致）。
 
 - 新增 `IContextSnapshotServices`；每个 Run 冻结家庭知识、个人偏好、决策历史、设备摘要、Expert/Skill 版本及召回引用，运行中记忆写入不修改既有版本；
 - 建议表 `context_snapshots`：`run_id/version/expert_version_id/skill_versions_json/knowledge_refs_json/preference_refs_json/device_state_refs_json/content_hash/created_at`；
-- 新增 `IMemoryProvider`（默认本地实现）和 `MemoryReviewWorker`；Run 完成、上下文压缩前、会话结束只产生 `memory_candidates`，字段含 source_run、kind/key/value、confidence、evidence refs、risk/status/expiry；
+- 已实现 `MemoryReviewWorker`：仅消费已完成 Run 的显式 `memoryCandidates` 结构化结果，服务端重建 Run 证据引用并创建 `pending` 候选；`memory_review_receipts` 记录空结果和已处理 Run，重启后不重复扫描或生成候选；不从 Prompt、会话正文或自由文本摘要推断记忆，失败不影响主 Run。上下文压缩和会话结束触发仍待后续接入；
+- Expert 版本以 `output_schema_json.properties.memoryCandidates` 显式选择加入候选契约；运行期仅对已选择版本附加候选格式与敏感信息禁止规则。自建 Expert 的创建/更新 API 可写入该输出契约；未选择的既有 Expert 保持原有输出，不产生候选；
+- `040_review_analyst_memory_candidates.mysql.sql` 为内置 `review-analyst` 新建不可变的已发布版本并声明该字段；Run 解析始终选择最新已发布版本，因此部署迁移后新的复盘 Run 可产生待审核候选，旧 Run 仍固定在原版本；
 - USER 类个人偏好和家庭知识严格隔离；N97 SQLite FTS 只做可重建的本地派生索引，MySQL 保持事实源；中文 tokenizer、删除传播和本地加密为实施前置；
 - 后台 review 可使用本地低成本模型，但敏感/冲突事实、成员身份、健康/财务/安防和平台 Skill 不得自动写入或覆盖。
+
+### 20.3.1 学习记忆库（M3，已实现，真实 MySQL 待部署验证）
+
+M3 为 Web `/app/memories` 提供“已接受、可召回的学习记忆”只读视图；它不把 `memory_candidates` 的审核页搬到新路由，也不把家庭知识、个人偏好、完整对话、Prompt 或 N97 SQLite FTS 当作客户端资源。M2 仍是候选产生与受控写入链路；M3 仅在候选被接受并成功写入事实源后建立可追溯的展示投影。
+
+- 新增 `learning_memory_records` 投影表：`id`、`home_id`、`owner_user_id?`、`candidate_id`（唯一）、`target_type`（`family_knowledge|personal_preference|decision_history`）、`target_id`、`kind`（`preference|fact|decision`）、`visibility`（`personal|family`）、`display_summary`、`stability`、`status`（`active|archived|expired`）、`source_run_id?`、`source_conversation_id?`、`evidence_ref_count`、`restricted_reference_count`、`resolved_at`、`expires_at?`、`archived_at?`、`created_at`、`updated_at`。它只保存用于产品展示的脱敏摘要和来源引用，不复制候选原始证据、对话正文或模型内容。
+- `MemoryCandidate` 被接受、编辑后接受或按配置自动接受时，与目标事实源写入同一事务创建/更新投影；目标事实被删除、过期、被覆盖或不再对当前成员可见时，同步归档或过滤投影。候选被拒绝、过期或 review 失败不创建记录；同一 `candidate_id` 的重复处理只能重放既有结果。
+- 新增 `ILearningMemoryServices`，所有查询先由 JWT 推导 `home_id`/`user_id`，再执行 `visibility`、owner、`family.read` 与目标事实源可见性过滤。`memory.read` 只授予可读取本人个人记忆及既有家庭可见范围的角色；跨家庭、跨成员个人记忆或已删除目标统一 `404`。来源包含无权个人引用时仅返回 `restrictedReferenceCount`，不返回引用 ID、摘要或成员信息。
+- 已发布只读 API：`GET /api/v1/memories?scope=all|personal|family&kind=&status=&query=&cursor=&limit=`（游标分页）与 `GET /api/v1/memories/{id}`。列表/详情仅返回 `LearningMemoryView`：`id`、`summary`、`kind`、`visibility`、`stability`、`status`、`learnedAt`、`expiresAt`、`sourceReferences`、`restrictedReferenceCount`、`resolutionSummary`；不提供任何 M3 写接口。当前来源仅含可见 Run 引用；Conversation 与受限引用计数扩展仍待后续切片。
 
 ### 20.4 切片与最小验收
 
@@ -761,6 +781,7 @@ row_version（与既有 Enable/Run 一致）。
 | H5 | Confirmation 结构化上下文与 L1 Grant | once/run preference、到期/撤销、L2/L3 不命中、审计与跨家庭隔离 |
 | M1 | context_snapshots | 创建/版本/哈希/引用隔离，Run 中记忆变化不改变当前 snapshot |
 | M2 | memory_candidates + review worker | evidence/confidence、敏感事实待确认、后台失败不影响主 Run、删除/租户隔离 |
+| M3 | learning_memory_records + 只读查询 | M2 接受候选与事实源写入同事务生成投影；个人/家庭隔离、来源脱敏、游标分页、目标删除/失效同步归档；Web `/app/memories` 仅在 API、`memory.read` 与 `route_key` 发布后开放 |
 
 ## 21. 美团生活服务个人级 Connector（规划，未发布 API）
 
@@ -812,3 +833,35 @@ mtskills i meituan-travel
 | MTP-1 | 跑腿费用预览的 Adapter 与 L2 确认设计 | 平台账户/地址簿许可、POI/价格展示规则与数据删除设计均已书面确认；未满足前不开发 |
 | MTP-2 | 参数冻结的 L3 订单创建与只读订单状态 | MTP-1 完成；订单取消/售后/支付外跳与高额二次确认验收 |
 | MTC-1 | 领券合规评审，不实现业务接口 | 分销资格、用户协议、隐私/营销审查、退订和清除机制均通过；否则长期保持未排期 |
+
+## 22. 管家功能矩阵（手脚 2，规划，2026-08-14 确认）
+
+产品总设计 §1.1 手脚 2 从单一「家庭财务 Agent」扩展为 **8 个管家功能矩阵**（财务/缴费/快递/宠物/日程协同/回忆/健康画像/出游），每个都是完整闭环（用户表达 → AI 主动行为 → 确认动作），互不重复验证"主动"的侧面。本节只定义跨切片复用的架构约束与数据边界；每个功能的具体迁移、服务、API 与验收在对应切片（B41 起，见开发计划）实施时展开。
+
+### 22.1 跨切片复用资产（已有，不重造）
+
+| 复用资产 | 已落地切片 | 管家功能消费方式 |
+| --- | --- | --- |
+| 确认中心（`pendingConfirmations`/L1 批量确认/幂等/审计） | B12 | 所有管家建议卡（省钱建议/缴费提醒/快递改投/断粮提醒/复查提醒）统一走确认中心，不新建第二套确认链路 |
+| 文件上传与登记链路 | 剪辑 B29/B37 已跑通 | 账单 CSV/截图、缴费单、体检报告 PDF 的上传复用；生成文件登记复用 readToken 下载 |
+| OCR 能力 | 财务 B41 首用 | 缴费单/体检报告 OCR 复用同一解析管线，按文档类型做模板化字段抽取 |
+| 知识库 / 成员体系 | B9/B11 | 偏好沉淀（已拒绝项不再提醒）写知识库；成员级隔离沿用 owner 隔离 |
+| Connector 框架 | B13+ | 快递100 MCP 作为新 Connector Provider 注册，遵循个人连接隔离与 Token 引用化 |
+| 剪辑产物链路 | B37-B40 | 回忆管家的"家庭回忆"短视频复用渲染/登记/下载链路，不新起引擎 |
+
+### 22.2 数据敏感分级与边界
+
+- **健康数据（最高敏感）**：健康画像数据本地存储优先、不上云推理；任何场景不把报告原文/指标落 Prompt 或共享面；管家只做「记录、提醒、趋势提示」，**不做诊断**（合规红线）；安诊儿/医院报告由用户主动导入（截图/PDF），系统不反向抓取任何医疗平台。
+- **财务数据（高敏感）**：账单 CSV 本地解析优先；仅把分析结论（类别聚合、建议项）写入共享面，原始交易明细不进入家庭知识之外的共享面。
+- **快递/宠物/日程（中低敏感）**：沿用现有成员隔离与审计；快递运单号等同 personal Connector 凭据处理（引用化，不回显）。
+
+### 22.3 通用能力需求（跨功能收敛）
+
+1. **上下文聚合**：财务/缴费/宠物消耗共享「成员-支出-日期」数据面；日程协同复用成员日历（已有）；健康画像与日历联动（复查/疫苗到期进日历）。
+2. **提醒分级**：所有到期提醒沿用产品 §3 推送聚合策略分级（L3>L2>周期摘要），未实现推送通道前以确认中心/对话内消息形式呈现。
+3. **去重**：支付宝+微信同笔交易去重为财务主要技术难点，MVP 允许"疑似重复"人工确认，不自动合并。
+4. **健康画像数据模型**（自建、本地）：基础档案（血型/过敏史/慢病史/手术史）+ 健康日历（疫苗/复查/体检/用药到期）+ 报告库（OCR 结构化指标 + 历次趋势），按成员隔离。
+
+### 22.4 切片与验收
+
+见开发计划「管家功能矩阵排期（B41 起）」：B41-B42 财务 → B43 缴费 → B44 快递 → B45 宠物 → B46 日程协同 → B47 回忆 → B48-B49 健康画像 → B50 出游（MTR-2）。执行顺序按依赖与数据源可得性推进，不跳跃；每个切片完成后按「执行与回写规则」同步本节与 `docs/api-implementation.md`。

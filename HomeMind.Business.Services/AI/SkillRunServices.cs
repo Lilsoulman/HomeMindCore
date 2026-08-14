@@ -128,8 +128,6 @@ public sealed class SkillRunServices : ISkillRunServices
 
         await _audit.LogAsync(tenantId, userId, FamilyAuditActions.SkillRunCreated, FamilyAuditTargetTypes.SkillRun,
             run.Id, null, new { skill = skill.Key, segment_count = 1, total_duration = plan.TotalDuration }, null, run.Id, cancellationToken);
-        if (task is not null)
-            await _pipeline.QueueAsync(task.Id, tenantId, "video_use", false, false, cancellationToken);
         return new ServiceResult(201, run.ResultSummary, await ToViewAsync(run, cancellationToken));
     }
 
@@ -182,6 +180,20 @@ public sealed class SkillRunServices : ISkillRunServices
         await _db.SaveChangesAsync(cancellationToken);
         await _audit.LogAsync(tenantId, userId, FamilyAuditActions.SkillActionConfirmed, FamilyAuditTargetTypes.SkillRun,
             run.Id, null, new { action_id = action.Id }, null, run.Id, cancellationToken);
+
+        var clippingTask = await _db.ClippingTasks.SingleOrDefaultAsync(x => x.RunId == run.Id && x.TenantId == tenantId && x.CreatedByUserId == userId && x.DeletedAt == null, cancellationToken);
+        if (clippingTask is not null && _pipeline is not null && _pipeline is not DisabledClippingPipelineServices)
+        {
+            clippingTask.Status = ClippingTaskStatus.Rendering;
+            clippingTask.EngineStage = "render";
+            clippingTask.UpdatedAt = now;
+            run.Status = "running";
+            run.ResultSummary = "粗剪视频已排队，正在生成可预览产物。";
+            run.Result = JsonSerializer.Serialize(new { skill_run = "quick_edit", status = run.Status, stage = "render" }, JsonOptions);
+            AddEvent(run, await NextSequenceAsync(runId, cancellationToken), "render_queued", run.ResultSummary, now);
+            await _db.SaveChangesAsync(cancellationToken);
+            return new ServiceResult(202, run.ResultSummary, new { actionId = action.Id, status = action.Status, stage = "render" });
+        }
 
         string? failureMessage = null;
         long? draftFileId = null;

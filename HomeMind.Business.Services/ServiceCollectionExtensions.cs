@@ -128,6 +128,7 @@ public static class ServiceCollectionExtensions
         // B32 剪辑对话引导：无状态 context 推进 + 规则意图匹配 + 模板回复；只引导不执行。
         services.AddScoped<IClippingChatServices, ClippingChatServices>();
         services.AddScoped<IClippingTaskServices, ClippingTaskServices>();
+        services.AddScoped<IClippingRenderService, FfmpegRenderService>();
         services.AddScoped<IClippingPipelineServices, ClippingPipelineServices>();
         services.AddScoped<IClippingEngine>(sp => new ConfiguredClippingEngine("video_use", sp.GetRequiredService<IConfiguration>().GetSection("Clipping:Engines:VideoUse").Get<ClippingEngineOptions>() ?? new ClippingEngineOptions()));
         services.AddScoped<IClippingEngine>(sp => new ConfiguredClippingEngine("seedance", sp.GetRequiredService<IConfiguration>().GetSection("Clipping:Engines:Seedance").Get<ClippingEngineOptions>() ?? new ClippingEngineOptions()));
