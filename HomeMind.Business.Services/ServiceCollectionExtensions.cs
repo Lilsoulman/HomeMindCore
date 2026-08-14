@@ -125,6 +125,8 @@ public static class ServiceCollectionExtensions
         // B29 快速剪辑素材登记：上传/路径登记 + ffprobe 元数据；素材仅本人可见可删。
         services.AddScoped<IFfprobeExtractor, FfprobeExtractor>();
         services.AddScoped<IClippingMaterialServices, ClippingMaterialServices>();
+        // B38 素材自动发现：后台 Worker 扫描素材根目录登记新文件（白名单/时间窗/哈希去重/静默降级）。
+        services.AddScoped<IClippingMaterialScanServices, ClippingMaterialScanServices>();
         // B32 剪辑对话引导：无状态 context 推进 + 规则意图匹配 + 模板回复；只引导不执行。
         services.AddScoped<IClippingChatServices, ClippingChatServices>();
         services.AddScoped<IClippingTaskServices, ClippingTaskServices>();

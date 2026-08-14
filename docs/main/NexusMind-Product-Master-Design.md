@@ -709,7 +709,9 @@ chat 引导接口（无状态 context 推进 + 规则意图匹配 + 模板回复
 
 **B37 实施状态（2026-08-14）**：已实现默认关闭的 `FfmpegRenderService` 与后台消费：确认关联任务后返回 202，任务进入 `rendering`，Worker 使用受控 ffmpeg 对首版单素材方案执行 trim+转码；成功登记 mp4 并复用 readToken 下载，失败将任务、动作和运行均置为失败并写安全阶段事件。验收中修复了完成事件序号冲突、创建方案误入 B36 四引擎队列、运行时 `Clipping:Render` 配置解析（直读配置源）与登记 `size_bytes` 解析。**本机全链路验收已通过（2026-08-14）**：真实样片确认后 Worker 实际启动 ffmpeg 渲染，任务 `done`/Run `completed`，mp4 登记 3430836 字节并经 readToken 下载，ffprobe 验证 1920×1080、6.897 秒（60 秒目标被素材全长截断）；首轮登记失败根因为 `ExpertFiles:Storage:Enabled=false`（渲染本身成功），已恢复 `true`。渲染关闭或失败仍安全降级为明确失败，不伪造产物。
 
-**B38 素材自动发现要点**：`clipping_materials` 增加 `source_type`（`upload|path|scan`）与 `directory_key`；扫描按扩展名白名单（mp4/mov/avi/mkv/mp3/wav）、路径 hash 去重、仅处理最近修改文件控制首扫成本；目录不可达时静默降级不报错；自动登记素材仅本人可见（沿用现有 owner 隔离）。
+**B38 素材自动发现要点**：`clipping_materials` 增加 `source_type`（`upload|scan`，路径模式归入 upload 与 B29 一致）与 `directory_key`（路径 SHA-256 去重键 + 唯一索引）；`041` 迁移（039/040 已被 M3 学习记忆库占用，按 B33 避让先例顺延）；后台 Worker 按 `Clipping:Scan` 配置（默认 60 秒间隔、24 小时时间窗、媒体扩展名白名单）扫描素材根目录第一级用户目录，扫描按扩展名白名单（mp4/mov/avi/mkv/mp3/wav…）、storage_path 精确查重 + 路径 hash 去重、仅处理最近修改文件控制首扫成本；owner 由目录名推导、租户经 `tenant_members` active 成员行推导；目录不可达或用户无归属时静默降级不报错；自动登记素材仅本人可见（沿用现有 owner 隔离）、不写审计（后台自动行为）。
+
+**B38 实施状态（2026-08-14）**：`041` 迁移、`IClippingMaterialScanServices`/`ClippingMaterialScanWorker` 与 `ClippingMaterialView.sourceType` 已发布；EF 迁移手写仅加列与索引（`dotnet ef` 自动生成含全库漂移，弃用）；`dotnet build` 0 errors / 0 CS1591，`dotnet test` 全绿 262/262（新增扫描测试 8 项）；真实 MySQL `041` 顺序迁移已执行核验；**本机真实目录验收通过（2026-08-14）**：样片放入素材根目录用户子目录后 ~2s 自动登记（`source_type=scan`、ffprobe 元数据完整），下一轮扫描与历史上传 guid 目录均不重复登记。Web 端「扫描素材区展示」由 Web 端计划承接。
 
 **B39 自然语言解析要点**：解析仅在 AI 配置启用时生效（`/ai/config` enabled）；输出结构化参数 `{ target_duration, aspect_ratio, style, subtitle, mood }` 经 schema 校验，非法值 422 拒绝；解析失败/超时/AI 禁用自动降级为既有模板问卷；参数写入 `clipping_tasks.goal` 并直接进入方案生成；响应返回「已理解：30 秒 / 竖屏 / 快节奏 / 加字幕」确认卡供用户修正；Prompt 不落日志、不返回。
 

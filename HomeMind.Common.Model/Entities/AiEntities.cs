@@ -748,6 +748,10 @@ public sealed class ClippingMaterial
     [Column("fps")] public double? Fps { get; set; }
     /// <summary>素材状态，取值参见 <see cref="ClippingMaterialStatus"/>。</summary>
     [Column("status", TypeName = "varchar(16)")] public string Status { get; set; } = "active";
+    /// <summary>素材来源：upload（浏览器上传或路径登记）/scan（素材根目录自动发现，B38）。</summary>
+    [Column("source_type", TypeName = "varchar(16)")] public string SourceType { get; set; } = "upload";
+    /// <summary>素材路径 SHA-256 去重键（仅 scan 自动发现写入，upload 行为空，B38）。</summary>
+    [Column("directory_key", TypeName = "varchar(64)")] public string? DirectoryKey { get; set; }
     /// <summary>软删除标记，true 表示已删除。</summary>
     [Column("is_deleted")] public bool IsDeleted { get; set; }
     /// <summary>记录创建时间（UTC）。</summary>

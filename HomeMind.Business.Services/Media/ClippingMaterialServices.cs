@@ -147,7 +147,7 @@ public sealed class ClippingMaterialServices : IClippingMaterialServices
     }
 
     private static ClippingMaterialView ToView(ClippingMaterial material) => new(
-        material.Id, material.FileName, material.ContentType, material.FileSize,
+        material.Id, material.FileName, material.SourceType, material.ContentType, material.FileSize,
         material.DurationSeconds, material.Width, material.Height, material.StoragePath, material.CreatedAt);
 
     private static void TryDeleteFile(string path)

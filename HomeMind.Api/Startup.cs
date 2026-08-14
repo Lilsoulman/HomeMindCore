@@ -58,6 +58,7 @@ namespace HomeMind.Api
             services.AddHostedService<HomeAssistantEventWorker>();
             services.AddHostedService<AgentRuntimeWorker>();
             services.AddHostedService<ClippingPipelineWorker>();
+            services.AddHostedService<ClippingMaterialScanWorker>();
             services.AddHostedService<MemoryReviewWorker>();
             services.AddSingleton<TokenService>();
             services.AddSingleton<HomeMind.Common.Infrastructure.SecretProtector>();

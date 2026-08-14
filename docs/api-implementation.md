@@ -27,6 +27,7 @@ JSON 输入中的这些值。
 | 快速剪辑（B29-B32） | `POST/GET /api/v1/clipping/materials`、`DELETE /api/v1/clipping/materials/{materialId}`、`POST /api/v1/clipping/chat`；素材登记、无状态对话引导与 Skill Run 方案修订 |
 | 快速剪辑（V2.8 B35） | `GET /api/v1/clipping/tasks/{taskId}`；chat 返回持久化 `taskId`，quick-edit Run 可携带 `taskId` 并输出 `engineStage`、`version`、`versionHistory` |
 | 快速剪辑（V2.9 B37） | 沿用 `POST /api/v1/skills/runs/{runId}/actions/{actionId}/confirm` 与 `GET /api/v1/clipping/tasks/{taskId}`；确认后异步渲染 mp4，产物沿用 Expert File readToken 下载 |
+| 快速剪辑（V2.9 B38） | 素材自动发现：后台 Worker 扫描素材根目录自动登记（`sourceType=scan`）；无新端点，素材视图新增 `sourceType` 字段 |
 | AI 配置 | `GET/PUT /api/v1/ai/config`（B18 新增 `enabled` 字段，默认 `true`，切换开关不传 `apiKey` 即可保留密文）；`POST /api/v1/ai/{generate,chat,stream}`（B18 占位，启用 → 501，未启用 → 422 + `Code=42200`） |
 | 专家目录 | `GET /api/v1/experts?scope=basic\|mine\|all`（B21 起支持来源过滤，默认 basic 向后兼容；列表项含 `Source` 字段，不暴露他人 owner）、`GET /api/v1/experts/{id}`（他人自建/已软删 404）；自建专家（B21）：`POST /api/v1/experts`、`PUT/DELETE /api/v1/experts/{id}`（`expert.mine.write`，PUT 携带 RowVersion 乐观锁 409/40903，更新生成 version+1 已发布版本） |
 | 智能体运行时 / 专家运行 | `POST /api/v1/expert-runs`、`GET /api/v1/expert-runs/{id}`、`/events`、`/actions`、`/actions/{actionId}/confirm`、`/cancel`、`/retry`；`POST /api/v1/expert-runs/{id}/actions` 创建动作。路由名称为兼容性保留，但领域资源为 `AgentRun`。 |
@@ -683,6 +684,16 @@ B24/B25 不新建轮询端点。剪辑 MCP 端到端（真实 jianying-mcp 写�
 
 2026-08-14 本机 B37 验收通过：chat 获取 taskId → 携带创建 Run（不再误入 B36 四引擎队列）→ 确认返回 202 → Worker 实际启动 ffmpeg（`FfmpegRenderService` 直读配置源，修复运行时 `Clipping:Render` 解析为关闭）→ 任务 `done`/Run `completed` → mp4 登记（3430836 字节，`size_bytes` 解析修复）→ readToken 下载 HTTP 200 → ffprobe 验证 1920×1080、6.897 秒（60 秒目标被素材全长截断，trim 正确语义）；完成阶段事件序号 1-6 连续无冲突。首轮验收发现登记失败根因为 `ExpertFiles:Storage:Enabled=false`（渲染本身成功），已恢复 `true`。渲染关闭或不可用时仍按契约写 `render` 阶段失败事件，绝不登记伪造 mp4。
 
+### V2.9 B38 素材自动发现
+
+`041` 迁移（039/040 已由 M3 学习记忆库占用而顺延）为 `clipping_materials` 增加 `source_type`（`upload|scan`，默认 `upload`）与 `directory_key`（路径 SHA-256 去重键 + 唯一索引 `uk_clipping_materials_directory_key`）。后台 `ClippingMaterialScanWorker`（默认 60 秒间隔，`Clipping:Scan:IntervalSeconds`）经 `IClippingMaterialScanServices` 扫描素材根目录（`Clipping:StoragePath`）第一级用户目录：仅登记扩展名白名单（`Clipping:Scan:AllowedExtensions`）内、最近修改时间窗（`Clipping:Scan:MaxAgeHours`，默认 24 小时）内的新文件；owner 由目录名推导，租户经 `tenant_members` active 成员行推导（users 表无租户列）；已登记路径（上传行 storage_path 精确匹配）与重复扫描（directory_key 哈希）均不重复登记；ffprobe 元数据提取失败不阻塞；目录不可达、用户无 active 归属或唯一键冲突均静默跳过。自动发现不写审计（后台自动行为），删除扫描素材复用既有 `media_file_deleted` 审计。
+
+| 端点/字段 | 契约 |
+| --- | --- |
+| `ClippingMaterialView.sourceType` | 全部素材视图新增 `sourceType`：`upload`（浏览器上传或路径模式登记）/ `scan`（素材根目录自动发现）。`directoryKey` 为服务端内部去重键，**不对外暴露**。 |
+
+2026-08-14 本机 B38 验收通过：真实 MySQL `041` 顺序迁移执行并核验（列/默认值/唯一索引/存量行 `source_type=upload`）；样片放入 `data/clipping/materials/1/` 后 ~2s 自动登记（`source_type=scan`、8067291 字节、ffprobe 7s/1920×1080/30fps、`directory_key` 64 位），下一轮扫描与历史上传 guid 目录均不重复登记；`dotnet test` 全绿 262/262（新增 ClippingMaterialScanServicesTests 8 项）。
+
 未配置或健康检查失败的本地引擎必须返回明确的失败/跳过事件，绝不将 Mock、占位或计划状态写为 succeeded。Seedance 默认关闭，仅当服务端开关、请求 `allowSeedance=true`、用户成本确认及服务端密钥同时成立才允许执行。
 
 2026-08-13 本机验证：默认四引擎均关闭，因此只验证未配置失败与 Seedance 门禁等安全语义。`D:\HomeMind\tools\ffmpeg\bin\ffprobe.exe` 已以 `data/clipping/materials/e2e-video1.mp4` 通过真实 API 上传解析为 7 秒、1920×1080（时长为 ffprobe JSON 字符串时同样可解析），并配置为 `Clipping:FfprobePath`；素材上传在异步复制完成前保持输入流存活，素材和生成文件目录均使用受控绝对路径。`D:\HomeMind\tools\jianying-mcp` 已完成锁定依赖同步，真实 quick-edit 确认已生成剪映草稿并登记 7477 字节文件。`xhs-mcp` 本地 stdio 握手与只读授权状态查询正常，但状态为 `logged_out`，须人工扫码后才可验收真实搜索/详情；发布仍不执行。服务测试 246/246 通过；真实四引擎成功事件仍须在逐引擎配置就绪后独立验收。
@@ -712,7 +723,7 @@ ffprobe 元数据提取失败不阻塞登记，相关字段返回 `null`。`034`
 
 | 端点 | 权限 | 契约要点 |
 | --- | --- | --- |
-| `POST /api/v1/clipping/materials` | `media.write` | `multipart/form-data`，`file`（浏览器上传）与 `filePath`（服务端允许根目录内的既有文件）二选一；两者同时/均未提供、路径不存在或文件超过 2GB → 422；路径模式未启用或越过允许根目录 → 403。成功 201 返回 `ClippingMaterialView`：`id/fileName/contentType/fileSize/durationSeconds?/width?/height?/storagePath/createdAt`。上传文件落在服务端素材目录；不要向客户端枚举或暴露素材根目录。 |
+| `POST /api/v1/clipping/materials` | `media.write` | `multipart/form-data`，`file`（浏览器上传）与 `filePath`（服务端允许根目录内的既有文件）二选一；两者同时/均未提供、路径不存在或文件超过 2GB → 422；路径模式未启用或越过允许根目录 → 403。成功 201 返回 `ClippingMaterialView`：`id/fileName/sourceType/contentType/fileSize/durationSeconds?/width?/height?/storagePath/createdAt`（`sourceType=upload`，B38 起字段扩展）。上传文件落在服务端素材目录；不要向客户端枚举或暴露素材根目录。 |
 | `GET /api/v1/clipping/materials` | `media.read` | 返回当前用户、当前租户未删除素材，按 `createdAt` 倒序；返回 `ClippingMaterialView[]`。 |
 | `DELETE /api/v1/clipping/materials/{materialId}` | `media.write` | 仅软删除当前用户素材；不存在、已删除或非本人 → 404；成功 200。 |
 | `POST /api/v1/skills/runs/{runId}/revise` | `ai.run` + `media.read` | 请求 `{ instruction, idempotencyKey }`，其中 `idempotencyKey` 为 UUID 必填，`instruction` 可为空（回退默认时长）。仅 `pending_actions` 且 `draft_generate` 尚未确认的运行可修订；非法键 422、运行不可见 404、已确认或终态 409；同键重放当前 `SkillRunView`，不重复生成事件/审计。成功 200，方案动作会输出新的 `segments/audio/totalDuration`。 |
