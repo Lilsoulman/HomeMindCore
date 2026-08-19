@@ -22,6 +22,8 @@ using HomeMind.Business.IServices.Family;
 using HomeMind.Business.Services.Family;
 using HomeMind.Business.IServices.Life;
 using HomeMind.Business.Services.Life;
+using HomeMind.Business.IServices.Finance;
+using HomeMind.Business.Services.Finance;
 using HomeMind.Business.IServices.Travel;
 using HomeMind.Business.Services.Travel;
 using HomeMind.Business.IServices.Steward;
@@ -122,6 +124,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemoryCandidateServices, MemoryCandidateServices>();
         services.AddScoped<ILearningMemoryServices, LearningMemoryServices>();
         services.AddScoped<IMemoryReviewServices, MemoryReviewServices>();
+        services.AddScoped<IBillingServices, BillingServices>();
         // B29 快速剪辑素材登记：上传/路径登记 + ffprobe 元数据；素材仅本人可见可删。
         services.AddScoped<IFfprobeExtractor, FfprobeExtractor>();
         services.AddScoped<IClippingMaterialServices, ClippingMaterialServices>();

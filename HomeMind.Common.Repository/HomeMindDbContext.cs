@@ -1,5 +1,6 @@
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Model.Entities.Family;
+using HomeMind.Common.Model.Entities.Finance;
 using HomeMind.Common.Model.Entities.Life;
 using HomeMind.Common.Model.Entities.Memory;
 using HomeMind.Common.Model.Entities.SmartHome;
@@ -104,6 +105,8 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<TravelAttraction> TravelAttractions => Set<TravelAttraction>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
+    public DbSet<BillingAccount> BillingAccounts => Set<BillingAccount>();
+    public DbSet<BillingPaymentRecord> BillingPaymentRecords => Set<BillingPaymentRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -173,6 +176,9 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<LearningMemoryRecord>().Property(x => x.Stability).HasPrecision(4, 3);
         modelBuilder.Entity<LearningMemoryRecord>().HasIndex(x => x.CandidateId).IsUnique();
         modelBuilder.Entity<LearningMemoryRecord>().HasIndex(x => new { x.HomeId, x.OwnerUserId, x.Status, x.LearnedAt });
+        modelBuilder.Entity<BillingAccount>().HasIndex(x => new { x.HomeId, x.NextDueDate, x.IsActive });
+        modelBuilder.Entity<BillingPaymentRecord>().HasIndex(x => new { x.BillingAccountId, x.DueDate }).IsUnique();
+        modelBuilder.Entity<BillingPaymentRecord>().HasIndex(x => new { x.HomeId, x.PaidAt });
     }
 
     private static void ConfigureStoreGeneratedTimestamps(ModelBuilder modelBuilder)
