@@ -716,9 +716,9 @@ ALTER TABLE `smart_home_devices` MODIFY COLUMN `updated_at` datetime(3) NOT NULL
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `deleted_at` datetime(3) NULL COMMENT '软删除时间戳';
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `sync_version` bigint NOT NULL DEFAULT 1 COMMENT '同步版本号，用于增量同步';
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `battery_level` tinyint unsigned NULL COMMENT '电池电量百分比 0-100，无电池设备为空';
-ALTER TABLE `smart_home_devices` MODIFY COLUMN `health_status` longtext NOT NULL COMMENT '设备健康状态，参见 DeviceHealthStatus';
+ALTER TABLE `smart_home_devices` MODIFY COLUMN `health_status` varchar(16) NOT NULL COMMENT '设备健康状态，参见 DeviceHealthStatus';
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `signal_lqi` int NULL COMMENT '信号 LQI 值，数值越大信号越好';
-ALTER TABLE `smart_home_devices` MODIFY COLUMN `zigbee_role` longtext NULL COMMENT '归一化 Zigbee 角色，例如 router/end_device 等';
+ALTER TABLE `smart_home_devices` MODIFY COLUMN `zigbee_role` varchar(16) NULL COMMENT '归一化 Zigbee 角色，例如 router/end_device 等';
 
 -- 表名：设备能力声明（决定可调用与可读取的字段）
 ALTER TABLE `device_capabilities` MODIFY COLUMN `id` bigint NOT NULL AUTO_INCREMENT COMMENT '能力主键';
@@ -787,7 +787,7 @@ ALTER TABLE `family_members` MODIFY COLUMN `birthday` date NULL COMMENT '生日�
 ALTER TABLE `family_members` MODIFY COLUMN `is_elderly` tinyint(1) NOT NULL COMMENT '是否标记为老人，影响健康建议与通知策略';
 ALTER TABLE `family_members` MODIFY COLUMN `is_child` tinyint(1) NOT NULL COMMENT '是否标记为儿童，影响自动化与权限';
 ALTER TABLE `family_members` MODIFY COLUMN `is_primary` tinyint(1) NOT NULL COMMENT '是否家庭主用户';
-ALTER TABLE `family_members` MODIFY COLUMN `member_status` longtext NOT NULL COMMENT '成员生命周期状态：active 在册/away 短期离开/permanently_left 永久离开/deceased 已故';
+ALTER TABLE `family_members` MODIFY COLUMN `member_status` varchar(24) NOT NULL DEFAULT 'active' COMMENT '成员生命周期状态：active 在册/away 短期离开/permanently_left 永久离开/deceased 已故';
 ALTER TABLE `family_members` MODIFY COLUMN `preferences_json` json NULL COMMENT '成员偏好 JSON，由管家与建议系统解析';
 ALTER TABLE `family_members` MODIFY COLUMN `created_by_user_id` bigint NOT NULL COMMENT '创建成员的用户标识，关联 users.id';
 ALTER TABLE `family_members` MODIFY COLUMN `terminal_corrected_by_user_id` bigint NULL COMMENT '终态更正操作者用户标识，仅在终态变更时填写';
@@ -802,8 +802,8 @@ ALTER TABLE `family_members` MODIFY COLUMN `sync_version` bigint NOT NULL COMMEN
 -- 表名：家庭知识（按 key 写入并保留来源与冲突解决结果）
 ALTER TABLE `family_knowledge` MODIFY COLUMN `id` bigint NOT NULL AUTO_INCREMENT COMMENT '知识主键';
 ALTER TABLE `family_knowledge` MODIFY COLUMN `home_id` bigint NOT NULL COMMENT '所属家庭主键，关联 tenants.id';
-ALTER TABLE `family_knowledge` MODIFY COLUMN `category` longtext NOT NULL COMMENT '知识分类：property/wifi/repair/cleaning/insurance/other';
-ALTER TABLE `family_knowledge` MODIFY COLUMN `knowledge_key` longtext NOT NULL COMMENT '知识键，同家庭内用于去重与冲突合并';
+ALTER TABLE `family_knowledge` MODIFY COLUMN `category` varchar(32) NOT NULL COMMENT '知识分类：property/wifi/repair/cleaning/insurance/other';
+ALTER TABLE `family_knowledge` MODIFY COLUMN `knowledge_key` varchar(256) NOT NULL COMMENT '知识键，同家庭内用于去重与冲突合并';
 ALTER TABLE `family_knowledge` MODIFY COLUMN `knowledge_value` longtext NOT NULL COMMENT '知识值';
 ALTER TABLE `family_knowledge` MODIFY COLUMN `notes` longtext NULL COMMENT '补充说明';
 ALTER TABLE `family_knowledge` MODIFY COLUMN `source_type` longtext NOT NULL COMMENT '来源类型：member 家庭成员主动写入/system_ai 系统 AI 推断';
@@ -1042,4 +1042,3 @@ ALTER TABLE `user_expert_preferences` MODIFY COLUMN `is_favorite` TINYINT(1) NOT
 ALTER TABLE `user_expert_preferences` MODIFY COLUMN `last_used_at` DATETIME(3) NULL COMMENT '最近使用时间（UTC）';
 ALTER TABLE `user_expert_preferences` MODIFY COLUMN `created_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '创建时间（UTC）';
 ALTER TABLE `user_expert_preferences` MODIFY COLUMN `updated_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT '更新时间（UTC）';
-
