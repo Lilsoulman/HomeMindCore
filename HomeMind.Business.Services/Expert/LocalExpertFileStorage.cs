@@ -11,16 +11,14 @@ namespace HomeMind.Business.Services.Expert;
 /// <summary>本地对象存储占位实现。仅在 ExpertFiles:Storage:Provider=local 且 ExpertFiles:Storage:Enabled=true 时启用。</summary>
 public sealed class LocalExpertFileStorage : IExpertFileStorage
 {
-    private readonly IConfiguration _configuration;
     private readonly string _root;
     private readonly bool _enabled;
 
     public LocalExpertFileStorage(IConfiguration configuration)
     {
-        _configuration = configuration;
-        _root = configuration["ExpertFiles:Storage:LocalRoot"]
-            ?? throw new InvalidOperationException("缺少 ExpertFiles:Storage:LocalRoot 配置。");
         _enabled = string.Equals(configuration["ExpertFiles:Storage:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
+        _root = configuration["ExpertFiles:Storage:LocalRoot"]
+            ?? Path.Combine(AppContext.BaseDirectory, "data", "expert-files");
     }
 
     public async Task<string> CreateUploadSessionAsync(long tenantId, long fileId, string fileName, long sizeBytes, string mimeType, CancellationToken cancellationToken = default)
