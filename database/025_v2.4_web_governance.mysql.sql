@@ -53,6 +53,9 @@ CREATE TABLE `web_navigation_preferences` (
   CONSTRAINT `ck_webnav_role` CHECK (`role` IN ('owner','admin','member','viewer'))
 ) ENGINE=InnoDB;
 
+ALTER TABLE `tenant_members`
+  ADD COLUMN `row_version` BIGINT NOT NULL DEFAULT 1 COMMENT '乐观锁版本号';
+
 ALTER TABLE `family_audit_logs`
   DROP CHECK `ck_family_audit_action`,
   DROP CHECK `ck_family_audit_target_type`,
