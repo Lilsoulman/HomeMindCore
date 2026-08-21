@@ -716,9 +716,11 @@ ALTER TABLE `smart_home_devices` MODIFY COLUMN `updated_at` datetime(3) NOT NULL
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `deleted_at` datetime(3) NULL COMMENT '软删除时间戳';
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `sync_version` bigint NOT NULL DEFAULT 1 COMMENT '同步版本号，用于增量同步';
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `battery_level` tinyint unsigned NULL COMMENT '电池电量百分比 0-100，无电池设备为空';
+ALTER TABLE `smart_home_devices` DROP INDEX `idx_smart_home_device_health`;
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `health_status` varchar(16) NOT NULL COMMENT '设备健康状态，参见 DeviceHealthStatus';
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `signal_lqi` int NULL COMMENT '信号 LQI 值，数值越大信号越好';
 ALTER TABLE `smart_home_devices` MODIFY COLUMN `zigbee_role` varchar(16) NULL COMMENT '归一化 Zigbee 角色，例如 router/end_device 等';
+ALTER TABLE `smart_home_devices` ADD KEY `idx_smart_home_device_health` (`tenant_id`,`health_status`,`updated_at`);
 
 -- 表名：设备能力声明（决定可调用与可读取的字段）
 ALTER TABLE `device_capabilities` MODIFY COLUMN `id` bigint NOT NULL AUTO_INCREMENT COMMENT '能力主键';
