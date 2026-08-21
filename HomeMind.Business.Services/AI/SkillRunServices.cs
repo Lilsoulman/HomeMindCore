@@ -4,6 +4,7 @@ using HomeMind.Business.IServices.AI;
 using HomeMind.Business.IServices.Expert;
 using HomeMind.Business.IServices.Family;
 using HomeMind.Business.IServices.Media;
+using HomeMind.Business.Services.Media;
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Model.Entities.Family;
 using HomeMind.Common.Model.Entities.Steward;
@@ -34,19 +35,21 @@ public sealed class SkillRunServices : ISkillRunServices
     private readonly IClippingMcpClient _clippingMcp;
     private readonly IExpertFileServices _files;
     private readonly IClippingPipelineServices _pipeline;
+    private readonly IBeatSyncedEditService? _beatSyncedEdit;
 
     /// <summary>构造 Skill 运行服务。</summary>
     /// <param name="db">数据库上下文。</param>
     /// <param name="audit">家庭域审计日志写入器，SkillRun 创建审计使用。</param>
     /// <param name="clippingMcp">剪辑 MCP 客户端，确认后生成 .draft 草稿内容。</param>
     /// <param name="files">专家文件服务，登记生成的草稿文件。</param>
-    public SkillRunServices(HomeMindDbContext db, IFamilyAuditLogger audit, IClippingMcpClient clippingMcp, IExpertFileServices files, IClippingPipelineServices? pipeline = null)
+    public SkillRunServices(HomeMindDbContext db, IFamilyAuditLogger audit, IClippingMcpClient clippingMcp, IExpertFileServices files, IClippingPipelineServices? pipeline = null, IBeatSyncedEditService? beatSyncedEdit = null)
     {
         _db = db;
         _audit = audit;
         _clippingMcp = clippingMcp;
         _files = files;
         _pipeline = pipeline ?? new DisabledClippingPipelineServices();
+        _beatSyncedEdit = beatSyncedEdit;
     }
 
     /// <inheritdoc />
@@ -73,7 +76,19 @@ public sealed class SkillRunServices : ISkillRunServices
             return new ServiceResult(200, "Skill 运行已存在。", await ToViewAsync(existing, cancellationToken));
         }
 
-        var plan = BuildPlan(input.MediaLocation, input.Instruction);
+        var mediaLocations = ResolveMediaLocations(input, task);
+        var musicLocation = input.MusicLocation ?? mediaLocations.FirstOrDefault(IsAudioLocation);
+        var videoLocations = mediaLocations.Where(location => !IsAudioLocation(location)).ToArray();
+        if (videoLocations.Length == 0) return new ServiceResult(422, "快速剪辑至少需要一条视频素材。");
+        SkillPlanInfo plan;
+        try
+        {
+            plan = await BuildPlanAsync(videoLocations, musicLocation, input.Instruction, cancellationToken);
+        }
+        catch (BeatSyncedEditException error)
+        {
+            return new ServiceResult(502, $"音乐卡点方案生成失败：{error.Message}");
+        }
         var planJson = JsonSerializer.Serialize(ToPlanJson(plan), JsonOptions);
         var now = DateTime.UtcNow;
         var run = new AgentRun
@@ -83,7 +98,7 @@ public sealed class SkillRunServices : ISkillRunServices
             SourceType = "skill",
             ExpertVersionId = null,
             RequestIdempotencyKey = idempotencyKey,
-            Input = request.InputJson,
+            Input = JsonSerializer.Serialize(new { media_location = plan.MediaLocations[0], media_locations = plan.MediaLocations, music_location = musicLocation, instruction = plan.Instruction }, JsonOptions),
             Status = "planning",
             Mode = HousekeeperRunPolicies.Steward,
             AutoConfirmPolicy = HousekeeperRunPolicies.L3Only,
@@ -120,14 +135,14 @@ public sealed class SkillRunServices : ISkillRunServices
         });
 
         run.Status = "pending_actions";
-        run.ResultSummary = $"快速剪辑方案已生成：素材「{plan.SourceName}」，总时长约 {plan.TotalDuration} 秒，确认后生成剪映草稿。";
-        run.Result = JsonSerializer.Serialize(new { skill = skill.Key, segment_count = 1, total_duration = plan.TotalDuration }, JsonOptions);
+        run.ResultSummary = $"快速剪辑方案已生成：素材「{plan.SourceSummary}」，共 {plan.Segments.Count} 个片段，总时长约 {plan.TotalDuration} 秒，确认后生成可预览视频。";
+        run.Result = JsonSerializer.Serialize(new { skill = skill.Key, segment_count = plan.Segments.Count, total_duration = plan.TotalDuration }, JsonOptions);
         AddEvent(run, 1, "running", "正在解析素材与生成剪辑方案。", now);
         AddEvent(run, 2, "pending_actions", run.ResultSummary, now);
         await _db.SaveChangesAsync(cancellationToken);
 
         await _audit.LogAsync(tenantId, userId, FamilyAuditActions.SkillRunCreated, FamilyAuditTargetTypes.SkillRun,
-            run.Id, null, new { skill = skill.Key, segment_count = 1, total_duration = plan.TotalDuration }, null, run.Id, cancellationToken);
+            run.Id, null, new { skill = skill.Key, segment_count = plan.Segments.Count, total_duration = plan.TotalDuration }, null, run.Id, cancellationToken);
         return new ServiceResult(201, run.ResultSummary, await ToViewAsync(run, cancellationToken));
     }
 
@@ -282,13 +297,24 @@ public sealed class SkillRunServices : ISkillRunServices
 
         if (request.ReworkScope is not null && request.ReworkScope is not ("parameters" or "partial" or "full"))
             return new ServiceResult(422, "重做范围必须为 parameters、partial 或 full。");
-        var plan = BuildPlan(input.MediaLocation, request.Instruction?.Trim());
+        var musicLocation = input.MusicLocation ?? input.MediaLocations.FirstOrDefault(IsAudioLocation);
+        var videoLocations = input.MediaLocations.Where(location => !IsAudioLocation(location)).ToArray();
+        if (videoLocations.Length == 0) return new ServiceResult(422, "快速剪辑至少需要一条视频素材。");
+        SkillPlanInfo plan;
+        try
+        {
+            plan = await BuildPlanAsync(videoLocations, musicLocation, request.Instruction?.Trim(), cancellationToken);
+        }
+        catch (BeatSyncedEditException error)
+        {
+            return new ServiceResult(502, $"音乐卡点方案生成失败：{error.Message}");
+        }
         var planJson = JsonSerializer.Serialize(ToPlanJson(plan), JsonOptions);
         var now = DateTime.UtcNow;
         action.RequestJson = planJson;
         action.UpdatedAt = now;
-        run.ResultSummary = $"快速剪辑方案已生成：素材「{plan.SourceName}」，总时长约 {plan.TotalDuration} 秒，确认后生成剪映草稿。";
-        AddEvent(run, await NextSequenceAsync(runId, cancellationToken), "plan_revised", $"已按新创作目标重新生成方案，共 1 个片段，总时长约 {plan.TotalDuration} 秒。", now);
+        run.ResultSummary = $"快速剪辑方案已生成：素材「{plan.SourceSummary}」，共 {plan.Segments.Count} 个片段，总时长约 {plan.TotalDuration} 秒，确认后生成可预览视频。";
+        AddEvent(run, await NextSequenceAsync(runId, cancellationToken), "plan_revised", $"已按新创作目标重新生成方案，共 {plan.Segments.Count} 个片段，总时长约 {plan.TotalDuration} 秒。", now);
         _db.ActionExecutionAudits.Add(new ActionExecutionAudit
         {
             TenantId = tenantId,
@@ -317,7 +343,7 @@ public sealed class SkillRunServices : ISkillRunServices
                 await _pipeline.QueueAsync(task.Id, tenantId, reworkScope == "full" ? "video_use" : "hyperframes", request.AllowSeedance, request.CostConfirmed, cancellationToken);
         }
         await _audit.LogAsync(tenantId, userId, FamilyAuditActions.SkillRunRevised, FamilyAuditTargetTypes.SkillRun,
-            run.Id, null, new { run_id = run.Id, segment_count = 1, total_duration = plan.TotalDuration }, null, run.Id, cancellationToken);
+            run.Id, null, new { run_id = run.Id, segment_count = plan.Segments.Count, total_duration = plan.TotalDuration }, null, run.Id, cancellationToken);
         return new ServiceResult(200, "剪辑方案已修订。", await ToViewAsync(run, cancellationToken));
     }
 
@@ -349,17 +375,32 @@ public sealed class SkillRunServices : ISkillRunServices
             succeeded ? new { actionId = action.Id, status = action.Status, message = "草稿已生成，打开剪映即可编辑。" } : null);
     }
 
-    /// <summary>解析 Skill 输入 JSON：media_location 必填非空，instruction 可选；非法或缺字段返回 null。</summary>
+    /// <summary>解析 Skill 输入 JSON：兼容单个 media_location 与多个 media_locations，instruction 可选；非法或缺素材返回 null。</summary>
     private static SkillInput? ReadSkillInput(string inputJson)
     {
         try
         {
             using var document = JsonDocument.Parse(inputJson);
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || ReadValue(root, "media_location") is not { ValueKind: JsonValueKind.String } location || string.IsNullOrWhiteSpace(location.GetString()))
+            if (root.ValueKind != JsonValueKind.Object)
                 return null;
+            var locations = new List<string>();
+            if (ReadValue(root, "media_locations") is { ValueKind: JsonValueKind.Array } locationArray)
+            {
+                foreach (var item in locationArray.EnumerateArray())
+                {
+                    if (item.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(item.GetString())) locations.Add(item.GetString()!.Trim());
+                }
+            }
+            if (ReadValue(root, "media_location") is { ValueKind: JsonValueKind.String } location && !string.IsNullOrWhiteSpace(location.GetString()))
+                locations.Insert(0, location.GetString()!.Trim());
+            locations = locations.Distinct(StringComparer.Ordinal).ToList();
+            if (locations.Count == 0) return null;
             var instruction = ReadValue(root, "instruction") is { ValueKind: JsonValueKind.String } instructionElement ? instructionElement.GetString() : null;
-            return new SkillInput(location.GetString()!.Trim(), instruction);
+            var musicLocation = ReadValue(root, "music_location") is { ValueKind: JsonValueKind.String } musicElement && !string.IsNullOrWhiteSpace(musicElement.GetString())
+                ? musicElement.GetString()!.Trim()
+                : null;
+            return new SkillInput(locations, musicLocation, instruction);
         }
         catch (JsonException)
         {
@@ -367,25 +408,74 @@ public sealed class SkillRunServices : ISkillRunServices
         }
     }
 
-    /// <summary>确定性生成剪辑方案：单片段 + 可选音频占位；总时长从指令中提取，无指令时默认 15 秒。</summary>
-    private static SkillPlanInfo BuildPlan(string mediaLocation, string? instruction)
+    /// <summary>优先采用对话任务中持久化的选材，兼容未携带任务的多素材 Skill 输入。</summary>
+    private static IReadOnlyList<string> ResolveMediaLocations(SkillInput input, ClippingTask? task)
     {
-        var duration = ParseDurationSeconds(instruction);
-        return new SkillPlanInfo(mediaLocation, instruction, ExtractSourceName(mediaLocation), duration);
+        if (task is null || string.IsNullOrWhiteSpace(task.Materials)) return input.MediaLocations;
+        try
+        {
+            var taskLocations = JsonSerializer.Deserialize<string[]>(task.Materials, JsonOptions)
+                ?.Where(location => !string.IsNullOrWhiteSpace(location))
+                .Select(location => location.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray() ?? [];
+            return taskLocations.Length > 0 ? taskLocations : input.MediaLocations;
+        }
+        catch (JsonException)
+        {
+            return input.MediaLocations;
+        }
     }
 
-    /// <summary>将方案信息序列化为蛇形键 JSON（与场景动作 metadata 同惯例，B25 确认执行时解析）。</summary>
+    /// <summary>有音乐时以 beat-synced-edit 的镜头分析和 EDL 为准；无音乐或未启用引擎时保留兼容性粗剪方案。</summary>
+    private async Task<SkillPlanInfo> BuildPlanAsync(IReadOnlyList<string> mediaLocations, string? musicLocation, string? instruction, CancellationToken cancellationToken)
+    {
+        var duration = ParseDurationSeconds(instruction);
+        if (!string.IsNullOrWhiteSpace(musicLocation) && _beatSyncedEdit is not null)
+        {
+            var beatPlan = await _beatSyncedEdit.CreatePlanAsync(mediaLocations, musicLocation, duration, cancellationToken);
+            if (beatPlan is not null)
+            {
+                var syncedSegments = beatPlan.Segments.Select((segment, index) => new SkillPlanSegment(
+                    index + 1,
+                    segment.MediaLocation,
+                    ExtractSourceName(segment.MediaLocation),
+                    segment.SourceStart,
+                    segment.Duration,
+                    segment.TimelineStart,
+                    segment.BeatType)).ToArray();
+                var summary = syncedSegments.Length == 1 ? syncedSegments[0].SourceName : $"{syncedSegments[0].SourceName} 等 {syncedSegments.Length} 段";
+                return new SkillPlanInfo(mediaLocations, instruction, summary, syncedSegments, beatPlan.Duration,
+                    new SkillPlanAudio(beatPlan.MusicLocation, beatPlan.MusicSourceStart, beatPlan.Duration, beatPlan.BeatGridPath, beatPlan.Tempo, true));
+            }
+        }
+        var selected = mediaLocations.Take(duration).ToArray();
+        var baseDuration = duration / selected.Length;
+        var remainder = duration % selected.Length;
+        var timelineStart = 0d;
+        var segments = selected.Select((location, index) =>
+        {
+            var segmentDuration = index < remainder ? baseDuration + 1 : baseDuration;
+            var segment = new SkillPlanSegment(index + 1, location, ExtractSourceName(location), 0, segmentDuration, timelineStart, "fallback");
+            timelineStart += segmentDuration;
+            return segment;
+        }).ToArray();
+        var sourceSummary = segments.Length == 1 ? segments[0].SourceName : $"{segments[0].SourceName} 等 {segments.Length} 段";
+        return new SkillPlanInfo(selected, instruction, sourceSummary, segments, duration, null);
+    }
+
+    /// <summary>将方案信息序列化为蛇形键 JSON；片段保留内部渲染所需的素材位置，展示视图仅输出文件名和时长。</summary>
     private static object ToPlanJson(SkillPlanInfo plan) => new
     {
-        media_location = plan.MediaLocation,
+        media_location = plan.MediaLocations[0],
+        media_locations = plan.MediaLocations,
         instruction = plan.Instruction,
-        segments = new[]
-        {
-            new { index = 1, source = plan.SourceName, duration = plan.TotalDuration }
-        },
-        audio = (object?)null,
+        segments = plan.Segments.Select(segment => new { index = segment.Index, source = segment.SourceName, media_location = segment.MediaLocation, start = segment.SourceStart, timeline_start = segment.TimelineStart, duration = segment.Duration, beat_type = segment.BeatType }),
+        audio = plan.Audio is null ? null : new { music_location = plan.Audio.MusicLocation, source_start = plan.Audio.SourceStart, duration = plan.Audio.Duration, beat_grid_path = plan.Audio.BeatGridPath, tempo = plan.Audio.Tempo, beat_synced = plan.Audio.BeatSynced, volume = 0.8 },
         total_duration = plan.TotalDuration
     };
+
+    private static bool IsAudioLocation(string location) => Path.GetExtension(location).ToLowerInvariant() is ".mp3" or ".wav" or ".m4a" or ".flac" or ".aac" or ".ogg";
 
     /// <summary>从创作指令中提取目标时长（N秒/N分钟），取 1-600 秒范围；无匹配返回默认 15 秒。</summary>
     private static int ParseDurationSeconds(string? instruction)
@@ -433,13 +523,21 @@ public sealed class SkillRunServices : ISkillRunServices
                 {
                     var index = segment.TryGetProperty("index", out var indexElement) && indexElement.TryGetInt32(out var parsedIndex) ? parsedIndex : segments.Count + 1;
                     var source = segment.TryGetProperty("source", out var sourceElement) ? sourceElement.GetString() ?? "" : "";
-                    var segmentDuration = segment.TryGetProperty("duration", out var durationElement) && durationElement.TryGetInt32(out var parsedDuration) ? parsedDuration : 0;
-                    segments.Add(new SkillPlanSegmentView(index, source, segmentDuration));
+                    var segmentDuration = segment.TryGetProperty("duration", out var durationElement) && durationElement.TryGetDouble(out var parsedDuration) ? (int)Math.Ceiling(parsedDuration) : 0;
+                    var sourceStart = segment.TryGetProperty("start", out var startElement) && startElement.TryGetDouble(out var parsedStart) ? parsedStart : 0d;
+                    var timelineStart = segment.TryGetProperty("timeline_start", out var timelineElement) && timelineElement.TryGetDouble(out var parsedTimeline) ? parsedTimeline : 0d;
+                    var beatType = segment.TryGetProperty("beat_type", out var beatElement) ? beatElement.GetString() ?? "fallback" : "fallback";
+                    segments.Add(new SkillPlanSegmentView(index, source, segmentDuration, sourceStart, timelineStart, beatType));
                 }
             }
             object? audio = null;
-            if (ReadValue(root, "audio") is { ValueKind: JsonValueKind.Object } audioElement) audio = audioElement;
-            var totalDuration = ReadValue(root, "total_duration") is { ValueKind: JsonValueKind.Number } duration && duration.TryGetInt32(out var parsedTotal) ? parsedTotal : 0;
+            if (ReadValue(root, "audio") is { ValueKind: JsonValueKind.Object } audioElement)
+            {
+                var tempo = ReadValue(audioElement, "tempo") is { ValueKind: JsonValueKind.Number } tempoElement && tempoElement.TryGetDouble(out var parsedTempo) ? parsedTempo : 0d;
+                var beatSynced = ReadValue(audioElement, "beat_synced") is { ValueKind: JsonValueKind.True };
+                audio = new { beat_synced = beatSynced, tempo };
+            }
+            var totalDuration = ReadValue(root, "total_duration") is { ValueKind: JsonValueKind.Number } duration && duration.TryGetDouble(out var parsedTotal) ? (int)Math.Ceiling(parsedTotal) : 0;
             return new SkillPlanData(segments, audio, totalDuration);
         }
         catch (JsonException)
@@ -503,9 +601,11 @@ public sealed class SkillRunServices : ISkillRunServices
         return document.RootElement.TryGetProperty("message", out var message) ? message.GetString() ?? "" : "";
     }
 
-    private sealed record SkillInput(string MediaLocation, string? Instruction);
+    private sealed record SkillInput(IReadOnlyList<string> MediaLocations, string? MusicLocation, string? Instruction);
     private sealed record ClippingTaskVersionEntry(int Version, object Plan, string Change, DateTime ModifiedAt);
-    private sealed record SkillPlanInfo(string MediaLocation, string? Instruction, string SourceName, int TotalDuration);
+    private sealed record SkillPlanInfo(IReadOnlyList<string> MediaLocations, string? Instruction, string SourceSummary, IReadOnlyList<SkillPlanSegment> Segments, double TotalDuration, SkillPlanAudio? Audio);
+    private sealed record SkillPlanSegment(int Index, string MediaLocation, string SourceName, double SourceStart, double Duration, double TimelineStart, string BeatType);
+    private sealed record SkillPlanAudio(string MusicLocation, double SourceStart, double Duration, string BeatGridPath, double Tempo, bool BeatSynced);
     private sealed record SkillPlanData(IReadOnlyList<SkillPlanSegmentView> Segments, object? Audio, int TotalDuration);
 
     /// <summary>依据修改文本在未显式指定时推断重做粒度。</summary>

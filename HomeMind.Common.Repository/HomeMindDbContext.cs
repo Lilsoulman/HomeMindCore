@@ -1,6 +1,8 @@
 using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Model.Entities.Family;
 using HomeMind.Common.Model.Entities.Finance;
+using HomeMind.Common.Model.Entities.Courier;
+using HomeMind.Common.Model.Entities.Pet;
 using HomeMind.Common.Model.Entities.Life;
 using HomeMind.Common.Model.Entities.Memory;
 using HomeMind.Common.Model.Entities.SmartHome;
@@ -94,6 +96,7 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<FamilyKnowledge> FamilyKnowledge => Set<FamilyKnowledge>();
     public DbSet<DecisionHistory> DecisionHistory => Set<DecisionHistory>();
     public DbSet<FamilyAuditLog> FamilyAuditLogs => Set<FamilyAuditLog>();
+    public DbSet<FamilyDocumentDeadline> FamilyDocumentDeadlines => Set<FamilyDocumentDeadline>();
     public DbSet<StewardActivity> StewardActivities => Set<StewardActivity>();
     public DbSet<ConfirmationItem> ConfirmationItems => Set<ConfirmationItem>();
     public DbSet<ConfirmationBatchRecord> ConfirmationBatchRecords => Set<ConfirmationBatchRecord>();
@@ -105,8 +108,14 @@ public sealed class HomeMindDbContext : DbContext
     public DbSet<TravelAttraction> TravelAttractions => Set<TravelAttraction>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ConversationMessage> ConversationMessages => Set<ConversationMessage>();
+    public DbSet<FinanceTransaction> FinanceTransactions => Set<FinanceTransaction>();
     public DbSet<BillingAccount> BillingAccounts => Set<BillingAccount>();
     public DbSet<BillingPaymentRecord> BillingPaymentRecords => Set<BillingPaymentRecord>();
+    public DbSet<CourierShipment> CourierShipments => Set<CourierShipment>();
+    public DbSet<CourierShipmentEvent> CourierShipmentEvents => Set<CourierShipmentEvent>();
+    public DbSet<PetProfile> PetProfiles => Set<PetProfile>();
+    public DbSet<PetCareEvent> PetCareEvents => Set<PetCareEvent>();
+    public DbSet<PetSupplyRecord> PetSupplyRecords => Set<PetSupplyRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -176,9 +185,17 @@ public sealed class HomeMindDbContext : DbContext
         modelBuilder.Entity<LearningMemoryRecord>().Property(x => x.Stability).HasPrecision(4, 3);
         modelBuilder.Entity<LearningMemoryRecord>().HasIndex(x => x.CandidateId).IsUnique();
         modelBuilder.Entity<LearningMemoryRecord>().HasIndex(x => new { x.HomeId, x.OwnerUserId, x.Status, x.LearnedAt });
+        modelBuilder.Entity<FinanceTransaction>().HasIndex(x => new { x.HomeId, x.ContentHash }).IsUnique();
+        modelBuilder.Entity<FinanceTransaction>().HasIndex(x => new { x.HomeId, x.TransactionDate });
         modelBuilder.Entity<BillingAccount>().HasIndex(x => new { x.HomeId, x.NextDueDate, x.IsActive });
         modelBuilder.Entity<BillingPaymentRecord>().HasIndex(x => new { x.BillingAccountId, x.DueDate }).IsUnique();
         modelBuilder.Entity<BillingPaymentRecord>().HasIndex(x => new { x.HomeId, x.PaidAt });
+        modelBuilder.Entity<CourierShipment>().HasIndex(x => new { x.HomeId, x.OwnerUserId, x.TrackingNumberHash }).IsUnique();
+        modelBuilder.Entity<CourierShipmentEvent>().HasIndex(x => new { x.ShipmentId, x.Status, x.OccurredAt });
+        modelBuilder.Entity<PetProfile>().HasIndex(x => new { x.HomeId, x.IsActive });
+        modelBuilder.Entity<PetCareEvent>().HasIndex(x => new { x.HomeId, x.PetId, x.DueDate });
+        modelBuilder.Entity<PetSupplyRecord>().HasIndex(x => new { x.HomeId, x.PetId, x.ItemName }).IsUnique();
+        modelBuilder.Entity<FamilyDocumentDeadline>().HasIndex(x => new { x.HomeId, x.ExpiresOn, x.IsActive });
     }
 
     private static void ConfigureStoreGeneratedTimestamps(ModelBuilder modelBuilder)

@@ -1,6 +1,10 @@
 using HomeMind.Business.Services.Media;
+using HomeMind.Business.IServices.AI;
+using HomeMind.Common.Infrastructure;
+using HomeMind.Common.Model.Entities;
 using HomeMind.Common.Repository;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using HomeMind.Common.Model.ViewModel.Data.Media;
 using Xunit;
 
@@ -144,5 +148,123 @@ public class ClippingChatServicesTests
         var resumed = await _services.ChatAsync(10, 1, new ClippingChatRequest("继续", firstResponse.Context, firstResponse.TaskId), default);
         Assert.Equal(200, resumed.StatusCode);
         Assert.Equal(firstResponse.TaskId, Assert.IsType<ClippingChatResponse>(resumed.Data).TaskId);
+    }
+
+    /// <summary>B39：AI 启用时将一句话解析为受限参数、写入任务目标并返回确认卡。</summary>
+    [Fact]
+    public async Task Chat_AiEnabled_Parses_Goal_Persists_Parameters_And_Returns_Confirmation()
+    {
+        var db = NewDb("ai-success");
+        var protector = new SecretProtector(BuildConfig());
+        await EnableAiAsync(db, protector);
+        var services = new ClippingChatServices(db, new FakeLlm("""{"target_duration":30,"aspect_ratio":"9:16","style":"快节奏","subtitle":true,"mood":"活力"}"""), protector);
+
+        var result = await services.ChatAsync(10, 1, new ClippingChatRequest("剪成 30 秒竖屏快节奏带字幕", new ClippingChatContext("collecting_materials", new[] { "/data/a.mp4" }, null, null)), default);
+
+        Assert.Equal(200, result.StatusCode);
+        var response = Assert.IsType<ClippingChatResponse>(result.Data);
+        Assert.Equal("generating_plan", response.Context.Step);
+        Assert.Contains("30 秒", response.Context.Goal);
+        Assert.NotNull(response.Confirmation);
+        Assert.Equal("已理解", response.Confirmation!.Title);
+        var task = await db.ClippingTasks.SingleAsync();
+        using var goal = System.Text.Json.JsonDocument.Parse(task.Goal!);
+        Assert.Equal(30, goal.RootElement.GetProperty("target_duration").GetInt32());
+        Assert.True(goal.RootElement.GetProperty("subtitle").GetBoolean());
+    }
+
+    /// <summary>B39：模型成功返回但参数不符合 schema 时明确拒绝为 422。</summary>
+    [Fact]
+    public async Task Chat_AiReturns_InvalidParameters_Returns422()
+    {
+        var db = NewDb("ai-invalid");
+        var protector = new SecretProtector(BuildConfig());
+        await EnableAiAsync(db, protector);
+        var services = new ClippingChatServices(db, new FakeLlm("""{"target_duration":30,"aspect_ratio":"9:16","style":"快节奏","subtitle":true,"mood":"活力","unexpected":true}"""), protector);
+
+        var result = await services.ChatAsync(10, 1, new ClippingChatRequest("剪短一点", new ClippingChatContext("collecting_materials", new[] { "/data/a.mp4" }, null, null)), default);
+
+        Assert.Equal(422, result.StatusCode);
+    }
+
+    /// <summary>B39：AI 被用户关闭时不调用模型并保持既有模板问卷。</summary>
+    [Fact]
+    public async Task Chat_AiDisabled_Falls_Back_To_Template_Guide()
+    {
+        var db = NewDb("ai-disabled");
+        var protector = new SecretProtector(BuildConfig());
+        await EnableAiAsync(db, protector, false);
+        var services = new ClippingChatServices(db, new ThrowingLlm(), protector);
+
+        var result = await services.ChatAsync(10, 1, new ClippingChatRequest("剪成 30 秒竖屏", new ClippingChatContext("collecting_materials", new[] { "/data/a.mp4" }, null, null)), default);
+
+        var response = Assert.IsType<ClippingChatResponse>(result.Data);
+        Assert.Equal(200, result.StatusCode);
+        Assert.Null(response.Confirmation);
+        Assert.Equal("generating_plan", response.Context.Step);
+    }
+
+    /// <summary>B39：模型超时或调用失败时自动回退模板问卷，不向客户端暴露内部错误。</summary>
+    [Fact]
+    public async Task Chat_AiTimeout_Falls_Back_To_Template_Guide()
+    {
+        var db = NewDb("ai-timeout");
+        var protector = new SecretProtector(BuildConfig());
+        await EnableAiAsync(db, protector);
+        var services = new ClippingChatServices(db, new FakeLlm(null, false, LlmErrorCodes.Timeout), protector);
+
+        var result = await services.ChatAsync(10, 1, new ClippingChatRequest("剪成 30 秒竖屏", new ClippingChatContext("collecting_materials", new[] { "/data/a.mp4" }, null, null)), default);
+
+        var response = Assert.IsType<ClippingChatResponse>(result.Data);
+        Assert.Equal(200, result.StatusCode);
+        Assert.Null(response.Confirmation);
+    }
+
+    /// <summary>创建隔离的 InMemory 数据库。</summary>
+    private static HomeMindDbContext NewDb(string name) => new(new DbContextOptionsBuilder<HomeMindDbContext>().UseInMemoryDatabase($"hm-b39-{name}-{Guid.NewGuid()}").Options);
+
+    /// <summary>写入测试所需的用户级 AI 配置。</summary>
+    private static async Task EnableAiAsync(HomeMindDbContext db, SecretProtector protector, bool enabled = true)
+    {
+        db.AiConfigs.Add(new AiConfig
+        {
+            UserId = 10,
+            Endpoint = "https://example.invalid/v1",
+            Model = "test-model",
+            Temperature = 0,
+            Enabled = enabled,
+            ApiKeyEncrypted = protector.Encrypt("test-key")
+        });
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>构造密钥加解密所需的稳定测试配置。</summary>
+    private static IConfiguration BuildConfig() => new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["Auth:SigningKey"] = "b39-test-signing-key-must-have-at-least-32-bytes"
+    }).Build();
+
+    /// <summary>返回预设模型结果的轻量 LLM 替身。</summary>
+    private sealed class FakeLlm : ILLMClient
+    {
+        private readonly string? _content;
+        private readonly bool _success;
+        private readonly string? _errorCode;
+
+        public FakeLlm(string? content, bool success = true, string? errorCode = null)
+        {
+            _content = content;
+            _success = success;
+            _errorCode = errorCode;
+        }
+
+        public Task<LlmCompletion> CompleteAsync(LlmRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new LlmCompletion(_content ?? string.Empty, null, _success, _errorCode, _success ? null : "模型调用失败"));
+    }
+
+    /// <summary>验证禁用 AI 时绝不会调用模型。</summary>
+    private sealed class ThrowingLlm : ILLMClient
+    {
+        public Task<LlmCompletion> CompleteAsync(LlmRequest request, CancellationToken cancellationToken = default) => throw new InvalidOperationException("不应调用模型。");
     }
 }

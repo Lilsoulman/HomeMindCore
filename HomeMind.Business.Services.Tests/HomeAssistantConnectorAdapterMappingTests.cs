@@ -71,6 +71,16 @@ public class HomeAssistantConnectorAdapterMappingTests
         Assert.Equal("healthy", device.HealthStatus);
     }
 
+    [Fact]
+    public void Maps_State_Changed_Payload_To_The_Same_Normalized_State_As_Discovery()
+    {
+        var device = Map(BuildEntity(battery: null, lqi: null, state: "on", role: null));
+
+        using var state = JsonDocument.Parse(device.StateJson);
+        Assert.True(state.RootElement.GetProperty("power").GetBoolean());
+        Assert.Equal("online", device.OnlineStatus);
+    }
+
     private static DiscoveredDevice Map(JsonElement entity) =>
         InvokeTryMapEntity(entity);
 

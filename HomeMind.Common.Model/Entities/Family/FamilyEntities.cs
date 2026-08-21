@@ -137,6 +137,20 @@ public static class FamilyMemberStatus
 /// <summary>家庭上下文审计动作集合，决定 <see cref="FamilyAuditLog.Action"/> 的合法取值。</summary>
 public static class FamilyAuditActions
 {
+    /// <summary>家庭证件到期记录创建。</summary>
+    public const string ScheduleDocumentDeadlineCreate = "schedule_document_deadline_create";
+    /// <summary>宠物档案创建。</summary>
+    public const string PetProfileCreate = "pet_profile_create";
+    /// <summary>宠物照护日历创建。</summary>
+    public const string PetCareEventCreate = "pet_care_event_create";
+    /// <summary>宠物用品消耗记录更新。</summary>
+    public const string PetSupplyUpsert = "pet_supply_upsert";
+    /// <summary>家庭财务账单导入。</summary>
+    public const string FinanceImport = "finance_import";
+    /// <summary>家庭缴费账户建档。</summary>
+    public const string BillingAccountCreate = "billing_account_create";
+    /// <summary>家庭缴费完成记录。</summary>
+    public const string BillingPaymentRecord = "billing_payment_record";
     /// <summary>成员普通状态变更（含 active 与 away 双向）。</summary>
     public const string MemberCorrection = "member_correction";
     /// <summary>成员终态更正或终态恢复。</summary>
@@ -163,8 +177,6 @@ public static class FamilyAuditActions
     public const string FavoriteDelete = "favorite_delete";
     /// <summary>个人偏好收藏由对话导入；由收藏服务写入。</summary>
     public const string FavoriteImport = "favorite_import";
-    public const string BillingAccountCreate = "billing_account_create";
-    public const string BillingPaymentRecord = "billing_payment_record";
     /// <summary>个人连接器授权会话发起；由连接器授权服务写入。</summary>
     public const string ConnectorAuthorizeStarted = "connector_authorize_started";
     /// <summary>个人连接器授权回调完成，凭据引用落库；由连接器授权服务写入。</summary>
@@ -214,6 +226,20 @@ public static class FamilyAuditActions
 /// <summary>家庭上下文审计目标类型集合，决定 <see cref="FamilyAuditLog.TargetType"/> 的合法取值。</summary>
 public static class FamilyAuditTargetTypes
 {
+    /// <summary>目标为家庭证件到期记录。</summary>
+    public const string ScheduleDocumentDeadline = "schedule_document_deadline";
+    /// <summary>目标为宠物档案。</summary>
+    public const string PetProfile = "pet_profile";
+    /// <summary>目标为宠物照护日历记录。</summary>
+    public const string PetCareEvent = "pet_care_event";
+    /// <summary>目标为宠物用品记录。</summary>
+    public const string PetSupply = "pet_supply";
+    /// <summary>财务账单条目或导入批次。</summary>
+    public const string FinanceTransaction = "finance_transaction";
+    /// <summary>目标为 <see cref="Entities.Finance.BillingAccount"/>。</summary>
+    public const string BillingAccount = "billing_account";
+    /// <summary>目标为 <see cref="Entities.Finance.BillingPaymentRecord"/>。</summary>
+    public const string BillingPaymentRecord = "billing_payment_record";
     /// <summary>目标为 <see cref="FamilyMember"/>。</summary>
     public const string FamilyMember = "family_member";
     /// <summary>目标为 <see cref="FamilyKnowledge"/>。</summary>
@@ -226,8 +252,6 @@ public static class FamilyAuditTargetTypes
     public const string StewardActivity = "steward_activity";
     /// <summary>目标为 <see cref="Entities.Life.PersonalFavorite"/>。</summary>
     public const string PersonalFavorite = "personal_favorite";
-    public const string BillingAccount = "billing_account";
-    public const string BillingPaymentRecord = "billing_payment_record";
     /// <summary>目标为 <see cref="Entities.SmartHome.ConnectorAuthorizationSession"/>。</summary>
     public const string ConnectorAuthorization = "connector_authorization";
     /// <summary>目标为 <see cref="HomeMind.Common.Model.Entities.TenantMember"/> 的角色/状态/owner 转让操作。</summary>
@@ -250,6 +274,50 @@ public static class FamilyAuditTargetTypes
     public const string MemoryCandidate = "memory_candidate";
     /// <summary>目标为已接受学习记忆投影。</summary>
     public const string LearningMemory = "learning_memory";
+}
+
+/// <summary>家庭证件到期记录，只保存提醒所需的展示名称、持有人和到期日。</summary>
+[Table("family_document_deadlines")]
+public sealed class FamilyDocumentDeadline
+{
+    /// <summary>到期记录主键。</summary>
+    [Key, Column("id")] public long Id { get; set; }
+    /// <summary>所属家庭主键。</summary>
+    [Column("home_id")] public long HomeId { get; set; }
+    /// <summary>持有人用户主键，可空表示未关联家庭账号。</summary>
+    [Column("holder_user_id")] public long? HolderUserId { get; set; }
+    /// <summary>证件类型，参见 <see cref="FamilyDocumentTypes"/>。</summary>
+    [Column("document_type")] public string DocumentType { get; set; } = null!;
+    /// <summary>家庭内展示名称，不含证件号码、照片或原文。</summary>
+    [Column("display_name")] public string DisplayName { get; set; } = null!;
+    /// <summary>证件到期日期。</summary>
+    [Column("expires_on")] public DateTime ExpiresOn { get; set; }
+    /// <summary>创建记录的用户主键。</summary>
+    [Column("created_by_user_id")] public long CreatedByUserId { get; set; }
+    /// <summary>是否继续参与提醒。</summary>
+    [Column("is_active")] public bool IsActive { get; set; } = true;
+    /// <summary>创建时间（UTC）。</summary>
+    [Column("created_at")] public DateTime CreatedAt { get; set; }
+    /// <summary>更新时间（UTC）。</summary>
+    [Column("updated_at")] public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>家庭证件到期记录允许的证件类型。</summary>
+public static class FamilyDocumentTypes
+{
+    /// <summary>居民身份证。</summary>
+    public const string IdentityCard = "identity_card";
+    /// <summary>护照。</summary>
+    public const string Passport = "passport";
+    /// <summary>驾驶证。</summary>
+    public const string DriverLicense = "driver_license";
+    /// <summary>居住证。</summary>
+    public const string ResidencePermit = "residence_permit";
+    /// <summary>其他证件。</summary>
+    public const string Other = "other";
+    /// <summary>全部允许的证件类型。</summary>
+    public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.Ordinal)
+    { IdentityCard, Passport, DriverLicense, ResidencePermit, Other };
 }
 
 /// <summary>家庭域审计记录实体；与管家动态、运行事件分离，专门承载 Family 域可审计动作。</summary>

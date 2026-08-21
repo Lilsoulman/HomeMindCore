@@ -34,6 +34,27 @@ public sealed class BillingServicesTests
         Assert.Equal(FamilyAuditActions.BillingPaymentRecord, audit.LastAction);
     }
 
+    /// <summary>同一账户和到期日的第二次缴费登记返回冲突，且不重复写入财务流水。</summary>
+    [Fact]
+    public async Task RecordPayment_Rejects_Duplicate_Due_Date()
+    {
+        await using var db = NewDb();
+        var service = new BillingServices(db, new FakeAuditLogger());
+        var dueDate = new DateTime(2026, 9, 10);
+        var created = await service.CreateAccountAsync(1, 10,
+            new BillingAccountCreateRequest(BillingTypes.Water, "自来水公司", "家中水费", dueDate));
+        var account = Assert.IsType<BillingAccountView>(created.Data);
+
+        Assert.Equal(201, (await service.RecordPaymentAsync(1, 10, account.Id,
+            new BillingPaymentRecordRequest(50, DueDate: dueDate))).StatusCode);
+        var duplicate = await service.RecordPaymentAsync(1, 10, account.Id,
+            new BillingPaymentRecordRequest(50, DueDate: dueDate));
+
+        Assert.Equal(409, duplicate.StatusCode);
+        Assert.Single(db.BillingPaymentRecords);
+        Assert.Single(db.FinanceTransactions);
+    }
+
     /// <summary>提前三天提醒重复读取只创建一张 L1 确认卡。</summary>
     [Fact]
     public async Task Reminders_Are_Idempotently_Projected_To_Confirmation_Center()

@@ -52,8 +52,8 @@ public sealed class ClippingPipelineServices : IClippingPipelineServices
     /// <inheritdoc />
     public async Task<int> ProcessNextAsync(CancellationToken cancellationToken = default)
     {
-        var task = await _db.ClippingTasks.OrderBy(x => x.UpdatedAt).FirstOrDefaultAsync(x => (x.Status == ClippingTaskStatus.Generating || x.Status == ClippingTaskStatus.Rendering) && x.DeletedAt == null, cancellationToken);
-        if (task is null || task.RunId is null) return 0;
+        var task = await _db.ClippingTasks.OrderBy(x => x.UpdatedAt).FirstOrDefaultAsync(x => x.RunId != null && (x.Status == ClippingTaskStatus.Generating || x.Status == ClippingTaskStatus.Rendering) && x.DeletedAt == null, cancellationToken);
+        if (task is null) return 0;
         if (task.Status == ClippingTaskStatus.Rendering) return await RenderAsync(task, cancellationToken);
         var startIndex = Array.IndexOf(Stages, task.EngineStage ?? "video_use");
         if (startIndex < 0) startIndex = 0;

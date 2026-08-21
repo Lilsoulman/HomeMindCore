@@ -36,6 +36,10 @@ using HomeMind.Business.Services.Conversation;
 using HomeMind.Business.IServices.Memory;
 using HomeMind.Business.Services.Memory;
 using HomeMind.Business.Services.Connectors.Mcp;
+using HomeMind.Business.IServices.Courier;
+using HomeMind.Business.Services.Courier;
+using HomeMind.Business.IServices.Pet;
+using HomeMind.Business.Services.Pet;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -124,10 +128,22 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemoryCandidateServices, MemoryCandidateServices>();
         services.AddScoped<ILearningMemoryServices, LearningMemoryServices>();
         services.AddScoped<IMemoryReviewServices, MemoryReviewServices>();
+        services.AddScoped<IFinanceServices, FinanceServices>();
         services.AddScoped<IBillingServices, BillingServices>();
+        services.AddScoped<ICourierServices, CourierServices>();
+        services.AddScoped<IPetServices, PetServices>();
+        services.AddScoped<IFamilyScheduleServices, FamilyScheduleServices>();
+        services.AddScoped<IKuaidi100McpClient>(sp =>
+        {
+            var config = sp.GetRequiredService<IConfiguration>();
+            return config.GetValue<bool>("Mcp:Clients:Kuaidi100:Enabled")
+                ? new Kuaidi100McpClient(new StdioMcpProcessClient(config.GetSection("Mcp:Clients:Kuaidi100:Process").Get<McpProcessOptions>() ?? new McpProcessOptions()))
+                : new MockKuaidi100McpClient();
+        });
         // B29 快速剪辑素材登记：上传/路径登记 + ffprobe 元数据；素材仅本人可见可删。
         services.AddScoped<IFfprobeExtractor, FfprobeExtractor>();
         services.AddScoped<IClippingMaterialServices, ClippingMaterialServices>();
+        services.AddScoped<IBeatSyncedEditService, BeatSyncedEditService>();
         // B38 素材自动发现：后台 Worker 扫描素材根目录登记新文件（白名单/时间窗/哈希去重/静默降级）。
         services.AddScoped<IClippingMaterialScanServices, ClippingMaterialScanServices>();
         // B32 剪辑对话引导：无状态 context 推进 + 规则意图匹配 + 模板回复；只引导不执行。

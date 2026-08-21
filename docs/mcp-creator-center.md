@@ -1,5 +1,7 @@
 # 创作者中心本地 MCP Bridge
 
+> 本文仅说明本地 Bridge 的边界；产品、开发计划和客户端 API 接入请分别阅读 [README](README.md)、[开发计划](development-plan.md) 和 [API 接入](api-integration.md)。
+
 `HomeMind.CreatorMcp` 是一个通过 stdio 运行的 MCP Server。它从现有的 NexusMind API 同步创作者中心数据到本地 SQLite，并仅从本地数据库向 Agent 提供查询；同步不是后台隐式动作，Agent 必须显式调用 `sync_creator_center`。
 
 ## 数据范围与安全边界

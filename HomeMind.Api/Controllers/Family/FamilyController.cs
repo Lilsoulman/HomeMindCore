@@ -48,7 +48,7 @@ public sealed class FamilyController : ApiControllerBase
     /// <returns>成员列表统一响应。</returns>
     [RequireHomeOwner]
     [Authorize(Policy = PermissionNames.FamilyRead)]
-    [HttpGet("members")]
+    [HttpGet("family-members")]
     public async Task<ActionResult<ApiResponse<object>>> ListMembers(long homeId) =>
         ToResponse(await _members.ListAsync(homeId, HttpContext.RequestAborted));
 

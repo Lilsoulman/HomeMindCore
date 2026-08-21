@@ -83,8 +83,43 @@ public sealed class HomeAssistantAdapter : IDeviceAdapter, IDeviceDiscovery, IDe
         }
     }
 
-    public Task<AdapterDeviceState?> ReadDeviceStateAsync(ConnectorReference connector, long deviceId, CancellationToken cancellationToken = default) =>
-        Task.FromResult<AdapterDeviceState?>(null);
+    public async Task<AdapterDeviceState?> ReadDeviceStateAsync(ConnectorReference connector, long deviceId, CancellationToken cancellationToken = default)
+    {
+        var externalId = await _db.SmartHomeDevices
+            .Where(x => x.Id == deviceId && x.TenantId == connector.TenantId && x.WorkspaceConnectorId == connector.ConnectorId && x.DeletedAt == null)
+            .Select(x => x.ExternalId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(externalId)) return null;
+
+        var clientResult = await CreateClientAsync(connector, cancellationToken);
+        if (clientResult.Client is null) return null;
+
+        using var client = clientResult.Client;
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"api/states/{Uri.EscapeDataString(externalId)}");
+        try
+        {
+            using var response = await client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            if (!TryMapEntity(document.RootElement, out var device)) return null;
+            using var normalizedState = JsonDocument.Parse(device.StateJson);
+            return new AdapterDeviceState(deviceId, normalizedState.RootElement.Clone(), device.SampledAt);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     public async Task<DeviceCommandResult> ExecuteCommandAsync(ConnectorReference connector, DeviceCommand command, CancellationToken cancellationToken = default)
     {
@@ -109,9 +144,11 @@ public sealed class HomeAssistantAdapter : IDeviceAdapter, IDeviceDiscovery, IDe
         try
         {
             using var response = await client.SendAsync(request, cancellationToken);
-            return response.IsSuccessStatusCode
-                ? new DeviceCommandResult(true, "executed", Message: "设备行动已下发。")
-                : new DeviceCommandResult(false, "failed", ToErrorCode(response.StatusCode), "设备服务拒绝了该行动。");
+            if (!response.IsSuccessStatusCode)
+                return new DeviceCommandResult(false, "failed", ToErrorCode(response.StatusCode), "设备服务拒绝了该行动。");
+
+            var state = await ReadDeviceStateAsync(connector, command.DeviceId, cancellationToken);
+            return new DeviceCommandResult(true, "executed", Message: "设备行动已下发并完成状态回读。", StateJson: state?.State.GetRawText());
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -151,7 +188,7 @@ public sealed class HomeAssistantAdapter : IDeviceAdapter, IDeviceDiscovery, IDe
         }
     }
 
-    private static bool TryMapEntity(JsonElement entity, out DiscoveredDevice device)
+    internal static bool TryMapEntity(JsonElement entity, out DiscoveredDevice device)
     {
         device = default!;
         if (!entity.TryGetProperty("entity_id", out var idElement) || idElement.ValueKind != JsonValueKind.String) return false;

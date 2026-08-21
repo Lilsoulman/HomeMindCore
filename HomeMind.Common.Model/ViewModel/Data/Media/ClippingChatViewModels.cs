@@ -12,11 +12,19 @@ public sealed record ClippingChatRequest(string Message, ClippingChatContext? Co
 /// <param name="PlanGenerated">方案是否已生成（前端创建 Skill Run 后置 true），可为空。</param>
 public sealed record ClippingChatContext(string Step, IReadOnlyList<string>? Materials, string? Goal, bool? PlanGenerated);
 
-/// <summary>剪辑对话引导响应：模板回复 + suggestions 引导按钮 + 推进后的上下文。</summary>
+/// <summary>剪辑对话引导响应：回复、建议操作、推进后的上下文及可选的结构化确认卡。</summary>
 /// <param name="Reply">引导回复文案。</param>
 /// <param name="Suggestions">建议操作，前端渲染为快捷按钮。</param>
 /// <param name="Context">推进后的上下文，前端原样回传下一次请求。</param>
-public sealed record ClippingChatResponse(string Reply, IReadOnlyList<string> Suggestions, ClippingChatContext Context, long TaskId);
+/// <param name="TaskId">持久化剪辑任务标识，用于恢复对话及创建运行。</param>
+/// <param name="Confirmation">LLM 成功解析时返回的确认卡；模板引导时为 <c>null</c>。</param>
+public sealed record ClippingChatResponse(string Reply, IReadOnlyList<string> Suggestions, ClippingChatContext Context, long TaskId, ClippingChatConfirmationCard? Confirmation = null);
+
+/// <summary>剪辑自然语言解析确认卡：展示服务端已校验的参数，用户确认后再创建 Skill Run。</summary>
+/// <param name="Title">确认卡标题。</param>
+/// <param name="Summary">面向用户的参数摘要。</param>
+/// <param name="Parameters">按展示顺序输出的已理解参数。</param>
+public sealed record ClippingChatConfirmationCard(string Title, string Summary, IReadOnlyList<string> Parameters);
 
 /// <summary>剪辑任务展示安全视图，供刷新或重进页面后恢复进度和版本历史。</summary>
 public sealed record ClippingTaskView(long Id, long? RunId, string Status, string? EngineStage, IReadOnlyList<string> Materials, string? Goal, object? CurrentPlan, IReadOnlyList<ClippingTaskVersionView> VersionHistory, DateTime CreatedAt, DateTime UpdatedAt);

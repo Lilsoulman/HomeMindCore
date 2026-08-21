@@ -36,9 +36,8 @@ Get-Content -Raw .\database\010_confirmed_smart_home_actions.mysql.sql | mysql -
 Get-Content -Raw .\database\011_agent_runtime_architecture.mysql.sql | mysql -uroot -p
 ```
 
-See `docs/api-implementation.md` for current API coverage and
-`docs/frontend-api-integration.md` for the frontend-facing contract (request /
-response samples for every endpoint).
+See `docs/api-integration.md` for the frontend-facing API contract. Swagger is
+the source of truth for endpoint schemas and samples.
 
 - `HomeMind.Api/Properties/launchSettings.json` controls the IDE profile.
 - `HomeMind.Api/Program.cs` provides the same default for direct Kestrel execution.
@@ -103,13 +102,13 @@ The convention is enforced centrally in `HomeMind.Api/Startup.cs`:
 - Token TTLs: access = 15 min, refresh = 30 days. Both are configurable under
   `Auth:AccessTokenMinutes` and `Auth:RefreshTokenDays`. Production requires a
   non-development `Auth:SigningKey` of at least 32 bytes at startup. See
-  `docs/linux-production-deployment.md` for the Linux systemd setup.
+  `docs/operations.md` for production deployment checks.
 
 ### 4. Error contract
 
 - Every response uses `ApiResponse<T>`. `Code` is a stable application error
   code and is never an HTTP status code; `0` means success. The canonical code
-  table is in `docs/api-implementation.md`.
+  definitions are in `HomeMind.Common.Model/ViewModel/Common/ApiErrorCodes.cs`.
 - 401/403/404 are produced through `ApiControllerBase.UnauthorizedResult<T>` /
   `NotFoundResult<T>` so the envelope stays consistent. Login credential
   failures are HTTP 400 with `Code=20000`; reserve HTTP 401 for access or
@@ -121,13 +120,16 @@ The convention is enforced centrally in `HomeMind.Api/Startup.cs`:
 
 ### 5. Documentation hygiene
 
-- Any new endpoint MUST be reflected in
-  `docs/frontend-api-integration.md` in the same change set.
-- `docs/api-implementation.md` is the internal route index; keep its table in
-  sync.
+- `docs/README.md` is the documentation entry point. Keep product scope,
+  cross-platform planning and API integration guidance there instead of
+  creating versioned design copies or task logs.
+- Any new endpoint MUST update Swagger annotations and the affected flow or
+  index in `docs/api-integration.md` in the same change set.
+- Swagger and controller/ViewModel code are the source of truth for route
+  schemas; documentation must link to them rather than duplicate DTOs.
 - The root `README.md` is intentionally absent — do not reintroduce a
   placeholder. Top-level project entry points are `DEVELOPMENT.md` and
-  `docs/frontend-api-integration.md`.
+  `docs/README.md`.
 - PDMANER model work follows `database/pdmaner/README.md`; SQL migrations
   remain the source of truth.
 

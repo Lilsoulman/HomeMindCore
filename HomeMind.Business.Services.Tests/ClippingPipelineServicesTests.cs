@@ -52,7 +52,10 @@ public sealed class ClippingPipelineServicesTests
     {
         await using var db = CreateDb();
         db.AgentRuns.Add(new AgentRun { Id = 10, TenantId = 1, UserId = 7, SourceType = "skill", RequestIdempotencyKey = Guid.NewGuid().ToString(), Input = "{}", Status = "running", Mode = "steward", AutoConfirmPolicy = "L3_only", PermissionSnapshot = "{}", StartedAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow });
-        db.ClippingTasks.Add(new ClippingTask { Id = 1, TenantId = 1, RunId = 10, CreatedByUserId = 7, Status = ClippingTaskStatus.Rendering, CurrentPlan = "{}", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        var now = DateTime.UtcNow;
+        db.ClippingTasks.AddRange(
+            new ClippingTask { Id = 1, TenantId = 1, CreatedByUserId = 7, Status = ClippingTaskStatus.Generating, EngineStage = "planning", CreatedAt = now.AddMinutes(-1), UpdatedAt = now.AddMinutes(-1) },
+            new ClippingTask { Id = 2, TenantId = 1, RunId = 10, CreatedByUserId = 7, Status = ClippingTaskStatus.Rendering, CurrentPlan = "{}", CreatedAt = now, UpdatedAt = now });
         db.ExpertRunActions.Add(new ExpertRunAction { Id = 20, RunId = 10, TenantId = 1, UserId = 7, ActionType = "draft_generate", RequestIdempotencyKey = Guid.NewGuid().ToString(), RequestJson = "{}", Status = "executing", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync();
         var files = new RenderFileServices();
@@ -61,7 +64,8 @@ public sealed class ClippingPipelineServicesTests
         Assert.Equal(1, await services.ProcessNextAsync());
         Assert.Equal(1, files.RegisterCalls);
         Assert.Equal("video/mp4", files.MimeType);
-        Assert.Equal(ClippingTaskStatus.Done, (await db.ClippingTasks.SingleAsync()).Status);
+        Assert.Equal(ClippingTaskStatus.Generating, (await db.ClippingTasks.FindAsync(1L))!.Status);
+        Assert.Equal(ClippingTaskStatus.Done, (await db.ClippingTasks.FindAsync(2L))!.Status);
         Assert.Equal("completed", (await db.AgentRuns.SingleAsync()).Status);
         Assert.Equal("executed", (await db.ExpertRunActions.SingleAsync()).Status);
         Assert.Contains(await db.RunEvents.ToListAsync(), item => item.Payload.Contains("\"stage\":\"render\"") && item.Payload.Contains("\"status\":\"succeeded\""));

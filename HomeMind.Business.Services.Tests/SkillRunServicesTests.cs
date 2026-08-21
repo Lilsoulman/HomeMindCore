@@ -16,7 +16,7 @@ namespace HomeMind.Business.Services.Tests;
 
 /// <summary>
 /// Skill 独立执行定向测试：SkillRun 创建（SourceType=skill、不绑定专家）、确定性方案生成
-/// （时长提取/单片段）、幂等重放与跨类型幂等冲突、未知 Skill 与非法输入 422、
+/// （时长提取/多片段）、幂等重放与跨类型幂等冲突、未知 Skill 与非法输入 422、
 /// 跨租户/跨用户 404 与 skill_run_created 审计。
 /// </summary>
 public class SkillRunServicesTests
@@ -51,6 +51,57 @@ public class SkillRunServicesTests
         Assert.Equal(FamilyAuditTargetTypes.SkillRun, audit.TargetType);
         Assert.Equal(run.Id, audit.TargetId);
         Assert.Equal(run.Id, audit.RelatedRunId);
+    }
+
+    /// <summary>多素材输入按选择顺序均分目标时长，方案保留每段的内部渲染位置。</summary>
+    [Fact]
+    public async Task Create_MultipleMediaLocations_GeneratesOrderedSegments()
+    {
+        await using var db = NewDb("multiple-materials");
+        SeedQuickEdit(db);
+        var services = NewServices(db);
+
+        var result = await services.CreateAsync(10, 1, "quick-edit", new SkillRunCreateRequest(null, """{"media_locations":["/nas/videos/first.mp4","/nas/videos/second.mp4"],"instruction":"生成 10 秒"}"""), default);
+
+        Assert.Equal(201, result.StatusCode);
+        var action = await db.ExpertRunActions.SingleAsync();
+        using var plan = JsonDocument.Parse(action.RequestJson);
+        var segments = plan.RootElement.GetProperty("segments");
+        Assert.Equal(2, segments.GetArrayLength());
+        Assert.Equal("first.mp4", segments[0].GetProperty("source").GetString());
+        Assert.Equal("/nas/videos/first.mp4", segments[0].GetProperty("media_location").GetString());
+        Assert.Equal(5, segments[0].GetProperty("duration").GetInt32());
+        Assert.Equal("second.mp4", segments[1].GetProperty("source").GetString());
+        Assert.Equal(5, segments[1].GetProperty("duration").GetInt32());
+        Assert.Equal(10, plan.RootElement.GetProperty("total_duration").GetInt32());
+    }
+
+    /// <summary>带任务创建时恢复对话已保存的全部选材，避免旧客户端仅提交首个 media_location 而丢失后续素材。</summary>
+    [Fact]
+    public async Task Create_WithTask_UsesPersistedSelectedMaterials()
+    {
+        await using var db = NewDb("task-materials");
+        SeedQuickEdit(db);
+        db.ClippingTasks.Add(new ClippingTask
+        {
+            Id = 9,
+            TenantId = 1,
+            CreatedByUserId = 10,
+            Status = ClippingTaskStatus.Generating,
+            Materials = "[\"/nas/videos/first.mp4\",\"/nas/videos/second.mp4\"]",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+        var services = NewServices(db);
+
+        var result = await services.CreateAsync(10, 1, "quick-edit", new SkillRunCreateRequest(null, """{"media_location":"/nas/videos/first.mp4","instruction":"生成 10 秒"}""", 9), default);
+
+        Assert.Equal(201, result.StatusCode);
+        using var plan = JsonDocument.Parse((await db.ExpertRunActions.SingleAsync()).RequestJson);
+        Assert.Equal(2, plan.RootElement.GetProperty("segments").GetArrayLength());
+        Assert.Equal("/nas/videos/second.mp4", plan.RootElement.GetProperty("segments")[1].GetProperty("media_location").GetString());
+        Assert.Equal(5, plan.RootElement.GetProperty("segments")[1].GetProperty("duration").GetInt32());
     }
 
     /// <summary>B30：创建后的动作视图输出结构化片段序列（Segments/TotalDuration），供 Web 渲染方案时间线。</summary>

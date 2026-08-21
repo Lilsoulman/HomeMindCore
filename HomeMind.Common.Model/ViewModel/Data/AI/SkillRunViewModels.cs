@@ -64,4 +64,4 @@ public sealed record SkillRunActionView(long Id, string ActionType, string Statu
 /// <param name="Index">片段序号，从 1 开始。</param>
 /// <param name="Source">片段来源素材名（路径最后一段）。</param>
 /// <param name="Duration">片段时长（秒）。</param>
-public sealed record SkillPlanSegmentView(int Index, string Source, int Duration);
+public sealed record SkillPlanSegmentView(int Index, string Source, int Duration, double SourceStart = 0, double TimelineStart = 0, string BeatType = "fallback");

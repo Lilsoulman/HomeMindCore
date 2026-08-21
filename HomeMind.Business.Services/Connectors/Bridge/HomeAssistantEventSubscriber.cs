@@ -27,7 +27,7 @@ public sealed class HomeAssistantEventSubscriber : IHomeAssistantEventSubscriber
     /// <inheritdoc />
     public async Task SubscribeAsync(WorkspaceConnector connector, CancellationToken cancellationToken)
     {
-        var secret = await _secrets.ResolveAsync(new ConnectorReference(connector.TenantId, connector.Id, connector.CredentialRef ?? string.Empty), cancellationToken);
+        var secret = await _secrets.ResolveAsync(new ConnectorReference(connector.Id, connector.TenantId, connector.CredentialRef ?? string.Empty), cancellationToken);
         if (!secret.Succeeded || string.IsNullOrWhiteSpace(secret.SecretJson)) throw new ConnectorAdapterException(secret.ErrorCode ?? "secret_vault_unavailable", "无法读取 Home Assistant 连接凭据。");
         var connection = ParseConnection(secret.SecretJson);
         using var socket = new ClientWebSocket();
@@ -55,8 +55,8 @@ public sealed class HomeAssistantEventSubscriber : IHomeAssistantEventSubscriber
         var now = DateTime.UtcNow;
         if (_recentEvents.TryGetValue(externalId, out var recent) && (recent.State == stateJson || now - recent.ReceivedAt < TimeSpan.FromSeconds(Math.Max(0, _options.EventCooldownSeconds)))) return;
         _recentEvents[externalId] = new EventFingerprint(stateJson, now);
-        var sampledAt = state.TryGetProperty("last_updated", out var updated) && DateTime.TryParse(updated.GetString(), out var parsed) ? parsed.ToUniversalTime() : now;
-        await _sync.ApplyStateChangedAsync(connector.TenantId, connector.Id, externalId, stateJson, sampledAt, cancellationToken);
+        if (!HomeAssistantAdapter.TryMapEntity(state, out var normalized)) return;
+        await _sync.ApplyStateChangedAsync(connector.TenantId, connector.Id, externalId, normalized.StateJson, normalized.SampledAt, cancellationToken);
     }
 
     private bool IsAllowed(string externalId)
